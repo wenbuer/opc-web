@@ -331,6 +331,25 @@ def _decision_items(reps: list) -> str:
     return "\n\n".join(out)
 
 
+def _decision_summary(reps, task_text: str) -> str:
+    """R1 把各角色回报里需 R0 拍板的内容，总结成「像人话、以问句结尾」的完整决策点。
+
+    不再直接搬运回报原文的零碎片段（1)、0.3 这类）；失败返回 ""（由调用方回退）。"""
+    if not reps and not task_text:
+        return ""
+    digest = _digest_reps(reps, limit=1600) if reps else str(task_text or "")[:1200]
+    prompt = (
+        "你是老板助理 R1。下面是某任务的原文与各角色回报。\n"
+        "请把其中需要老板(R0)拍板的决策点，提炼成**完整、像人话、以问句结尾**的条目，"
+        "每条写清：现状背景 → 可选方案 → 你建议选哪个 → 一问句（如「是否按方案 B 执行？」）。\n"
+        "不要搬运回报里的零碎编号片段（如「1)」「0.3 差异化」这种），不要写流程套话；"
+        "只有确有需要拍板才输出，没有就输出「无」。\n"
+        "只输出决策内容，不要多余文字。\n\n任务原文：%s\n\n各角色回报：\n%s"
+        % (str(task_text or "")[:800], digest))
+    text = _headless_text(prompt, 480)
+    return (text or "").strip() if text else ""
+
+
 def work_summary(task_no: str) -> str:
     """R1 汇总任务全部 subagent 产出 →《工作区/老板助理（枢纽）/T-xxx-工作汇总.md》。
 
@@ -573,7 +592,13 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
             # “需要 R0 拍板什么”必须落具体内容：角色回报里写明就用回报原文；
             # 回报没写明时回退到任务原话（R0 自己下达时的决策请求）。
             # 绝不把“任务含决策信号…请 R0 裁决；驳回将触发重新派发”这类机制空话写进待决。
-            ask = decisions or task_s
+            ask = ""
+            try:
+                ask = _decision_summary(reps, task_text)
+            except Exception:
+                ask = ""
+            if not ask:
+                ask = decisions or task_s
             lines_b += _field_lines("需要 R0 拍板什么", ask)
             lines_b += ["- **R0 批阅**：待填"]
             if sum_rel:
