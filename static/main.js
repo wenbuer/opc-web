@@ -1611,7 +1611,11 @@
     $("wsTitle").textContent = rel;
     var body = $("wsBody");
     if (/.html$/i.test(rel || "")){
-      body.innerHTML = "<div class='ws-note'>HTML · 已内嵌打开</div><iframe class='ws-iframe' src='/api/ws-html?rel=" + encodeURIComponent(rel) + "'></iframe>";
+      body.innerHTML = "<div class='ws-note'>HTML · 已内嵌打开</div>"
+        + "<div class='ws-preview'><iframe class='ws-iframe' src='/api/ws-html?rel=" + encodeURIComponent(rel) + "'></iframe>"
+        + "<button class='ws-fs-btn' title='全屏显示' aria-label='全屏显示'>" + WS_FS_SVG + "</button></div>";
+      var _f = body.querySelector(".ws-iframe"), _b = body.querySelector(".ws-fs-btn");
+      if (_b) _b.addEventListener("click", function(){ wsFsOpen(_f); });
       return;
     }
     body.innerHTML = "<div class='placeholder'>加载中…</div>";
@@ -1626,6 +1630,26 @@
         body.innerHTML = "<div class='ws-note'>文本文件 · 以 txt 方式查看</div><pre class='ws-txt'>" + esc(j.text || "") + "</pre>";
       }
     }).catch(function(e){ body.innerHTML = "<div class='ws-unread'>读取失败：" + esc(e.message) + "</div>"; });
+  }
+  var WS_FS_SVG = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='18' height='18' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M8 3H5a2 2 0 0 0-2 2v3'/><path d='M21 8V5a2 2 0 0 0-2-2h-3'/><path d='M3 16v3a2 2 0 0 0 2 2h3'/><path d='M16 21h3a2 2 0 0 0 2-2v-3'/></svg>";
+  var WS_MIN_SVG = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' width='18' height='18' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M8 3v3a2 2 0 0 1-2 2H3'/><path d='M21 8h-3a2 2 0 0 1-2-2V3'/><path d='M3 16h3a2 2 0 0 1 2 2v3'/><path d='M16 21v-3a2 2 0 0 1 2-2h3'/></svg>";
+  function wsFsOpen(iframe){
+    if (!iframe) return;
+    iframe.__wsHome = iframe.parentElement;               // 记录原父容器，退出时放回
+    var wrap = document.createElement("div");
+    wrap.className = "ws-fullscreen";
+    wrap.appendChild(iframe);                              // 移动 iframe（src 不变，不重载）
+    var exit = document.createElement("button");
+    exit.className = "ws-fs-exit";
+    exit.title = "退出全屏";
+    exit.setAttribute("aria-label", "退出全屏");
+    exit.innerHTML = WS_MIN_SVG;
+    exit.addEventListener("click", function(){
+      if (iframe.__wsHome) iframe.__wsHome.appendChild(iframe);
+      if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+    });
+    wrap.appendChild(exit);
+    document.body.appendChild(wrap);
   }
   var wsRoleSel = $("wsRoleSel");
   if (wsRoleSel) wsRoleSel.addEventListener("change", function(){ wsRole = this.value; renderWsList(); });
