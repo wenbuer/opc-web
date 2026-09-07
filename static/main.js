@@ -52,8 +52,9 @@
       api("/api/summary").then(refreshStats).catch(function(){});
     }).catch(function(){});
     api("/api/timeline").then(function(j){
-      if (j && j.ok){ renderTimeline(j.events || []); }
+      if (j && j.ok){ renderTimeline(j.events || [], j.msg); }
     }).catch(function(){});
+    bindTimeline();
     loadOverview();
   }
   var taskTexts = {};   // 任务编号 → 下达内容原文（左列缩略卡看不到任务文字，选中后显示在搜索栏下方）
@@ -126,6 +127,7 @@
         + "<div class='rc-top'><span class='rc-name'>" + esc(r.name || r.code) + "</span><span class='rc-n'>" + esc(r.code) + "</span>"
         + "<button class='rc-folder' title='查看项目文件'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/></svg></button><button class='rc-del' title='删除角色（需二次确认）'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 6h18'/><path d='M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2'/><path d='M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6'/><path d='M10 11v6'/><path d='M14 11v6'/></svg></button></div>"
         + "<div class='rc-duty'>" + esc(r.duty || "") + "</div>"
+        + "<div class='rc-tags'>" + (r.tags || []).map(function(t){ return "<i>" + esc(t) + "</i>"; }).join("") + "</div>"
         + "<div class='rc-cur'>当前：" + esc(r.current || "无") + "</div>";
       card.addEventListener("click", function(){ openRole(r.code); });
       var btDel = card.querySelector(".rc-del");
@@ -300,9 +302,14 @@
     }).catch(function(e){ if (fb) fb.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
   }
 
-  function renderTimeline(events){
+  function renderTimeline(events, msg){
     var box = $("timeline");
+    if (!box) return;
     box.innerHTML = "";
+    if (!events || !events.length){
+      box.innerHTML = "<div class='placeholder'>" + esc(msg || "尚未生成时间轴 — 点「生成时间轴」由 R1 提炼") + "</div>";
+      return;
+    }
     (events || []).forEach(function(ev){
       var it = document.createElement("div");
       it.className = "tl-h-item";
@@ -311,6 +318,26 @@
         + "<div class='tl-h-detail'>" + esc(ev.detail) + "</div>";
       box.appendChild(it);
     });
+  }
+  function genTimeline(){
+    var b = $("btnGenTimeline");
+    if (!b) return;
+    var old = b.textContent;
+    b.disabled = true; b.textContent = "生成中…";
+    post("/api/timeline", {}).then(function(j){
+      b.disabled = false; b.textContent = old;
+      if (j && j.ok){ renderTimeline(j.events || [], j.msg || "已生成"); }
+      else { renderTimeline([], (j && j.msg) || "生成失败"); }
+    }).catch(function(e){
+      b.disabled = false; b.textContent = old;
+      renderTimeline([], "生成失败：" + (e && e.message || e));
+    });
+  }
+  function bindTimeline(){
+    var b = $("btnGenTimeline");
+    if (!b || b.dataset.bound) return;
+    b.dataset.bound = "1";
+    b.addEventListener("click", genTimeline);
   }
 
 
@@ -1226,13 +1253,14 @@
   /* ================= 每日简报 ================= */
   /* ================= 角色管理 ================= */
   function parseCardFields(card){
-    var o = { no: "", name: "", type: "", position: "", duty: [], skills: [] }, seg = null;
+    var o = { no: "", name: "", type: "", position: "", duty: [], skills: [], tags: [] }, seg = null;
     card.split(NL10).forEach(function(ln){
       var t = ln.trim();
       if (t.indexOf("## ") === 0){ seg = t.slice(3); return; }
       if (seg === "身份"){
         if (t.indexOf("- 编号：") === 0){ t.slice(4).split("｜").forEach(function(p){ var kv = p.split("："); if (kv[0] === "编号") o.no = kv[1] || ""; if (kv[0] === "名称") o.name = kv[1] || ""; if (kv[0] === "类型") o.type = kv[1] || ""; }); }
         else if (t.indexOf("- 一句话定位：") === 0) o.position = t.slice(t.indexOf("：") + 1).split("（")[0];
+        else if (t.indexOf("- 标签：") === 0){ var tv = t.slice(t.indexOf("：") + 1); o.tags = tv.split(/[\s,，、;；]+/).filter(function(x){ return x; }); }
       }
       else if (seg === "职责" && t.indexOf("- ") === 0) o.duty.push(t.slice(2));
       else if (seg === "技能" && t.indexOf("- ") === 0){
@@ -1305,47 +1333,11 @@
 
   bindRoleForm();
 
-  /* ================= 新增/编辑角色弹窗：技能 = 从 agents/skills/ 目录勾选，不手写 = ================= */
-  var _pick = { card: false, lib: false, sel: [] };
-  function renderSkillPick(list){
-    var box = $("mRlSkills"); if (!box) return;
-    box.innerHTML = "";
-    if (!list || !list.length){
-      box.innerHTML = "<div class='skills-pick-empty'>暂无技能 —— 点「去 Skill 导入」从 dsh 导入后再装配</div>";
-      return;
-    }
-    list.forEach(function(n){
-      var c = document.createElement("span");
-      c.className = "skill-opt";
-      c.textContent = skillStem(n);
-      c.title = "agents/skills/" + n;
-      c.dataset.name = n;
-      c.addEventListener("click", function(){ c.classList.toggle("sel"); });
-      box.appendChild(c);
-    });
-  }
-  function markSkillPick(sel){
-    var box = $("mRlSkills"); if (!box) return;
-    box.querySelectorAll(".skill-opt").forEach(function(c){
-      if (sel.indexOf(c.dataset.name) >= 0) c.classList.add("sel");
-    });
-  }
-  function pickDone(){
-    if (_pick.card && _pick.lib) markSkillPick(_pick.sel || []);
-  }
-  function loadSkillPick(){
-    var box = $("mRlSkills");
-    if (box) box.innerHTML = "<div class='skills-pick-empty'>加载技能库…</div>";
-    api("/api/skills").then(function(j){
-      renderSkillPick((j && j.skills) || []);
-      _pick.lib = true; pickDone();
-    }).catch(function(){ renderSkillPick([]); _pick.lib = true; pickDone(); });
-  }
+  /* ================= 新增/编辑角色弹窗：技能装配 move 到 skillAddModal（openSkillAddModal） = ================= */
   function openRoleModal(mode, no){
     var m = $("roleModal"); if (!m) return;
     mode = mode || "add"; no = no || "";
-    ["mRlName","mRlPosition","mRlType","mRlDuty"].forEach(function(id){ var el = $(id); if (el) el.value = ""; });
-    _pick = { card: false, lib: false, sel: [] };
+    ["mRlName","mRlPosition","mRlType","mRlTags","mRlDuty"].forEach(function(id){ var el = $(id); if (el) el.value = ""; });
     var msg = $("mRoleMsg"); if (msg) msg.textContent = "";
     var title = $("roleModalTitle"); if (title) title.textContent = (mode === "edit") ? "编辑角色 " + no : "＋ 新增角色";
     var hint = $("roleModalHint");
@@ -1354,18 +1346,16 @@
       : "";
     m.dataset.mode = mode; m.dataset.no = no;
     m.hidden = false;
-    if (mode === "add"){
-      _pick.card = true;
-    } else if (mode === "edit" && no){
+    if (mode === "edit" && no){
       api("/api/roles/card?no=" + encodeURIComponent(no)).then(function(jc){
-        if (!jc || !jc.ok){ var mm = $("mRoleMsg"); if (mm) mm.textContent = "角色卡加载失败：该角色无 " + no + ".role.md"; _pick.card = true; pickDone(); return; }
+        if (!jc || !jc.ok){ var mm = $("mRoleMsg"); if (mm) mm.textContent = "角色卡加载失败：该角色无 " + no + ".role.md"; return; }
         var o = parseCardFields(jc.card || "");
         var n1 = $("mRlName"); if (n1) n1.value = o.name || "";
         var p1 = $("mRlPosition"); if (p1) p1.value = o.position || "";
         var t1 = $("mRlType"); if (t1) t1.value = o.type || "";
+        var tg1 = $("mRlTags"); if (tg1) tg1.value = (o.tags || []).join(" ");
         var d1 = $("mRlDuty"); if (d1) d1.value = (o.duty || []).join(NL10);
-        _pick.card = true; pickDone();
-      }).catch(function(){ _pick.card = true; pickDone(); });
+      }).catch(function(){});
     }
     var n2 = $("mRlName"); if (n2) n2.focus();
   }
@@ -1385,7 +1375,7 @@
       duty: ($("mRlDuty").value || "").trim(),
       position: ($("mRlPosition").value || "").trim(),
       type: ($("mRlType").value || "").trim(),
-
+      tags: ($("mRlTags") ? ($("mRlTags").value || "").trim() : ""),
     };
     if (mode === "edit") payload.no = no;
     if (msg) msg.textContent = "保存中…";
@@ -1483,7 +1473,36 @@
     if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
     return (n / (1024 * 1024)).toFixed(1) + " MB";
   }
+  function loadProjectShared(){
+    var box = $("projSharedList");
+    if (!box) return;
+    box.innerHTML = "<div class='placeholder'>加载公共项目区…</div>";
+    api("/api/project-files").then(function(j){
+      if (!box) return;
+      if (!j || !j.ok){ box.innerHTML = "<div class='placeholder'>读取失败：" + esc(j && j.msg || "") + "</div>"; return; }
+      var files = j.files || [], writers = j.writers || [];
+      if (!files.length){
+        box.innerHTML = "<div class='placeholder'>公共项目区暂无文件 —— 工程角色产出（源码/工程性产出）会落到《项目/》</div>";
+        return;
+      }
+      var wtx = (writers && writers.length) ? writers.map(function(w){ return roleName(w) || w; }).join("、") : "无";
+      box.innerHTML = "";
+      var note = document.createElement("div");
+      note.className = "proj-shared-note";
+      note.textContent = "✅ 全员只读 · 可写：" + wtx;
+      box.appendChild(note);
+      files.forEach(function(f){
+        var el = document.createElement("div");
+        el.className = "proj-file-item";
+        el.innerHTML = "<span class='wsi-name'>" + esc(f.name) + "</span><em>" + esc(wsFmtSize(f.size)) + "</em>";
+        el.title = f.rel;
+        el.addEventListener("click", function(){ showWsFile(f.rel, el); });
+        box.appendChild(el);
+      });
+    }).catch(function(e){ if (box) box.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
+  }
   function loadWsFiles(){
+    loadProjectShared();
     wsRole = ""; wsTask = "";
     var rs = $("wsRoleSel"), ts = $("wsTaskSel");
     if (rs) rs.innerHTML = "<option value=''>全部角色</option>";
@@ -1716,7 +1735,7 @@
       var active = (j.active || {}).root || "";
       var seed = j.seedRoles || 0;
       if (!list.length){
-        box.innerHTML = "<div class='placeholder'>还没有项目 —— 在右侧填入项目名 + 目录，点「＋ 新建项目」（首个会自动激活，角色阵容从 agents-seed 复制 " + seed + " 张卡）</div>";
+        box.innerHTML = "<div class='placeholder'>还没有项目 —— 在右侧选员工模板 + 填项目名/目录，点「＋ 新建项目」（首个会自动激活，角色卡按所选模板生成）</div>";
       } else {
         box.innerHTML = "";
         list.forEach(function(p){
@@ -1762,14 +1781,15 @@
     var m = $("projMsg");
     var name = ($("projName").value || "").trim();
     var root = ($("projRoot").value || "").trim().replace(/\\/g, "/");   // Windows 反斜杠 → /，否则 JSON 转义崩
+    var tpl = ($("projTpl") || {}).value || "large_dev";
     if (!root){ if (m) m.textContent = "项目目录必填（绝对路径，从右侧选择或手动输入）"; return; }
     if (m) m.textContent = "创建中…";
-    projectAction("add", root, name);
+    projectAction("add", root, name, tpl);
   }
-  function projectAction(action, root, name){
+  function projectAction(action, root, name, template){
     var m = $("projMsg");
     root = String(root || "").replace(/\\/g, "/");   // 同上：统一正斜杠进 JSON
-    post("/api/projects", { action: action, root: root, name: name }).then(function(j){
+    post("/api/projects", { action: action, root: root, name: name, template: template }).then(function(j){
       if (!j || !j.ok){
         if (m) m.textContent = (action === "switch" ? "切换失败" : action === "add" ? "新建失败" : "移除失败") + "：" + esc(j && j.msg || "未知");
         return;
@@ -1781,6 +1801,7 @@
       loadHome();
       loadQueue();
       loadBoard();
+      checkOnboard();
     }).catch(function(e){ if (m) m.textContent = "异常：" + esc(e.message); });
   }
 
@@ -1839,6 +1860,90 @@
     var s = document.querySelector('.snav-item[data-snav="skill"]');
     if (s) s.click();
   }
+  /* ================= 初始引导 + 项目模板（无项目/未配模型时的入场式引导） ================= */
+  var TPLS = [];
+  var _onbShown = false;
+  function loadProjectTemplates(){
+    api("/api/templates").then(function(j){
+      if (!j || !j.ok) return;
+      TPLS = j.templates || [];
+      var sel = $("projTpl");
+      if (!sel) return;
+      sel.innerHTML = "";
+      TPLS.forEach(function(t){
+        var o = document.createElement("option");
+        o.value = t.key; o.textContent = t.name;
+        sel.appendChild(o);
+      });
+      if (TPLS.length){ sel.value = TPLS[0].key || ""; }
+      updateTplDesc();
+    }).catch(function(){});
+  }
+  function updateTplDesc(){
+    var sel = $("projTpl"), d = $("projTplDesc");
+    if (!sel || !d) return;
+    var t = null;
+    for (var i = 0; i < TPLS.length; i++){ if (TPLS[i].key === sel.value){ t = TPLS[i]; break; } }
+    d.textContent = t ? (t.desc + "（" + t.roles.length + " 名员工）") : "";
+  }
+  function goPane(view, snav){
+    var tab = document.querySelector('.tab[data-view="' + view + '"]');
+    if (tab) tab.click();
+    if (snav){
+      var s = document.querySelector('.snav-item[data-snav="' + snav + '"]');
+      if (s) s.click();
+    }
+  }
+  function gotoModel(){ goPane("settings", "model"); setTimeout(function(){ var k = $("mApiKey"); if (k) k.focus(); }, 150); }
+  function viewHandbook(){
+    api("/api/handbook").then(function(j){
+      if (!j || !j.ok){ alert("员工手册读取失败"); return; }
+      var tab = document.querySelector('.tab[data-view="kb"]');
+      if (tab) tab.click();
+      var g = $("kbGrid"), d = $("kbDoc");
+      if (g) g.style.display = "none";
+      if (d){
+        d.style.display = "";
+        d.innerHTML = "<div class='back-bar'><a href='javascript:void(0)' id='kbBack'>← 返回档案列表</a></div>"
+          + "<div class='file-title'>员工手册 ｜ 所有角色的唯一行为准则（OPC）</div>"
+          + "<div class='markdown-body'>" + renderMd(j.text || "") + "</div>";
+        var bk = d.querySelector("#kbBack");
+        if (bk) bk.addEventListener("click", function(){ if (g) g.style.display = ""; if (d) d.style.display = "none"; });
+      }
+    }).catch(function(){});
+  }
+  function showOnboard(){ var m = $("onbMask"); if (m) m.hidden = false; }
+  function closeOnboard(){ var m = $("onbMask"); if (m) m.hidden = true; }
+  function checkOnboard(){
+    api("/api/settings").then(function(j){
+      if (!j || !j.ok) return;
+      var hasProject = (j.projects || []).length > 0;
+      var hasApi = !!(j.model && j.model.configured);
+      var hint = $("onbHint");
+      if (hint){
+        hint.hidden = hasProject && hasApi;
+        var ht = $("onbHintText");
+        if (ht) ht.textContent = !hasProject && !hasApi ? "还未完成初始化：缺项目与模型"
+          : (!hasProject ? "还未初始化：缺一个项目" : "还未初始化：缺模型 API");
+      }
+      if (!hasProject && !hasApi && !_onbShown){ _onbShown = true; showOnboard(); }
+    }).catch(function(){});
+  }
+  function bindOnboard(){
+    document.querySelectorAll(".onb-go").forEach(function(b){
+      b.addEventListener("click", function(){
+        var go = b.getAttribute("data-go");
+        closeOnboard();
+        if (go === "project") goPane("settings", "dir");
+        else if (go === "model") gotoModel();
+        else if (go === "handbook") viewHandbook();
+      });
+    });
+    var oc = $("onbClose"); if (oc) oc.addEventListener("click", closeOnboard);
+    var hb = $("onbHintBtn"); if (hb) hb.addEventListener("click", showOnboard);
+    var tp = $("projTpl"); if (tp) tp.addEventListener("change", updateTplDesc);
+  }
+
   function bindSettings(){
     document.querySelectorAll(".snav-item").forEach(function(item){
       item.addEventListener("click", function(){
@@ -2075,4 +2180,7 @@
   loadHome();
   bindSettings();
   loadProjects();   // 启动即拉项目清单：顶栏项目切换器一直显示正确项目名，而不是等进设置
+  loadProjectTemplates();
+  bindOnboard();
+  checkOnboard();
 })();

@@ -20,7 +20,7 @@ from . import agent, config, runner, store
 
 def _wb_role_dirs():
     """《工作区/》下所有角色输出目录（按角色名称命名）。"""
-    wb = config.wb_root()
+    wb = config.WORKSPACE_ROOT
     if not wb.is_dir():
         return []
     return sorted(d for d in wb.iterdir() if d.is_dir())
@@ -140,7 +140,7 @@ def r1_archive() -> dict:
         for f in sorted(d.glob("*.md")):
             if (d / (f.stem + ".meta.json")).exists():
                 continue
-            ledger.append(f.relative_to(config.wb_root()).as_posix())
+            ledger.append(f.relative_to(config.WORKSPACE_ROOT).as_posix())
     # 任务级回填：子任务全部完成 → 任务完成
     by_task = {}
     for s in store.subtasks():
@@ -439,7 +439,7 @@ def build_daily_report(datestr: str = None) -> dict:
     return {"ok": True, "created": True, "file": target.name, "rel": target.relative_to(config.ROOT).as_posix()}
 
 def kb_digest(task_no: str) -> dict:
-    """从任务回报中抽取值得沉淀的知识，写入《知识库/<task_no>-沉淀.md》并登记《知识库索引.md》。"""
+    """从任务回报中抽取值得沉淀的知识，写入《知识库/okf/<task_no>-okf.md》。（不再写《知识库索引.md》登记）"""
     reps = store.reports(task_no)
     if not reps:
         return {"ok": True, "created": False, "msg": "该任务无回报，跳过知识沉淀"}
@@ -461,16 +461,6 @@ def kb_digest(task_no: str) -> dict:
                 "source:\n  type: task\n  task: %s\nfreshness: %s\nstatus: archive\n---\n\n"
                 % (task_no, task_no, task_no, today)) + text
     target.write_text(text.strip() + "\n", encoding="utf-8")
-    # 登记《知识库索引.md》
-    try:
-        idx = config.ROOT / config.INDEX_REL
-        idx.parent.mkdir(parents=True, exist_ok=True)
-        cur = config.read_text(idx) if idx.exists() else "# 知识库索引"
-        if name not in cur:
-            with open(idx, "a", encoding="utf-8") as fh:
-                fh.write("- [%s](知识库/okf/%s)\n" % (name, name))
-    except Exception:
-        pass
     return {"ok": True, "created": True, "file": "okf/" + name, "rel": "知识库/okf/" + name}
 
 def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: list) -> int:
@@ -557,6 +547,18 @@ def clean_task_files(no: str) -> int:
 
     只按 no + "-S" 前缀匹配（T-001-S1.md），不会误伤 T-0010 等其他任务。"""
     removed = 0
+    # 公共项目区（项目/）下该任务的产物（T-xxx-S*，含子目录）：随任务删除一起清理
+    if config.PROJECT_ROOT.is_dir():
+        import shutil as _sh
+        for p in sorted(config.PROJECT_ROOT.rglob(no + "-S*"), key=lambda x: -len(x.parts)):
+            try:
+                if p.is_dir():
+                    _sh.rmtree(p, ignore_errors=True)
+                else:
+                    p.unlink()
+                removed += 1
+            except OSError:
+                pass
     for d in _wb_role_dirs():
         for p in list(d.glob(no + "-S*.md")) + list(d.glob(no + "-S*.json")):
             try:
@@ -763,3 +765,136 @@ def sub_output(sub_no: str) -> dict:
                     "text": config.read_text(p),
                     "meta": meta}
     return {}
+
+
+# ================= 05 OPC 时间轴：R1 模型提炼节点性/阶段性项目事件 =================
+# 原 parsers.parse_timeline() 靠正则从决策日志 + 每日简报拼节点（含死板的「日报」节点与固定启动模板句）。
+# 现改为：由 R1（dsh headless 模型）从各角色工作区产物 + 决策日志 D-NN + 任务台账里提炼
+# 真正的「节点性 / 阶段性」项目里程碑，并让模型自写「说明文字」；日报不再进时间轴。
+# 手动触发 + 缓存到《批阅台/时间轴.json》，模型不可用时返回空态提示。
+
+
+def _timeline_input() -> str:
+    """给 R1 模型汇总时间轴的输入：各角色工作区产物 + 决策日志 D-NN + 任务台账节点。"""
+    from . import knowledge
+    parts = []
+    for grp in rn_outputs():
+        lines = []
+        for f in grp["files"]:
+            st = f.get("status") or ""
+            head = (f.get("head") or "").strip().replace("\n", " ")
+            lines.append("- %s（%s）%s" % (f["name"], st, head[:120]))
+        if lines:
+            parts.append("## 角色工作区 · %s\n%s" % (grp["dir"], "\n".join(lines)))
+    try:
+        dtext = knowledge.read_md(config.LOG_REL)
+        d = [m.group(1).strip() for m in re.finditer(r"^##\s+D-\d+｜(.+?)（\d{4}-\d{2}-\d{2}", dtext, re.M)]
+        if d:
+            parts.append("## 决策日志（里程碑条目）\n" + "\n".join("- " + x for x in d))
+    except Exception:
+        pass
+    trows = []
+    for t in store.tasks():
+        subs = store.subtasks(t["no"])
+        done = sum(1 for s in subs if (s.get("st") or "") == "完成")
+        trows.append("- %s %s：%d/%d 子任务完成（%s）" % (t["no"], t.get("status") or "",
+                                                        done, len(subs), (t.get("task") or "")[:60].replace("\n", " ")))
+    if trows:
+        parts.append("## 任务台账（节点性任务）\n" + "\n".join(trows[-20:]))
+    return "\n\n".join(p for p in parts if p.strip())
+
+
+def _parse_timeline_json(text: str):
+    """从模型输出提取事件 JSON 数组（容忍模型用 json 代码块包裹 / 前后杂字）。"""
+    t = re.sub(_TRIPLE_BT + r"(?:json)?", "", (text or ""), flags=re.I).strip()
+    i, j = t.find("["), t.rfind("]")
+    if i < 0 or j <= i:
+        return None
+    try:
+        data = json.loads(t[i:j + 1])
+    except Exception:
+        return None
+    if not isinstance(data, list):
+        return None
+    out = []
+    for it in data:
+        if not isinstance(it, dict):
+            continue
+        date = str(it.get("date") or "").strip()[:10]
+        title = str(it.get("title") or "").strip()[:40]
+        detail = str(it.get("detail") or "").strip()[:400]
+        if date or title:
+            out.append({"date": date, "title": title, "detail": detail})
+    out.sort(key=lambda e: e["date"])
+    return out
+
+
+def _write_timeline(events) -> str:
+    p = config.ROOT / config.TIMELINE_REL
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"events": events,
+                             "generated_at": datetime.datetime.now().isoformat(timespec="seconds")},
+                            ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return p.relative_to(config.ROOT).as_posix()
+
+
+def get_timeline() -> dict:
+    """读时间轴缓存（模型上次生成的结果）；无缓存返回空态 + 提示，不自动生成。"""
+    p = config.ROOT / config.TIMELINE_REL
+    if not p.exists():
+        return {"generated_at": None, "events": [],
+                "msg": "尚未生成时间轴 — 点「生成时间轴」由 R1 从各角色工作区提炼"}
+    try:
+        obj = json.loads(config.read_text(p))
+    except Exception:
+        return {"generated_at": None, "events": [], "msg": "时间轴缓存不可读，请重新生成"}
+    evs = obj.get("events") if isinstance(obj, dict) else []
+    return {"generated_at": (obj.get("generated_at") if isinstance(obj, dict) else None),
+            "events": evs if isinstance(evs, list) else []}
+
+
+def build_timeline() -> dict:
+    """让 R1 模型提炼「节点性 / 阶段性」项目事件，写缓存 JSON，返回结果。
+
+    - 「说明文字」由模型总结；只列节点性里程碑，不列每日简报 / 流水账 / 例行任务。
+    - 模型不可用 / 未配置 → 返回 {ok:False, msg}，前端显示空态提示（不再硬编旧节点）。"""
+    data = _timeline_input()
+    if not data.strip():
+        return {"ok": False, "msg": "暂无可提炼的项目数据（角色工作区 / 决策日志 / 任务台账均为空）"}
+    prompt = ("你是老板助理 R1，能看见所有角色工作区与项目状态。请从下面项目数据里提炼该项目的"
+              "「节点性 / 阶段性重要事件」，用于 OPC 时间轴。"
+              "只保留对项目有节点意义的事件：项目启动、重大决策 / 里程碑、标志性交付物完成、"
+              "阶段性复盘 / 上线 / 归档等；不要把每日简报、流水账、例行任务当成事件。\n"
+              "输出 JSON 数组，每项 {\"date\":\"YYYY-MM-DD\",\"title\":\"事件名（≤20字）\","
+              "\"detail\":\"一两句说明（作为时间轴的说明文字）\"}，按 date 升序；"
+              "没有符合的事件就输出 []。只输出 JSON，不要任何多余文字。\n\n项目数据：\n%s" % data)
+    text = _headless_text(prompt, 300)
+    if not text:
+        return {"ok": False, "msg": "模型未返回结果（请确认 dsh 与模型 API 可用）"}
+    events = _parse_timeline_json(text)
+    if events is None:
+        return {"ok": False, "msg": "模型返回内容无法解析为事件列表，请重试"}
+    rel = _write_timeline(events)
+    return {"ok": True, "events": events, "msg": "已生成（" + rel + "）"}
+
+
+def project_files() -> dict:
+    """公共项目区（项目/）文件清单：源码/工程性产出。全员可读；仅「工程」标签角色可写。
+
+    writers = 当前具备《项目/》写权限的角色（工程标签），供前端展示。"""
+    from . import roles as _roles
+    out = []
+    root = config.PROJECT_ROOT
+    if root.is_dir():
+        for p in sorted(root.rglob("*")):
+            if not p.is_file() or any(seg in _WS_SKIP_PARTS for seg in p.relative_to(root).parts):
+                continue
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            out.append({"name": p.name, "rel": p.relative_to(config.ROOT).as_posix(),
+                        "ext": p.suffix.lower(), "size": st.st_size, "mtime": int(st.st_mtime)})
+    writers = [no for no, _ in _roles.role_files() if _roles.can_write_project(no)]
+    return {"files": out, "writers": writers}
+

@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
-from . import bootstrap, config, knowledge, parsers, review, roles, runner, scheduler, store
+from . import bootstrap, config, knowledge, parsers, review, roles, runner, scheduler, store, templates
 
 
 def _strip_okf_frontmatter(text: str) -> str:
@@ -46,6 +46,15 @@ def _split_skills(v):
         if s and not (s.startswith("（") or s.startswith("(")):
             out.append(s)
     return out
+
+
+def _split_tags(v):
+    """body['tags']（空格/逗号分隔字符串 或 数组）→ 标签列表；None=未提交（edit 保留现卡标签）。"""
+    if v is None:
+        return None
+    if isinstance(v, list):
+        return [str(x).strip() for x in v if str(x).strip()]
+    return [t for t in re.split(r"[\s,，、;；]+", str(v).strip()) if t]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -232,7 +241,7 @@ class Handler(BaseHTTPRequestHandler):
         elif url == "/api/org":
             self._ok(lambda: {"ok": True, "roles": parsers.parse_roles()})
         elif url == "/api/timeline":
-            self._ok(lambda: {"ok": True, "events": parsers.parse_timeline()})
+            self._ok(lambda: {"ok": True, **scheduler.get_timeline()})
         elif url == "/api/queue":
             self._ok(lambda: {"ok": True, "queue": store.tasks()})
         elif url == "/api/rn-outputs":
@@ -240,6 +249,8 @@ class Handler(BaseHTTPRequestHandler):
                               "groups": scheduler.rn_outputs(self._qs().get("no", [""])[0])})
         elif url == "/api/ws-files":
             self._ok(lambda: {"ok": True, "files": scheduler.ws_files()})
+        elif url == "/api/project-files":
+            self._ok(lambda: {"ok": True, **scheduler.project_files()})
         elif url == "/api/tokens":
             self._ok(lambda: {"ok": True, "rows": scheduler.token_rows()})
         elif url == "/api/ws-file":
@@ -260,6 +271,10 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._get_skill_lib)
         elif url == "/api/dsh-skills":
             self._ok(self._get_dsh_skills)
+        elif url == "/api/templates":
+            self._json({"ok": True, "templates": templates.templates()})
+        elif url == "/api/handbook":
+            self._json({"ok": True, "text": templates.handbook_text()})
         elif url == "/api/projects":
             self._json({"ok": True, "projects": config.projects(),
                         "active": config.active_project(), "seedRoles": config.settings_info()["seedRoles"]})
@@ -354,6 +369,7 @@ class Handler(BaseHTTPRequestHandler):
     def _post_role_add(self, edit=False):
         body = self._body() or {}
         skills = _split_skills(body.get("skills"))     # None=未提交（edit 保留现卡清单）；[]=清空
+        tags = _split_tags(body.get("tags"))           # None=未提交（edit 保留现卡标签）；[]=清空
         if edit:
             body_card = body.get("card")
             r = roles.edit_role(
@@ -363,6 +379,7 @@ class Handler(BaseHTTPRequestHandler):
                 position=str(body.get("position", "")).strip() or None,
                 type_=str(body.get("type", "")).strip() or None,
                 skills=skills,
+                tags=tags,
                 card=(str(body_card).strip() if isinstance(body_card, str) and str(body_card).strip() else None),
                 dry=bool(body.get("dry", False)))
         else:
@@ -372,6 +389,7 @@ class Handler(BaseHTTPRequestHandler):
                 str(body.get("position", "")).strip() or "一句话定位",
                 str(body.get("type", "")).strip() or "业务",
                 skills=skills or (),
+                tags=tags or (),
                 dry=bool(body.get("dry", False)))
         return {"ok": True, **({"preview": True} if body.get("dry") else {}), "result": r}
 
@@ -384,7 +402,8 @@ class Handler(BaseHTTPRequestHandler):
             # 切换会把 ROOT/台账/角色目录整体换掉，执行链跑一半时切会写串项目
             raise ApiError(409, "当前有任务正在执行，等执行链跑完再切换项目")
         if act == "add":
-            p = config.add_project(str(body.get("name") or ""), root)
+            p = config.add_project(str(body.get("name") or ""), root,
+                                   template=str(body.get("template") or "large_dev"))
             bootstrap.bootstrap()          # 建三目录 + 从 agents-seed 复制角色卡
             return {"ok": True, "project": p, "boot": bootstrap.BOOT_LOG, **config.settings_info()}
         if act == "switch":
@@ -543,6 +562,8 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError as e:
                     raise ApiError(409, str(e))
             self._ok(h)
+        elif url == "/api/timeline":
+            self._ok(lambda: scheduler.build_timeline())
         elif url == "/api/schedule":
             self._ok(self._post_schedule)
         elif url == "/api/work-archive":

@@ -98,7 +98,7 @@ def decompose(task_no, task_text):
         return [{"sub": task_text[:160], "role": r, "expect": "交付任务成果并回报"} for r in named]
     # 注意：dsh headless 把 prompt 作为命令行参数传入，Windows 命令行遇换行即截断，
     # 所以给模型的 prompt 必须压成单行（模型输出不受限，可自由换行）。
-    role_list = "；".join("%s %s（职责：%s）" % (no, name, duty or "未填写")
+    role_list = "；".join("%s %s（标签：%s｜职责：%s）" % (no, name, "、".join(_roles.role_tags(no)) or "未定级", duty or "未填写")
                           for no, name, duty in digest)
     max_subs = config.tune("maxSubtasks")
     lead = "你是任务拆解器，只拆下面这一个任务，不得引用历史任务编号。可指派的业务角色如下（R0/R1 是决策与派发方，不可承接、不要选它们）："
@@ -106,7 +106,7 @@ def decompose(task_no, task_text):
         lead += "用户指定由 R1（枢纽·老板助理）牵头派发——R1 只拆解派发不直接执行，请忽略任务里的 R1 字样，直接按职责从下列业务角色选人："
     prompt = (lead + role_list +
               "。按职能合理拆分：能由一个角色一次完成（如单点调研/资料检索）就拆 1 个，"
-              "只有确实需要多个职能并行或接力、单角色覆盖不了时才拆多个 —— 宁少勿多，总数不超过 %d 个。"
+              "只有确实需要多个职能接力/分工、单角色覆盖不了时才拆多个（会按顺序逐个执行，请拆成可独立交付的子任务）—— 宁少勿多，总数不超过 %d 个。"
               "只输出派发单表格行，每行格式：| %s | 子任务描述 | R编号 | 期望产出 | 待派 |；"
               "示例：| %s | 设计产品落地页 | R6 | 界面设计稿 | 待派 |。"
               "不要输出任何解释、提问或多余文字。任务：%s" % (max_subs, task_no, task_no, task_text))
@@ -273,8 +273,16 @@ def execute(task_no, task_text):
                      % (task_no, ok_cnt, total, " ✅" if not fail else "（含阻塞，可删除或重试）")})
 
     except Exception as e:
-        set_state(lastOk=False, tag="执行链异常：" + str(e)[:80])
-        runner.emit({"type": "run/exited", "data": {"code": -1}, "error": str(e)[:120]})
+        msg = "执行链异常：" + str(e)[:120]
+        try:
+            store.set_task(task_no, "阻塞", msg)
+            for s in store.subtasks(task_no):
+                if s["st"] in ("执行中", "待派", "已派"):
+                    store.set_subtask(s["no"], "阻塞")
+        except Exception:
+            pass
+        set_state(lastOk=False, tag=msg)
+        runner.emit({"type": "run/exited", "data": {"code": -1}, "error": msg})
     finally:
         with sch.SCHED_LOCK:
             sch.SCHED_STATE["busy"] = False

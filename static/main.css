@@ -625,18 +625,7 @@ button.mini{padding:2px 8px;font-size:10px;border-radius:5px}
 #btnSaveSettings:active,#btnRoleSave:active{
   transform:translateY(0) scale(.98);box-shadow:0 1px 6px rgba(2,132,199,.3);
 }
-/* 次级按钮：金色描边（同步 preset） */
-#btnSyncPresets{
-  background:rgba(2,132,199,.06);color:var(--gold);
-  border:1px solid rgba(2,132,199,.55);border-radius:8px;
-  padding:8px 14px;font-size:11.5px;font-weight:600;letter-spacing:.5px;cursor:pointer;
-  transition:all .18s ease;
-}
-#btnSyncPresets:hover{
-  background:rgba(2,132,199,.16);border-color:var(--gold);
-  box-shadow:0 0 14px rgba(2,132,199,.25);transform:translateY(-1px);
-}
-#btnSyncPresets:active{transform:scale(.98)}
+/* 次级按钮：统一精致化（原 #btnSyncPresets 已随 v1.19 preset 通道移除） */
 /* 小按钮：进入 / 编辑 / 卡 / 前往 / 上级 统一精致化 */
 button.mini,.r-item button{
   background:rgba(2,132,199,.08);color:var(--gold);
@@ -1070,8 +1059,6 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .set-panel .btn-primary,#btnSaveSettings,#btnRoleSave{background:linear-gradient(135deg,#f2cd63,#e8b73d 55%,#d9a52e);color:#1a1206;border:1px solid #f4d57a;box-shadow:0 2px 10px rgba(232,183,61,.28), inset 0 1px 0 rgba(255,255,255,.4)}
 :root[data-theme="dark"] #btnSaveSettings:hover,#btnRoleSave:hover{box-shadow:0 4px 18px rgba(232,183,61,.45)}
 :root[data-theme="dark"] #btnSaveSettings:active,#btnRoleSave:active{box-shadow:0 1px 6px rgba(232,183,61,.3)}
-:root[data-theme="dark"] #btnSyncPresets{background:rgba(232,183,61,.06);border:1px solid rgba(232,183,61,.55)}
-:root[data-theme="dark"] #btnSyncPresets:hover{background:rgba(232,183,61,.16);box-shadow:0 0 14px rgba(232,183,61,.25)}
 :root[data-theme="dark"] button.mini,.r-item button{background:rgba(232,183,61,.08);color:var(--gold);border:1px solid rgba(232,183,61,.4)}
 :root[data-theme="dark"] button.mini:hover, :root[data-theme="dark"] .r-item button:hover{background:var(--gold);color:#1a1206;
   box-shadow:0 0 10px rgba(232,183,61,.35);}
@@ -1331,6 +1318,59 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .cur-task .ct-no{flex:none;font-family:var(--mono);font-weight:700;color:var(--gold);font-size:11px;line-height:1.5;white-space:nowrap}
 .cur-task .ct-text{flex:1;min-width:0;font-size:11.5px;color:var(--txt);line-height:1.6;word-break:break-word;max-height:72px;overflow:auto}
 :root[data-theme="dark"] .wb-cols .wb-mid .cur-task{background:rgba(232,183,61,.08)}
+
+/* ===== 项目模板选择（新建项目） ===== */
+.proj-lbl{flex:none;font-size:10.5px;color:var(--dim);line-height:28px}
+.proj-tpl{background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:5px 8px;font-size:11.5px;outline:none;min-width:150px}
+.proj-tpl:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(2,132,199,.15)}
+.proj-tpl-desc{flex:1;min-width:0;font-size:10.5px;color:var(--dim);line-height:1.5;margin-left:8px}
+
+/* ===== 顶部「未完成初始化」提示 ===== */
+.onb-hint{display:flex;align-items:center;gap:10px;padding:7px 16px;background:rgba(245,158,11,.12);border-bottom:1px solid rgba(245,158,11,.35);font-size:11.5px;color:var(--txt)}
+.onb-hint[hidden]{display:none}
+.onb-hint #onbHintText{flex:1;min-width:0}
+.onb-hint #onbHintBtn{background:rgba(245,158,11,.2);color:var(--gold);border:1px solid rgba(245,158,11,.6)}
+.onb-hint #onbHintBtn:hover{background:var(--gold);color:#fff}
+
+/* ===== 初始引导弹窗（游戏入场式） ===== */
+.onb-mask{position:fixed;inset:0;background:rgba(4,10,22,.72);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:3000;padding:20px}
+.onb-mask[hidden]{display:none}
+.onb-box{width:min(720px,96vw);max-height:92vh;overflow:auto;background:linear-gradient(180deg,#0b1b30,#0a1526);border:1px solid rgba(2,132,199,.4);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06);padding:28px 30px}
+:root[data-theme="light"] .onb-box{background:linear-gradient(180deg,#f8fbff,#eef4ff);border-color:rgba(2,132,199,.35)}
+.onb-hero{font-size:22px;font-weight:800;letter-spacing:2px;color:#e8b73d;text-shadow:0 0 18px rgba(232,183,61,.35);display:flex;align-items:center;gap:10px}
+:root[data-theme="light"] .onb-hero{color:#b8860b}
+.onb-dot{width:10px;height:10px;border-radius:50%;background:#e8b73d;box-shadow:0 0 0 4px rgba(232,183,61,.2),0 0 14px rgba(232,183,61,.7);animation:onbpulse 1.6s ease-in-out infinite}
+@keyframes onbpulse{0%,100%{transform:scale(1)}50%{transform:scale(1.5)}}
+.onb-sub{margin:10px 0 18px;font-size:13px;color:var(--dim)}
+.onb-steps{display:flex;flex-direction:column;gap:12px}
+.onb-step{display:flex;gap:14px;align-items:flex-start;background:rgba(2,132,199,.06);border:1px solid var(--line2);border-radius:12px;padding:14px 16px}
+:root[data-theme="dark"] .onb-step{background:rgba(232,183,61,.05)}
+.onb-num{flex:none;width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#3db8f5,#0284c7);color:#062338;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 12px rgba(2,132,199,.4)}
+.onb-body{flex:1;min-width:0}
+.onb-body b{font-size:14px;color:var(--txt)}
+.onb-body p{margin:4px 0 10px;font-size:11.5px;color:var(--dim);line-height:1.6}
+.onb-go{background:linear-gradient(135deg,#3db8f5,#0284c7);color:#062338;border:1px solid #7dd3fc;border-radius:8px;padding:7px 14px;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s ease}
+.onb-go:hover{filter:brightness(1.1);box-shadow:0 0 14px rgba(2,132,199,.45);transform:translateY(-1px)}
+.onb-go:active{transform:scale(.97)}
+.onb-foot{margin-top:18px;text-align:right}
+.onb-skip{background:transparent;color:var(--dim);border:1px solid var(--line2);border-radius:8px;padding:7px 16px;font-size:11.5px;cursor:pointer}
+.onb-skip:hover{border-color:var(--gold);color:var(--gold)}
+
+/* ===== 角色标签徽标（组织架构卡 / 角色卡） ===== */
+.rc-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.rc-tags i{font-style:normal;font-size:9px;padding:1px 7px;border-radius:99px;border:1px solid var(--line2);color:var(--dim);background:rgba(2,132,199,.06);letter-spacing:.5px}
+:root[data-theme="dark"] .rc-tags i{background:rgba(232,183,61,.08);color:var(--gold)}
+
+/* ===== 公共项目区（项目/：工程可写 · 全员只读） ===== */
+.proj-shared{margin-bottom:10px;border:1px dashed var(--line2);border-radius:8px;padding:6px 8px;background:rgba(2,132,199,.05)}
+.proj-shared-head{font-size:11px;font-weight:700;color:var(--gold);display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.proj-shared-head em{font-style:normal;font-size:9.5px;color:var(--dim);font-weight:400}
+.proj-shared-note{font-size:10px;color:var(--dim);margin-bottom:4px}
+.proj-shared-list .proj-file-item{display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:6px;cursor:pointer;font-size:11px;color:var(--txt)}
+.proj-shared-list .proj-file-item:hover{background:rgba(2,132,199,.12)}
+.proj-shared-list .proj-file-item em{margin-left:auto;font-style:normal;font-size:9.5px;color:var(--faint)}
+:root[data-theme="dark"] .proj-shared{background:rgba(232,183,61,.05)}
+:root[data-theme="dark"] .proj-shared-list .proj-file-item:hover{background:rgba(232,183,61,.1)}
 
 
 

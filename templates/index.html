@@ -21,6 +21,11 @@
     <button id="btnTheme" class="theme-toggle" title="切换配色主题">深色</button>
   </header>
 
+  <div class="onb-hint" id="onbHint" hidden>
+    <span id="onbHintText">还未完成初始化</span>
+    <button id="onbHintBtn" class="mini">去初始化</button>
+  </div>
+
   <nav class="tabs">
     <button class="tab active" data-view="home"><span>01</span>作战面板</button>
     <button class="tab" data-view="piyue"><span>02</span>批阅台</button>
@@ -84,8 +89,8 @@
         </div>
       </div>
       <div class="tl-strip">
-        <div class="panel-head">OPC 时间线</div>
-        <div class="timeline-h" id="timeline"></div>
+        <div class="panel-head">OPC 时间线 <button id="btnGenTimeline" class="mini" title="由 R1 从各角色工作区提炼项目节点性/阶段性事件">↻ 生成时间轴</button></div>
+        <div class="timeline-h" id="timeline"><div class="placeholder">尚未生成时间轴 — 点「生成时间轴」由 R1 提炼</div></div>
       </div>
     </section>
 
@@ -182,6 +187,10 @@
             <select id="wsTaskSel" class="ws-sel" title="按任务筛选"><option value="">全部任务</option></select>
             <button id="wsRefresh" class="mini" title="刷新文件清单">↻</button>
           </div>
+          <div class="proj-shared">
+            <div class="proj-shared-head">公共项目区 <em>工程可写 · 全员只读</em></div>
+            <div id="projSharedList" class="proj-shared-list"><div class="placeholder">加载公共项目区…</div></div>
+          </div>
           <div id="wsList" class="ws-list"><div class="placeholder">加载文件清单…</div></div>
         </aside>
         <div class="ws-main">
@@ -206,6 +215,11 @@
           <div class="snav-pane active" data-pane="dir">
             <div class="set-head">项目选择</div>
             <div class="proj-row">
+              <span class="proj-lbl">员工模板</span>
+              <select id="projTpl" class="proj-tpl" title="新建项目时按此模板生成员工角色"><option value="">加载模板…</option></select>
+              <span id="projTplDesc" class="proj-tpl-desc"></span>
+            </div>
+            <div class="proj-row">
               <input id="projName" class="proj-name" placeholder="项目名（必填，如 我的OPC）">
               <input id="projRoot" class="proj-root" placeholder="项目目录（绝对路径，留空用默认数据目录）">
               <button id="btnBrowseDir" class="mini" title="打开目录选择器：浏览本机目录并填入">选择</button>
@@ -215,7 +229,7 @@
             <div id="projList" class="proj-list"><div class="placeholder">加载中…</div></div>
             <div class="set-note">
               <b>项目目录结构</b> 新建后自动生成：
-              <code>agents/</code>（从 agents-seed 复制 9 张角色卡，可自行增删）·
+              <code>agents/</code>（按所选「员工模板」生成角色卡，可自行增删）·
               <code>批阅台/</code>（公文 + SQLite 台账）·
               <code>工作区/<角色名称>/</code>·
               <code>知识库/</code>。
@@ -310,6 +324,7 @@
         <label>名称</label><input id="mRlName" placeholder="必填，web 引用 / 工作区名称">
         <label>定位</label><input id="mRlPosition" placeholder="一句话定位">
         <label>类型</label><input id="mRlType" placeholder="业务 / 技术 / 运营…">
+        <label>标签</label><input id="mRlTags" placeholder="业务 工程，空格或逗号分隔（工程·可写公共项目区）">
         <label>职责</label><textarea id="mRlDuty" placeholder="每行一条，回车分隔"></textarea>
       </div>
       <div class="modal-foot">
@@ -357,7 +372,30 @@
       </div>
     </div>
   </div>
+
+  <!-- ===== 初始引导（无项目且未配模型时首入弹出，游戏入场式） ===== -->
+  <div class="onb-mask" id="onbMask" hidden>
+    <div class="onb-box">
+      <div class="onb-hero"><span class="onb-dot"></span>部署你的 OPC 指挥中心</div>
+      <div class="onb-sub">还没有项目和模型。这三步让 R1 与员工角色真正跑起来：</div>
+      <div class="onb-steps">
+        <div class="onb-step">
+          <div class="onb-num">01</div>
+          <div class="onb-body"><b>新建项目 · 选员工模板</b><p>按项目类型（大型开发 / 中小 Web / 小微 App）构建角色与定位。</p><button class="onb-go" data-go="project">去新建项目 →</button></div>
+        </div>
+        <div class="onb-step">
+          <div class="onb-num">02</div>
+          <div class="onb-body"><b>配置模型 API</b><p>提供 DeepSeek / OpenAI / Anthropic 密钥，让 R1 与各角色能调用大模型。</p><button class="onb-go" data-go="model">去配置模型 →</button></div>
+        </div>
+        <div class="onb-step">
+          <div class="onb-num">03</div>
+          <div class="onb-body"><b>认识《员工手册》</b><p>所有角色的唯一行为准则：不拍板 / 读写权限 / 产出回报格式。</p><button class="onb-go" data-go="handbook">查看员工手册 →</button></div>
+        </div>
+      </div>
+      <div class="onb-foot"><button id="onbClose" class="onb-skip">稍后再说</button></div>
+    </div>
+  </div>
 </div>
-<script src="/static/main.js?v=20260830k"></script>
+<script src="/static/main.js?v=20260831t"></script>
 </body>
 </html>

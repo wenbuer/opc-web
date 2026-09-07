@@ -100,19 +100,22 @@ def _resolve_root() -> Path:
 ROOT = _resolve_root()
 
 # 三个自动文件夹（相对根目录）
-KB_ROOT = ROOT / "知识库"          # 知识档案（OPC智能体角色架构.md / 知识库索引.md …）
+KB_ROOT = ROOT / "知识库"          # 知识档案（员工手册等；内容由各角色产出经 R1 审核归档入场，不做元数据文件）
 BATCH_ROOT = ROOT / "批阅台"       # R0/R1 公文与日志（批阅台 / 任务队列 / 派发单 / 回报队列 / 调度日志）
 WORKSPACE_ROOT = ROOT / "工作区"   # 角色作业区（按角色名称建子文件夹）
+PROJECT_ROOT = ROOT / "项目"        # 公共项目区（源码/工程性产出；工程标签角色可写，其他只读）
 
 # 数据文件位置（相对根目录）
 WORKSPACE_REL = "工作区"
+PROJECT_REL = "项目"
 PIYUETAI_REL = "批阅台/批阅台.md"
 DB_REL = "批阅台/opc.db"               # 状态台账（任务/子任务/回报）—— 唯一真相，见 store.py
 LOG_REL = "批阅台/决策日志.md"          # R0 决策记录 + 派发单（parsers 读取）
 
 SCHED_LOG_REL = "批阅台/调度日志.md"   # R1/控制台运行日志（log_schedule 追加）
-ARCH_REL = "知识库/OPC智能体角色架构.md"
-INDEX_REL = "知识库/知识库索引.md"
+TIMELINE_REL = "批阅台/时间轴.json"   # R1 模型提炼的时间轴缓存（build_timeline 写入，get_timeline 读取）
+HANDBOOK_REL = "知识库/员工手册.md"   # 全员唯一行为准则（templates.handbook_text 写入，bootstrap 创建）。
+# 注：OPC智能体角色架构.md / 知识库索引.md 已移除 —— 不作为知识档案入库（组织架构以首页 /api/org 实时为准，知识库看板由 kb_entries 实时聚合）
 
 TEMPLATES = BASE / "templates"
 STATIC = BASE / "static"
@@ -124,11 +127,6 @@ LOG_FILE = ROOT / SCHED_LOG_REL
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
-
-
-def wb_root():
-    """角色作业区根（ROOT/工作区/）。"""
-    return WORKSPACE_ROOT
 
 
 # ---------- 配置读写（「设置」视图 /api/settings 使用） ----------
@@ -185,28 +183,38 @@ def save_cfg(kv: dict) -> dict:
 
 def reload() -> dict:
     """重新读取配置并刷新模块常量（保存后立即生效）。"""
-    global _CFG, ROOT, KB_ROOT, BATCH_ROOT, WORKSPACE_ROOT, AGENTS_DIR, LOG_FILE, PORT
+    global _CFG, ROOT, KB_ROOT, BATCH_ROOT, WORKSPACE_ROOT, PROJECT_ROOT, AGENTS_DIR, LOG_FILE, PORT
     _CFG = _load_cfg()
     ROOT = _resolve_root()
     KB_ROOT = ROOT / "知识库"
     BATCH_ROOT = ROOT / "批阅台"
     WORKSPACE_ROOT = ROOT / "工作区"
+    PROJECT_ROOT = ROOT / "项目"
     AGENTS_DIR = (ROOT / "agents") if active_project() else AGENTS_SEED
     LOG_FILE = ROOT / SCHED_LOG_REL
     PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
     return settings_info()
 
 
-def add_project(name: str, root: str) -> dict:
-    """登记一个项目（目录初始化交给 bootstrap.init_project）；root 已存在则返回原条目。"""
+def add_project(name: str, root: str, template: str = "large_dev") -> dict:
+    """登记一个项目（角色初始化交给 bootstrap.init_agents）；root 已存在则返回原条目。
+
+    template 决定角色阵容（见 templates.PROJECT_TEMPLATES）。"""
     root_s = _norm_root(root)
     for p in projects():
         if str(p.get("root") or "") == root_s:
             return p
-    item = {"name": (name or "").strip() or Path(root_s).name, "root": root_s, "schedule": []}
+    item = {"name": (name or "").strip() or Path(root_s).name, "root": root_s,
+            "template": (template or "large_dev"), "schedule": []}
     _write_cfg({"projects": projects() + [item], "active": root_s})
     reload()
     return item
+
+
+def current_template() -> dict:
+    """当前激活项目使用的模板（角色阵容）；缺省回退大型开发项目。"""
+    from . import templates as _tpl
+    return _tpl.get_template(str(active_project().get("template") or "large_dev"))
 
 
 def _norm_root(root: str) -> str:

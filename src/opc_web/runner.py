@@ -53,9 +53,10 @@ def events(since: int = 0) -> dict:
 def _spawn_headless(argv: list, timeout: float) -> bytes:
     """启动 dsh headless 子进程并收尾，返回其原始 stdout（stderr 合并）字节。
 
-    超时语义（v1.14，来自实测）：headless 只在 turn 结束后一次性打印 final 文本，
-    因此一旦收到任何输出即视为任务存活、放弃强杀、等待自然结束；
-    仅当全程无输出且超时才强杀（防 headless 静默挂死泄漏进程树）。
+    超时语义：headless 只在 turn 结束后一次性打印 final 文本；因此无输出即任务未启动，
+    超 timeout 强杀（防静默挂死泄漏进程树）。但执行路径用 --events-jsonl 时会边生成边输出，
+    所以「有输出」并不代表即将结束 —— 若生成过长或挂死，无限等待会卡死调度（SCHED_STATE.busy 永不回 False）。
+    故统一：无输出超 timeout 强杀；有输出后再给 timeout*3 的硬上限，超过也强杀（判为阻塞）。
     spawn 失败返回 b""。"""
     exe = shutil.which("dsh") or "dsh"
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -80,27 +81,33 @@ def _spawn_headless(argv: list, timeout: float) -> bytes:
 
     threading.Thread(target=_drain, daemon=True).start()
     t0 = time.monotonic()
+    t_first = None        # 首个输出时刻（有输出 = 任务在活动，但不等同即将结束）
+
+    def _kill():
+        try:
+            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
+                           capture_output=True, text=True)
+        except Exception:
+            pass
+        try:
+            p.wait(timeout=3)
+        except Exception:
+            try:
+                p.kill()
+            except Exception:
+                pass
+
+    hard = max(timeout * 3, 1800.0)     # 有输出后的硬上限，防长生成/挂死卡住调度
     while True:
         if p.poll() is not None:
             break                       # 自然结束
-        if chunks:
-            # 有输出 → 任务在推进：等自然结束（不设超时上限）
-            try:
-                p.wait()
-            except Exception:
-                pass
-            break
-        if time.monotonic() - t0 > timeout:
-            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
-                           capture_output=True, text=True)
-            try:
-                p.wait(timeout=3)
-            except Exception:
-                try:
-                    p.kill()
-                except Exception:
-                    pass
-            break
+        if chunks and t_first is None:
+            t_first = time.monotonic()  # 首帧输出：任务开始活动
+        now = time.monotonic()
+        if t_first is None and now - t0 > timeout:
+            _kill(); break              # 全程无输出且超时 → 判死
+        if t_first is not None and now - t_first > hard:
+            _kill(); break              # 有输出但迟迟不结束 → 判阻塞，防死锁
         time.sleep(0.5)
     try:
         p.stdout.close()

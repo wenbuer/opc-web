@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """知识库 md 解析器：批阅台 / 角色架构 / 派发单 / 决策日志 / 时间线 / 任务清单。"""
-import datetime
 import re
 
-from . import config, knowledge, store
+from . import store
 
 # ---------- 批阅台 ----------
 # 条目分两类：### 工作 N（例行进展，进「工作内容查看」）｜### 待决 N（R1 认为需 R0 拍板，进「决策裁决」）
@@ -70,9 +69,10 @@ def parse_roles() -> list:
     不作为功能入口（改删角色不再需要同步它）。R0 创始人无角色卡，固定前置行。
     状态只有两种：有未完成子任务 = 执行中，否则待命中；R0/R1 固定指挥中。"""
     from . import roles as _roles
-    rows = [{"code": "R0", "name": "创始人", "duty": "总决策/批阅", "target": "—", "desc": ""}]
+    rows = [{"code": "R0", "name": "创始人", "duty": "总决策/批阅", "target": "—", "desc": "", "tags": ["决策"]}]
     for no, name in _roles.role_files():
-        rows.append({"code": no, "name": name, "duty": _roles.role_duty(no), "target": "", "desc": ""})
+        rows.append({"code": no, "name": name, "duty": _roles.role_duty(no), "target": "", "desc": "",
+                     "tags": _roles.role_tags(no)})
     busy, latest_sub = set(), {}
     for p in store.subtasks():                 # 已按编号排序，后写覆盖 = 该角色最新的子任务
         if p["st"] in ("待派", "已派"):
@@ -91,55 +91,5 @@ def parse_roles() -> list:
             it["current"] = "无"
     return rows
 
-
-# ---------- 决策日志（R0 公文，仍是 md：人读人写） ----------
-def parse_timeline() -> list:
-    """从《批阅台/决策日志.md》生成 OPC 时间线节点。"""
-    text = knowledge.read_md(config.LOG_REL)
-    lines = text.split("\n")
-    # 项目建立日：取《决策日志.md》/项目根的创建时间（不再写死），回退今天。
-    start = datetime.date.today().isoformat()
-    for _p in (config.ROOT / config.LOG_REL, config.ROOT):
-        try:
-            start = datetime.datetime.fromtimestamp(_p.stat().st_ctime).date().isoformat()
-            break
-        except Exception:
-            continue
-    events = [{"date": start, "title": "OPC 建立（启动日）",
-               "detail": "角色架构 v1.0、知识库索引、批阅台、决策日志、简报模板、需求假设清单 25 条落地"}]
-    reD = re.compile(r"^##\s+D-\d+｜(.+?)（(\d{4}-\d{2}-\d{2})")
-    reC = re.compile(r"^-\s*\*\*裁决内容\*\*[:：]\s*(.+)$")
-    for i in range(len(lines)):
-        m = reD.match(lines[i])
-        if m:
-            title = m.group(1).strip()
-            detail = title[:40]
-            for k in range(i + 1, min(i + 10, len(lines))):
-                cm = reC.match(lines[k])
-                if cm:
-                    detail = cm.group(1).strip()[:90]
-                    break
-            events.append({"date": m.group(2), "title": title[:32], "detail": detail})
-    # 并入「日报」时间线节点：产生《批阅台/每日简报-*.md》即出现一个节点；
-    # 同一天只保留一条（与前面的日报节点合并），避免重复生成时累积多条。
-    seen = {(e.get("date"), e.get("title")) for e in events}
-    try:
-        for p in sorted(config.BATCH_ROOT.glob("每日简报-*.md")):
-            dm = re.search(r"(\d{4}-\d{2}-\d{2})", p.name)
-            date = dm.group(1) if dm else ""
-            detail = ""
-            try:
-                detail = config.read_text(p).split("\n")[0].strip()[:90]
-            except Exception:
-                detail = ""
-            detail = detail or "当日各角色回报汇总"
-            key = (date, "日报")
-            if date and key not in seen:
-                events.append({"date": date, "title": "日报", "detail": detail})
-                seen.add(key)
-    except Exception:
-        pass
-    events.sort(key=lambda x: x["date"])
-    return events
 
 

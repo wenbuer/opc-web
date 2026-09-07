@@ -13,11 +13,14 @@ import re
 
 from . import config
 
+# 角色卡只描述「你是谁、干什么」；行为纪律（不拍板/读写权限/产出回报格式/状态字段）一律以《员工手册》为准。
 CARD_TPL = """# OPC 角色卡：%(no)s %(name)s
+
 ## 身份
 - 编号：%(no)s｜名称：%(name)s｜类型：%(type_)s
 - 一句话定位：%(position)s
-- 上级：R1 枢纽（接受派发、回报确认）
+- 标签：%(tags)s
+- 上级：R1 老板助理（接受派发、回报确认）
 
 ## 职责
 %(duties)s
@@ -25,26 +28,9 @@ CARD_TPL = """# OPC 角色卡：%(no)s %(name)s
 ## 技能
 %(skills)s
 
-## 不做的事
-- 不拍板、不花钱、不发布（总决策在 R0）
-- 不越权修改他人职责范围；冲突提交 R1 仲裁、R0 裁决
-
-## 读写权限
-- 读：知识库全库（%(kb)s/）；个人作业区《%(ws)s/%(wsname)s/》
-- 写：仅《%(ws)s/%(wsname)s/》及其产出/回报文件
-- 禁止：修改知识库档案与批阅台（只读）
-
-## 激活触发器
-- 派发单出现 %(no)s 行 / R1 注入本卡全文的任务 prompt
-
-## 协议与输出格式
-- 任务以文件形式接收（本卡全文 + 【任务】段）
-- 工作根目录 = 根目录（用 / 分隔路径）
-- 产出先写《%(ws)s/%(wsname)s/<子任务编号>.md》（编号由中枢派发时给定，如 T-001-S1；边做边追加进度）
-- 完成后把同名 .meta.json 的 status 改为 完成/部分/阻塞（只改这一个字段）；任务号与角色无需复述
-
-## 当前上下文（最近更新）
-- %(today)s：控制台「设置 → 角色创建」创建本角色（编号 %(no)s）
+## 行为准则
+- 唯一遵守《员工手册》（知识库/员工手册.md）：不拍板、不花钱、不发布
+- 读写权限、产出与回报格式、技能装配、状态字段 一律按《员工手册》执行
 """
 
 
@@ -75,6 +61,30 @@ def role_duty(no: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+_TAGS_RE = re.compile(r"-\s*标签\s*[:：][ \t]*([^\n]+)")
+
+
+def _tags_from_text(text):
+    """从角色卡文本提取标签列表（空格/英文、中文逗号分隔）；无标签行返回 []。"""
+    m = _TAGS_RE.search(text or "")
+    if not m:
+        return []
+    return [t for t in re.split(r"[\s,，、;；]+", m.group(1).strip()) if t and t != "未定级"]
+
+
+def role_tags(no: str) -> list:
+    """读取角色卡「## 身份」段的「标签：」行 → 标签列表（业务/工程/枢纽…）。"""
+    p = config.AGENTS_DIR / (no + ".role.md")
+    if not p.exists():
+        return []
+    return _tags_from_text(config.read_text(p))
+
+
+def can_write_project(no: str) -> bool:
+    """工程标签角色可写公共项目区（项目/），其他角色只读。"""
+    return "工程" in role_tags(no)
+
+
 def role_digest(exclude=("R0", "R1")):
     """角色摘要 [(编号, 名称, 一句话职责)] —— 给任务拆解器认人用。
 
@@ -89,10 +99,16 @@ def role_digest(exclude=("R0", "R1")):
     return out
 
 
-def role_card(no, name, duty, position, type_="业务", skills=()):
-    """组装新角色卡（CARD_TPL + 运行时变量）；skills = 装配技能名列表。"""
+def role_card(no, name, duty, position, type_="业务", skills=(), tags=()):
+    """组装新角色卡（CARD_TPL + 运行时变量）；skills = 装配技能名列表；tags = 角色标签（业务/工程…）。
+
+    duty 可为字符串（每行一条）或列表（模板 _role 传的是列表）。"""
     today = datetime.date.today().isoformat()
-    duties = "\n".join("- " + s.strip() for s in duty.replace(chr(13), "").split("\n") if s.strip())
+    if isinstance(duty, (list, tuple)):
+        lines = [str(d) for d in duty]
+    else:
+        lines = [s.strip() for s in str(duty).replace(chr(13), "").split("\n") if s.strip()]
+    duties = "\n".join("- " + s.strip() for s in lines if s.strip())
     rows = ["- " + str(s).strip() for s in skills if str(s).strip()]
     if not rows:
         rows = ["- （未装配：在 agents/skills/ 放技能 md 后，在这里登记文件名，每行一个）"]
@@ -102,28 +118,30 @@ def role_card(no, name, duty, position, type_="业务", skills=()):
         "no": no, "name": name, "today": today,
         "type_": type_, "position": position,
         "duties": duties, "skills": "\n".join(rows),
+        "tags": " ".join(tags),
         "kb": kb, "ws": ws, "wsname": name,
     }
 
 
-def add_role(name, duty, position, type_="业务", skills=(), dry=False):
+def add_role(name, duty, position, type_="业务", skills=(), tags=(), dry=False):
     """新增角色 agent：编号 → 角色卡 → 工作区目录《<角色名称>》。
     dry 只返回预览。角色卡只写本项目 agents/（唯一权威），不写入全局 dsh 配置，也不同步架构表。"""
     if not config.active_project():
         raise ValueError("还没有激活的项目：请先在「设置 → 项目」新建或选择一个项目，再新增角色")
     no = next_no()
-    card = role_card(no, name, duty, position, type_, skills or ())
+    card = role_card(no, name, duty, position, type_, skills or (), tags=tags)
     wsname = config.sanitize_dir(name)
     result = {
         "no": no, "name": name, "card": card,
         "cardPath": str(config.AGENTS_DIR / (no + ".role.md")),
         "wsRel": "%s/%s" % (config.WORKSPACE_REL, wsname),
-        "sbRoot": (config.wb_root() / wsname).as_posix(),
+        "sbRoot": (config.WORKSPACE_ROOT / wsname).as_posix(),
+        "tags": list(tags),
     }
     if dry:
         return result
     (config.AGENTS_DIR / (no + ".role.md")).write_text(card, encoding="utf-8")
-    (config.wb_root() / wsname).mkdir(parents=True, exist_ok=True)
+    (config.WORKSPACE_ROOT / wsname).mkdir(parents=True, exist_ok=True)
     return result
 
 
@@ -139,7 +157,7 @@ def remove_role(no: str) -> dict:
         raise ValueError("角色卡 %s 不存在" % no)
     name = config.role_name(no)
     wsname = config.sanitize_dir(name if name != no else no)
-    ws = config.wb_root() / wsname
+    ws = config.WORKSPACE_ROOT / wsname
     # 守卫①：该角色有进行中/待派/已派子任务 → 拒删（删除后这些任务会派发到幽灵角色）
     try:
         from . import store as _store
@@ -167,17 +185,6 @@ def remove_role(no: str) -> dict:
         shutil.rmtree(ws, ignore_errors=True)
         removed.append(str(ws))
     return {"no": no, "name": name, "removed": removed, "roleLeft": len(role_files())}
-
-
-def build_arch_table() -> str:
-    """从当前角色卡生成《OPC智能体角色架构.md》速览表（人读；功能权威是角色卡）。
-    R0 创始人无卡，固定行；启动时由 bootstrap 生成，不作为功能入口。"""
-    h = "\n"
-    lines = ["| 编号 | 名称 | 职责 | 目标产出 | 状态 |", "|---|---|---|---|---|",
-             "| R0 | 创始人 | 总决策/批阅 | — | 指挥中 |"]
-    for no, name in role_files():
-        lines.append("| %s | %s | %s |  | 就绪 |" % (no, name, role_duty(no)))
-    return "\n".join(lines) + h
 
 
 def _card_sections(text):
@@ -241,10 +248,10 @@ def _extract_fields(text):
     return no or "R?", name, type_, position, duties, skills
 
 
-def edit_role(no, name=None, duty=None, position=None, type_=None, skills=None, card=None, dry=False):
+def edit_role(no, name=None, duty=None, position=None, type_=None, skills=None, tags=None, card=None, dry=False):
     """编辑角色卡。缺省字段取自现卡；重生成并覆写角色卡。dry 只返回预览。
     skills=None → 保留现卡装配清单（UI 没动技能时不会清空）；传 [] 才清空。
-    card 非空 → 整卡 Markdown 直接覆写（保留 不做的事/读写权限/激活触发器/协议与输出格式 等全部段落），
+    card 非空 → 整卡 Markdown 直接覆写（保留 行为准则 等全部段落），
     不再走 role_card 模板重建（模板只覆盖 no/name/type/position/职责/技能，保存会丢其他段落）。"""
     p = config.AGENTS_DIR / (no + ".role.md")
     if not p.exists():
@@ -266,7 +273,9 @@ def edit_role(no, name=None, duty=None, position=None, type_=None, skills=None, 
     duty = duty or c_duties or "待补充职责"
     if skills is None:
         skills = c_skills
-    rebuilt = role_card(no, name, duty, position, type_, skills)
+    if tags is None:
+        tags = _tags_from_text(text)
+    rebuilt = role_card(no, name, duty, position, type_, skills, tags=tags)
     result = {"no": no, "name": name, "card": rebuilt, "cardPath": str(p)}
     if dry:
         return result
