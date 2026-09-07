@@ -45,7 +45,7 @@
       var done=(j.queue||[]).filter(function(t){ return (t.status||"")==="完成"; }).length; var d=$("ovDone"); if(d) d.textContent=done;
     } });
     api("/api/tokens").then(function(j){ if (j && j.ok){ var rows=j.rows||[]; var o=$("ovToken"); if(!rows.length){ if(o) o.textContent="—"; return; } var t=0; rows.forEach(function(x){ t += (Number(x.tokensIn)||0)+(Number(x.tokensOut)||0); }); if(o) o.textContent = t>=1000 ? (t/1000).toFixed(1)+"k" : String(t); } });
-    api("/api/kb-entries").then(function(j){ if (j && j.ok){ var k=(j.entries||[]).filter(function(e){ return /okf\//.test(e.rel||""); }).length; var o=$("ovOkf"); if(o) o.textContent=k; } });
+    api("/api/kb-entries").then(function(j){ if (j && j.ok){ var k=(j.entries||[]).length; var o=$("ovOkf"); if(o) o.textContent=k; } });
     api("/api/daily").then(function(j){ if (j && j.ok){ var d=(j.daily||[])[0]; var o=$("ovDaily"); if(o) o.textContent = d ? d.date : "无"; } });
   }
   function loadHome(){
