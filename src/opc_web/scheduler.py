@@ -438,30 +438,90 @@ def build_daily_report(datestr: str = None) -> dict:
     target.write_text(text.strip() + "\n", encoding="utf-8")
     return {"ok": True, "created": True, "file": target.name, "rel": target.relative_to(config.ROOT).as_posix()}
 
+def _kb_skim() -> str:
+    """知识库已有档案简表（按分类）：让 R1 知道该 create 还是 merge（不重复沉淀）。"""
+    out = []
+    for cat in config.KB_CATEGORIES:
+        d = config.KB_ROOT / cat
+        if not d.is_dir():
+            continue
+        files = [p.stem for p in sorted(d.glob("*.md"))]
+        if files:
+            out.append("%s：%s" % (cat, "、".join(files[:20])))
+    return "\n".join(out) if out else "（知识库暂未分类，各主题为空）"
+
+
+def _parse_kb_digest(text):
+    """解析 R1 的沉淀决策 JSON（容忍 json 代码块包裹 / 前后杂字）。"""
+    t = re.sub(_TRIPLE_BT + r"(?:json)?", "", (text or ""), flags=re.I).strip()
+    i, j = t.find("{"), t.rfind("}")
+    if i < 0 or j <= i:
+        return None
+    try:
+        obj = json.loads(t[i:j + 1])
+    except Exception:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
+def _slug_title(title: str) -> str:
+    """档案标题 → 安全文件名（保留中文/字母数字，去非法字符）。"""
+    return config.sanitize_dir(title) or "沉淀"
+
+
 def kb_digest(task_no: str) -> dict:
-    """从任务回报中抽取值得沉淀的知识，写入《知识库/okf/<task_no>-okf.md》。（不再写《知识库索引.md》登记）"""
+    """R1 判断是否沉淀知识到知识库：按主题分类，有价值才入库；同主题有相关档案则合并补充。
+
+    - 不再每任务都生成 <任务号>-okf.md：R1 先判价值（none→跳过），再归类（create / merge）。
+    - 分类目录 = config.KB_CATEGORIES；文件名用语义化标题；OKF 只是每篇的知识型(type)标注。"""
     reps = store.reports(task_no)
     if not reps:
         return {"ok": True, "created": False, "msg": "该任务无回报，跳过知识沉淀"}
-    okf = config.KB_ROOT / "okf"
-    okf.mkdir(parents=True, exist_ok=True)
-    name = "%s-okf.md" % task_no
-    target = okf / name
     digest = _digest_reps(reps, limit=1200)
-    today = datetime.date.today().isoformat()
-    prompt = ("你是老板助理 R1。请从该任务回报中抽取值得沉淀的知识，生成一份 OKF（Open Knowledge Format）文档。" 
-              "以 YAML front-matter 开头：type 必填（取值 concept/decision/method/data/lesson/problem 之一）、"
-              "title、description、tags；正文用 Markdown 写结论/方法/数据并给出出处。只输出该文档，不要额外说明。"
-              "若无可沉淀内容，输出「无可沉淀内容」。\n\n任务 %s 回报：\n%s" % (task_no, digest))
+    skim = _kb_skim()
+    prompt = (
+        "你是老板助理 R1，负责知识库沉淀。请判断本次任务产出里有没有值得沉淀到知识库的知识，并归类。\n"
+        "知识库按主题分类，已有档案如下：\n%s\n\n"
+        "只沉淀真正有价值、可复用的知识（结论 / 方法 / 数据 / 教训 / 决策）；"
+        "流水账、一次性过程记录、只是把回报换个说法，都不要沉淀。\n"
+        "输出 JSON（不要多余文字，body 用简洁 markdown）：\n"
+        '{"action":"none|create|merge","category":"<分类名，取自上面主题列表>",'
+        '"title":"<档案标题(≤40字)>","type":"concept|decision|method|data|lesson|problem",'
+        '"body":"<markdown 正文>","merge_target":"<merge 时填已存在文件名，create 留空>"}\n'
+        "规则：action=none 无可沉淀知识；action=create 有知识且该分类无相关档案；"
+        "action=merge 该分类已有相关档案（merge_target 填已有文件名，body 给合并后的完整正文）。\n\n"
+        "任务 %s 回报：\n%s" % (skim, task_no, digest))
     text = _headless_text(prompt, 600)
-    if not text or "无可沉淀内容" in text:
-        return {"ok": True, "created": False, "msg": "该任务产出无可复用价值（或模型未提取），未入库"}
-    if not text.lstrip().startswith("---"):
-        text = ("---\ntype: lesson\ntitle: %s 产出沉淀\ndescription: 任务 %s\n"
-                "source:\n  type: task\n  task: %s\nfreshness: %s\nstatus: archive\n---\n\n"
-                % (task_no, task_no, task_no, today)) + text
-    target.write_text(text.strip() + "\n", encoding="utf-8")
-    return {"ok": True, "created": True, "file": "okf/" + name, "rel": "知识库/okf/" + name}
+    if not text:
+        return {"ok": True, "created": False, "msg": "模型未返回，未沉淀"}
+    d = _parse_kb_digest(text)
+    if not d:
+        return {"ok": True, "created": False, "msg": "沉淀决策解析失败，未入库"}
+    action = str(d.get("action") or "").strip()
+    if action not in ("create", "merge"):
+        return {"ok": True, "created": False, "msg": "R1 判定无可沉淀知识，未入库"}
+    cat = str(d.get("category") or "").strip()
+    if cat not in config.KB_CATEGORIES:
+        return {"ok": True, "created": False, "msg": "分类「%s」不在知识库分类里，未入库" % cat}
+    title = str(d.get("title") or "").strip()[:40] or ("%s 沉淀" % task_no)
+    body = str(d.get("body") or "").strip()
+    if not body:
+        return {"ok": True, "created": False, "msg": "正文为空，未入库"}
+    catdir = config.KB_ROOT / cat
+    catdir.mkdir(parents=True, exist_ok=True)
+    target = catdir / (_slug_title(title) + ".md")
+    if action == "merge":
+        mt = str(d.get("merge_target") or "").strip()
+        cand = None
+        if mt:
+            cand = catdir / (mt if mt.endswith(".md") else mt + ".md")
+        cand = cand if (cand is not None and cand.is_file()) else target
+        target = cand if cand.is_file() else target
+    target.write_text(body.strip() + "\n", encoding="utf-8")
+    rel = target.relative_to(config.ROOT).as_posix()
+    return {"ok": True, "created": True, "action": action, "rel": rel,
+            "msg": ("已合并补充到知识库「%s/%s」" % (cat, target.name)) if action == "merge"
+                   else ("已沉淀到知识库「%s/%s」" % (cat, target.name))}
 
 def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: list) -> int:
     """任务自动执行完成后：R1 整理回报呈报 R0。
