@@ -1515,7 +1515,7 @@
       box.innerHTML = "";
       var note = document.createElement("div");
       note.className = "proj-shared-note";
-      note.textContent = "✅ 全员只读 · 可写：" + wtx;
+      note.textContent = "全员只读 · 可写：" + wtx;
       box.appendChild(note);
       files.forEach(function(f){
         var el = document.createElement("div");
@@ -1564,6 +1564,8 @@
   function renderWsList(){
     var box = $("wsList");
     if (!box) return;
+    // 默认只显示公共项目区；仅当筛选了角色/任务，才展示角色工作区文件
+    if (!wsRole && !wsTask){ box.innerHTML = "<div class='placeholder'>选择角色/任务后，此处显示角色工作区文件</div>"; return; }
     var rows = filteredWsFiles();
     if (!rows.length){
       box.innerHTML = "<div class='placeholder'>" + (wsFiles.length ? "没有匹配的文件（换个角色 / 任务筛选）" : "暂无文件 —— 任务执行后各角色产出会落到《工作区/<角色>/》") + "</div>";
@@ -1580,7 +1582,7 @@
       if (f.role !== lastRole){
         var gh = document.createElement("div");
         gh.className = "ws-group";
-        gh.textContent = "▸ " + f.role;
+        gh.textContent = f.role;
         box.appendChild(gh);
         lastRole = f.role;
       }

@@ -676,14 +676,15 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
 
 
 def clean_task_files(no: str) -> int:
-    """删除某任务在工作区的产出文件（子任务正文 / .meta.json，含已归档/），返回删除数。
+    """删除某任务在工作区/公共项目区的产出文件（子任务正文 / .meta.json / 汇总 / 回报，含已归档/）。
 
-    只按 no + "-S" 前缀匹配（T-001-S1.md），不会误伤 T-0010 等其他任务。"""
+    按 no + "-" 前缀匹配（T-004-*），覆盖 T-004-S1.md、T-004-S1.meta.json、T-004-summary.md 等；
+    不会误伤 T-0010（它不是以 T-001- 开头）。"""
     removed = 0
-    # 公共项目区（项目/）下该任务的产物（T-xxx-S*，含子目录）：随任务删除一起清理
+    # 公共项目区（项目/）下该任务的产物（T-xxx-*，含子目录）
     if config.PROJECT_ROOT.is_dir():
         import shutil as _sh
-        for p in sorted(config.PROJECT_ROOT.rglob(no + "-S*"), key=lambda x: -len(x.parts)):
+        for p in sorted(config.PROJECT_ROOT.rglob(no + "-*"), key=lambda x: -len(x.parts)):
             try:
                 if p.is_dir():
                     _sh.rmtree(p, ignore_errors=True)
@@ -693,7 +694,7 @@ def clean_task_files(no: str) -> int:
             except OSError:
                 pass
     for d in _wb_role_dirs():
-        for p in list(d.glob(no + "-S*.md")) + list(d.glob(no + "-S*.json")):
+        for p in list(d.glob(no + "-*.md")) + list(d.glob(no + "-*.json")):
             try:
                 p.unlink()
                 removed += 1
@@ -701,7 +702,7 @@ def clean_task_files(no: str) -> int:
                 pass
         arc = d / "已归档"
         if arc.is_dir():
-            for p in list(arc.glob(no + "-S*.md")) + list(arc.glob(no + "-S*.json")):
+            for p in list(arc.glob(no + "-*.md")) + list(arc.glob(no + "-*.json")):
                 try:
                     p.unlink()
                     removed += 1
