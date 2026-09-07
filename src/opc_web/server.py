@@ -358,6 +358,11 @@ class Handler(BaseHTTPRequestHandler):
         st = scheduler.SCHED_STATE
         if st.get("busy") and no in (st.get("tag") or ""):
             raise ApiError(409, no + " 正在执行中，暂不可删除")
+        # 运行中的子任务不会被删除终止：有执行中/待派/已派子任务 → 拒绝删除，避免孤儿执行 + 运行中产出残留
+        live = [s for s in store.subtasks(no) if s.get("st") in ("执行中", "待派", "已派")]
+        if live:
+            raise ApiError(409, "%s 有 %d 个子任务仍在执行/待派（%s），暂不可删除：请先完成/驳回/重试后再删"
+                           % (no, len(live), "、".join(x["no"] for x in live[:3])))
         rep_n = len(store.reports(no))            # 删除将连带移除回报/批阅依据
         store.delete_task(no)
         removed = scheduler.clean_task_files(no)
