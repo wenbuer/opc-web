@@ -182,12 +182,16 @@ def _usage_from_session(session_dir: Path) -> dict:
     return last
 
 
-def read_session_usage() -> dict:
+def read_session_usage(since: float = 0.0) -> dict:
     """定位本次 headless 调用最新写入的会话日志并抽取 token 用量。
 
     位置：~/.dsh/sessions/<cwd片段>/session-<uuid>/session.jsonl.zstd。
     优先取目录名含项目根 basename 的会话（避免与同机其它 dsh 会话混淆），按 mtime 最新。
-    cwd = config.ROOT（headless 子进程 cwd）。无会话 / 无 zstandard / 无 usage 返回 None。"""
+    since 由 run_headless_task 传入「本次 headless 开始前的时刻」，据此排除那些在本次调用
+    开始之前就已落盘的旧会话——因为多通道/并发执行时（拆解+各角色 headless+R1 判断派发）
+    会同时写入多个会话，若只按全局最新 mtime 取，极易读到「另一条还在写/尚无 usage」的会话，
+    导致 usage 读到 None 而不写 token。带 since 过滤后，本次 headless 的会话必然在 since 之后，
+    可精确锁定本次调用。cwd = config.ROOT（headless 子进程 cwd）。无会话/无 zstandard/无 usage 返回 None。"""
     sess = _dsh_sessions_dir()
     if not sess.is_dir():
         return None
@@ -202,8 +206,20 @@ def read_session_usage() -> dict:
             dirs = prefer
     if not dirs:
         return None
+
+    def _ztime(d):
+        zf = d / "session.jsonl.zstd"
+        try:
+            return zf.stat().st_mtime if zf.is_file() else 0.0
+        except OSError:
+            return 0.0
+
+    if since:
+        now = [d for d in dirs if _ztime(d) >= since]     # 本次 headless 会话必然在 since 之后落盘
+        if now:
+            dirs = now
     try:
-        latest = max(dirs, key=lambda d: d.stat().st_mtime)
+        latest = max(dirs, key=_ztime)
     except OSError:
         return None
     return _usage_from_session(latest)
@@ -215,9 +231,11 @@ def run_headless_task(task_text: str, timeout: float = 600, act: str = ""):
     dsh 0.1.1-rc.2 的 headless profile 不再提供 --events-jsonl；用量改从 DSH
     持久化的会话日志（~/.dsh/sessions/<cwd>/session-<uuid>/session.jsonl.zstd）抽取，
     语义同 dsh-tokenledger（assistant/message.data.usage）。无日志或无 zstandard → usage None。
-    act=子任务号时把运行中 headless 的 pid 注册到 _ACTIVE_SPAWN，供删除任务时 kill_spawn 终止。"""
+    act=子任务号时把运行中 headless 的 pid 注册到 _ACTIVE_SPAWN，供删除任务时 kill_spawn 终止。
+    base=下次调用 read_session_usage 的 since 锚点（当前时刻，早于本次 headless 会话落盘）。"""
+    base = time.time()
     text = _decode_stdout(_spawn_headless([task_text], timeout, act)).strip()
-    return text, read_session_usage()
+    return text, read_session_usage(base)
 
 
 def kill_spawn(act: str) -> bool:
