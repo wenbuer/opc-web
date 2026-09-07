@@ -516,16 +516,24 @@ class Handler(BaseHTTPRequestHandler):
         extra = {}
         try:
             verb = review.verb_of(judge)
-            if verb == "批准":
+            if verb == "驳回":
+                # 驳回 = R0 否掉该项，不再派发执行（仅记录 R0 批阅结论，不建任务）
+                review.append_r1_exec(item, "已驳回，不再派发执行")
+                extra = {"task": None}
+            elif verb == "批准":
                 task_text = "执行 R0 决策（批阅台 待决 #%s）：%s" % (item, opinion or "按批阅意见执行")
                 note = "已建任务 %s，待 R1 派发执行"
-            else:
-                task_text = "按批阅修改（批阅台 待决 #%s，%s）：%s" % (item, verb, opinion or "按批注修改后重报")
+                no = store.add_task(task_text, "R1 判断")
+                review.append_r1_exec(item, note % no)
+                scheduler.scan_once()   # 立即生成 R1 拆解指令
+                extra = {"task": no}
+            else:  # 修改：按批注修改后重报
+                task_text = "按批阅修改（批阅台 待决 #%s，修改）：%s" % (item, opinion or "按批注修改后重报")
                 note = "已按批注重新派发执行 %s"
-            no = store.add_task(task_text, "R1 判断")
-            review.append_r1_exec(item, note % no)
-            scheduler.scan_once()   # 立即生成 R1 拆解指令（与下达任务同路径）
-            extra = {"task": no}
+                no = store.add_task(task_text, "R1 判断")
+                review.append_r1_exec(item, note % no)
+                scheduler.scan_once()
+                extra = {"task": no}
         except Exception:
             extra = {"task": None}
         return {"ok": True, "line": new_line, "item": item, **extra}
