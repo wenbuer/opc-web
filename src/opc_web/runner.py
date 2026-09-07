@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 from . import config
 
@@ -128,33 +129,86 @@ def _decode_stdout(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+def _dsh_sessions_dir() -> Path:
+    """DSH 会话事件日志根：~/.dsh/sessions（DSH_HOME 可覆盖）。"""
+    return Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh")) / "sessions"
+
+
+def _usage_from_session(session_dir: Path) -> dict:
+    """从一次会话的 session.jsonl.zstd 抽最终 token 用量。
+
+    语义同 dsh-tokenledger 的 sampleOf：取最后一条 assistant/message 的 data.usage，
+    兜底 assistant/chunk 里 data.chunk.type === 'usage' 的 usage。缺 zstandard / 无日志返回 None。"""
+    zf = session_dir / "session.jsonl.zstd"
+    if not zf.is_file():
+        return None
+    try:
+        import zstandard as zstd
+    except Exception:
+        return None
+    try:
+        with zstd.ZstdDecompressor().stream_reader(open(zf, "rb")) as _s:
+            text = _s.read().decode("utf-8", "replace")
+    except Exception:
+        return None
+    last = None
+    for ln in text.splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            ev = json.loads(ln)
+        except Exception:
+            continue
+        data = ev.get("data")
+        if not isinstance(data, dict):
+            continue
+        u = None
+        if ev.get("type") == "assistant/message" and isinstance(data.get("usage"), dict):
+            u = data["usage"]
+        elif (ev.get("type") == "assistant/chunk" and isinstance(data.get("chunk"), dict)
+              and data["chunk"].get("type") == "usage" and isinstance(data["chunk"].get("usage"), dict)):
+            u = data["chunk"]["usage"]
+        if u:
+            last = {"inputTokens": int(u.get("inputTokens") or 0),
+                    "outputTokens": int(u.get("outputTokens") or 0),
+                    "cacheReadTokens": int(u.get("cacheReadTokens") or 0),
+                    "reasoningTokens": int(u.get("reasoningTokens") or 0)}
+    return last
+
+
+def read_session_usage() -> dict:
+    """定位本次 headless 调用最新写入的会话日志并抽取 token 用量。
+
+    位置：~/.dsh/sessions/<cwd片段>/session-<uuid>/session.jsonl.zstd。
+    优先取目录名含项目根 basename 的会话（避免与同机其它 dsh 会话混淆），按 mtime 最新。
+    cwd = config.ROOT（headless 子进程 cwd）。无会话 / 无 zstandard / 无 usage 返回 None。"""
+    sess = _dsh_sessions_dir()
+    if not sess.is_dir():
+        return None
+    try:
+        dirs = [d for d in sess.glob("*/session-*") if d.is_dir()]
+    except OSError:
+        return None
+    cwdkey = Path(str(config.ROOT)).name
+    if cwdkey:
+        prefer = [d for d in dirs if cwdkey in str(d)]
+        if prefer:
+            dirs = prefer
+    if not dirs:
+        return None
+    try:
+        latest = max(dirs, key=lambda d: d.stat().st_mtime)
+    except OSError:
+        return None
+    return _usage_from_session(latest)
+
+
 def run_headless_task(task_text: str, timeout: float = 600):
     """headless 最终文本模式：返回 (最终文本, 用量 dict|None)。
 
-    dsh 0.1.1-rc.2 的 headless profile 已不提供 --events-jsonl，故退化为最终文本模式；
-    usage / run-text 事件拿不到 → 返回 usage=None（token 统计暂不写 meta.json）。
-    保留对事件流的解析：若未来 dsh 恢复 events-jsonl，这里会自动重新拿到 usage。"""
-    text = _decode_stdout(_spawn_headless([task_text], timeout))
-    usage = None
-    final = ""
-    for ln in text.splitlines():
-        line = ln.strip()
-        if not line:
-            continue
-        try:
-            ev = json.loads(line)
-        except Exception:
-            continue
-        d = ev.get("data") or {}
-        if ev.get("type") == "assistant/chunk" and isinstance(d.get("usage"), dict):
-            u = d["usage"]
-            if u.get("inputTokens") is not None or u.get("outputTokens") is not None:
-                usage = {"inputTokens": int(u.get("inputTokens") or 0),
-                         "outputTokens": int(u.get("outputTokens") or 0),
-                         "cacheReadTokens": int(u.get("cacheReadTokens") or 0),
-                         "reasoningTokens": int(u.get("reasoningTokens") or 0)}
-        elif ev.get("type") == "run/end" and ev.get("text"):
-            final = ev["text"]
-    if not final:
-        final = text
-    return final.strip(), usage
+    dsh 0.1.1-rc.2 的 headless profile 不再提供 --events-jsonl；用量改从 DSH
+    持久化的会话日志（~/.dsh/sessions/<cwd>/session-<uuid>/session.jsonl.zstd）抽取，
+    语义同 dsh-tokenledger（assistant/message.data.usage）。无日志或无 zstandard → usage None。"""
+    text = _decode_stdout(_spawn_headless([task_text], timeout)).strip()
+    return text, read_session_usage()
