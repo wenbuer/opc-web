@@ -1205,6 +1205,21 @@
     var outs = b.querySelectorAll(".run-out");
     return outs.length ? outs[outs.length - 1] : null;
   }
+  /* ===== 工作台自刷新：任务状态变化（事件流推进）时防抖刷新队列/看板/当前任务 ===== */
+  var _wbRefreshTimer = null;
+  function scheduleWbRefresh(detail){
+    if (_wbRefreshTimer) clearTimeout(_wbRefreshTimer);
+    _wbRefreshTimer = setTimeout(function(){ refreshWorkbench(detail); }, 600);
+  }
+  function refreshWorkbench(detail){
+    loadQueue();                                   // 任务列表状态
+    loadBoard();                                   // 子任务看板
+    refreshSched(0);                               // 调度状态条 / 暂停按钮
+    if (state.activeNo){
+      renderAct(state.activeNo);                   // 当前任务执行角色
+      if (detail) showTaskOutput(state.activeNo, null);   // 任务边界（启动/结束/退出）刷详情
+    }
+  }
   function runRender(ev){
     /* 事件源 = runner 缓冲（chain 只发 6 种合成事件）：run/start → 新建任务段；
        其余事件追加进当前段。 */
@@ -1249,6 +1264,8 @@
       body.appendChild(e5);
     }
     lg.scrollTop = lg.scrollHeight;
+    // 状态变化即导火索：任一事件到达就防抖刷新工作台；run 边界再刷新任务详情
+    scheduleWbRefresh(type === "run/end" || type === "run/start" || type === "run/exited");
   }
   /* ================= 每日简报 ================= */
   /* ================= 角色管理 ================= */
