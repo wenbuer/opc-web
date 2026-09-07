@@ -1357,7 +1357,7 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .onb-skip:hover{border-color:var(--gold);color:var(--gold)}
 
 /* ===== 角色标签徽标（组织架构卡 / 角色卡） ===== */
-.rc-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.rc-tags{display:inline-flex;align-items:center;gap:3px;margin-top:0;margin-left:2px}
 .rc-tags i{font-style:normal;font-size:9px;padding:1px 7px;border-radius:99px;border:1px solid var(--line2);color:var(--dim);background:rgba(2,132,199,.06);letter-spacing:.5px}
 :root[data-theme="dark"] .rc-tags i{background:rgba(232,183,61,.08);color:var(--gold)}
 

@@ -125,9 +125,9 @@
       card.className = "role-card";
       card.innerHTML = "<span class='rc-st " + stCls + "'>" + esc(r.status || "") + "</span>"
         + "<div class='rc-top'><span class='rc-name'>" + esc(r.name || r.code) + "</span><span class='rc-n'>" + esc(r.code) + "</span>"
+        + "<span class='rc-tags'>" + (r.tags || []).map(function(t){ return "<i>" + esc(t) + "</i>"; }).join("") + "</span>"
         + "<button class='rc-folder' title='查看项目文件'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/></svg></button><button class='rc-del' title='删除角色（需二次确认）'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 6h18'/><path d='M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2'/><path d='M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6'/><path d='M10 11v6'/><path d='M14 11v6'/></svg></button></div>"
         + "<div class='rc-duty'>" + esc(r.duty || "") + "</div>"
-        + "<div class='rc-tags'>" + (r.tags || []).map(function(t){ return "<i>" + esc(t) + "</i>"; }).join("") + "</div>"
         + "<div class='rc-cur'>当前：" + esc(r.current || "无") + "</div>";
       card.addEventListener("click", function(){ openRole(r.code); });
       var btDel = card.querySelector(".rc-del");
