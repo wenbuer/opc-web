@@ -629,7 +629,7 @@
         d.title = it.title;
         var mm = /任务\s+(T-\d+)/.exec(it.title || "");
         var tno = mm ? mm[1] : String(it.title || "").slice(0, 16);
-        d.innerHTML = "<span class='num'>#" + it.n + "</span><span class='name'>" + esc(tno) + "</span>"
+        d.innerHTML = "<span class='name'>" + esc(tno) + "</span>"
           + "<span class='wst'>○ 未阅</span>";
         d.addEventListener("click", function(){ showDetail(it, "work"); });
         return d;
@@ -639,9 +639,10 @@
       d.dataset.n = it.n;
       var prev = "";
       (it.lines || []).forEach(function(ln){
-        if (ln.indexOf("背景") >= 0 || ln.indexOf("需要 R0 拍板") >= 0){ prev += ln.split("：").pop() + " "; }
+        if (ln.indexOf("背景") >= 0 || ln.indexOf("决策内容") >= 0){ prev += ln.split("：").pop() + " "; }
       });
-      d.innerHTML = "<span class='num'>#" + it.n + "</span><span class='name'>" + esc(it.title) + "</span>"
+      var _pj = (it.lines || []).some(function(ln){ var m = /^-\s*\*\*R0 批阅\*\*\s*[:：]\s*(.+)$/.exec(ln); return m && m[1].trim() && m[1].trim() !== "待填"; });
+      d.innerHTML = "<span class='name'>" + esc(it.title) + "</span>" + (_pj ? "<span class='stamp'>已裁决</span>" : "")
         + (prev ? "<div class='preview'>" + esc(prev.trim().slice(0, 140)) + "</div>" : "");
       d.addEventListener("click", function(){ showDetail(it, "pending"); });
       return d;
@@ -663,7 +664,7 @@
       a.dataset.kind = aKind;
       a.title = "点击查看已批阅原文（只读）";
       a.innerHTML = "<span class='a-ico'>" + (aKind === "dec" ? "决策" : "工作") + "</span>"
-        + "<span class='n'>#" + it.n + "</span><span class='t'>" + esc(it.title) + "</span>";
+        + "<span class='t'>" + esc(it.title) + "</span><span class='stamp'>已阅</span>";
       a.addEventListener("click", function(){ showDetail(it, "archive"); });
       ar.appendChild(a);
     });
@@ -780,7 +781,8 @@
     }
     if (kind === "pending"){
       /* 决策项精简版：只要 项目整体进展 + 待决内容全文 + R1 建议；不再铺开逐字段与角色产物 */
-      var h0 = "<h1><span class='n'>" + pre + it.n + "</span> " + esc(it.title) + "</h1>";
+      var _judged = (it.lines || []).some(function(ln){ var m = /^-\s*\*\*R0 批阅\*\*\s*[:：]\s*(.+)$/.exec(ln); return m && m[1].trim() && m[1].trim() !== "待填"; });
+      var h0 = "<h1>" + esc(it.title) + (_judged ? "<span class='stamp'>已裁决</span>" : "") + "</h1>";
       d.className = "dossier pending-lean";
       var _rp = splitPiyueLines(it.lines);
       var flds = _rp.flds, paras = _rp.paras;
@@ -791,9 +793,9 @@
         return !t || /决策信号|请 ?R0 ?裁决|R0 裁决|驳回|重新派发|修改意见|回报未列出|请展开|请直接批复|读完完整产出/.test(String(t));
       }
       var taskTxt = ("任务" in flds) ? flds["任务"] : "";
-      var askRaw = pick("拍板") || pick("决策") || paras.join("\n") || "";
+      var askRaw = pick("决策内容") || paras.join("\n") || "";
       var ask = blankAsk(askRaw) ? "" : askRaw;
-      var adv = pick("建议");
+      var adv = pick("决策建议");
       function sec(title, md){
         return "<div class='doc-sec'><div class='doc-sec-head'>" + esc(title) + "</div>"
           + "<div class='sec-body markdown-body to-doc'>" + renderMd(md || "") + "</div></div>";
@@ -802,13 +804,13 @@
       if (taskTxt && (!ask || ask.indexOf(taskTxt) !== 0)){ h0 += "<div class='dec-sub'>任务：" + esc(taskTxt) + "</div>"; }
       h0 += "<div class='doc-sec'><div class='doc-sec-head'>项目当前进展</div><div id='projProg' class='proj-line'>计算中…</div></div>";
       if (ask){
-        h0 += sec("需要决策什么", ask);
+        h0 += sec("决策内容", ask);
       } else {
         h0 += "<div class='doc-sec'><div class='doc-sec-head'>需要决策什么</div>"
           + "<div class='noask'>这条回报只标了「需拍板」却没写出具体要拍板的内容（只写了机制说明，读不出问题）。"
           + "请直接 <b>驳回 / 修改</b> 让执行角色补写「现状背景 → 可选方案 → 建议」；或在下框批注里按你的判断给出裁决。</div></div>";
       }
-      if (adv){ h0 += sec("R1 的建议", adv); }
+      if (adv){ h0 += sec("决策建议", adv); }
       // R1 汇总报告（待决也展示，默认收起）
       var _sumRel = null, _taskNo = null;
       (it.lines || []).forEach(function(ln){ var i3 = ln.indexOf("**汇总文件**"); if (i3 >= 0){ _sumRel = ln.slice(ln.indexOf("：", i3) + 1).trim(); } });
@@ -833,8 +835,8 @@
     var taskNo = null;
     var mmT = /任务[ ]+(T-[0-9A-Za-z-]+)/.exec(it.title || "");
     if (mmT) taskNo = mmT[1];
-    var h = "<div class='piyue-head'><h1><span class='n'>" + pre + it.n + "</span> " + esc(it.title) + "</h1><div class='piyue-head-ops'>";
-    if (kind === "archive"){ h += "<span class='arch-badge'>✓ 已阅归档</span>"; }
+    var h = "<div class='piyue-head'><h1>" + esc(it.title) + "</h1><div class='piyue-head-ops'>";
+    if (kind === "archive"){ h += "<span class='stamp'>已阅</span>"; }
     if (kind === "work"){ h += "<button id='btnWorkArchive' class='mini'>已阅归档</button><span id='workMsg' class='form-status'></span>"; }
     h += "</div></div>";
     // 任务信息（概要字段，始终可见）

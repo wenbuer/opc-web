@@ -545,6 +545,20 @@ def kb_digest(task_no: str) -> dict:
             "msg": ("已合并补充到知识库「%s/%s」" % (cat, target.name)) if action == "merge"
                    else ("已沉淀到知识库「%s/%s」" % (cat, target.name))}
 
+def _advice_summary(reps, task_text: str) -> str:
+    """R1 提炼「决策建议」：一段完整、像人话的建议，不搬运回报原文、不截断。失败返回 ""。"""
+    if not reps and not task_text:
+        return ""
+    digest = _digest_reps(reps, limit=2400) if reps else str(task_text or "")[:1600]
+    prompt = (
+        "你是老板助理 R1。下面是某任务原文与各角色回报。请以 R1 视角给老板(R0)一段**完整**的「决策建议」："
+        "说明任务完成情况、关键结论、你建议 R0 怎么定（若无可拍板就给出下一步建议）。"
+        "要求：用连贯、像人话的**完整段落**写全，不要只摘回报原文的零碎句、不要截断成短摘要。\n\n"
+        "任务原文：%s\n\n各角色回报：\n%s" % (str(task_text or "")[:900], digest))
+    text = _headless_text(prompt, 480)
+    return (text or "").strip() if text else ""
+
+
 def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: list) -> int:
     """任务自动执行完成后：R1 整理回报呈报 R0。
 
@@ -587,11 +601,19 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
             sum_rel = work_summary(task_no)      # R1 汇总全部 subagent 产出（代码类附变更与目录树）
         except Exception:
             sum_rel = ""
+        # 决策建议：R1 用模型提炼（完整、非原文搬运）；失败回退逐角色摘要
+        advice = ""
+        try:
+            advice = _advice_summary(reps, task_text)
+        except Exception:
+            advice = ""
+        if not advice:
+            advice = brief
         if _needs_decision(task_text, brief_hay or brief):
             lines_b = ["### 待决 %d｜任务 %s" % (n, task_no)]
             lines_b += _field_lines("任务", task_s[:160])
             lines_b += _field_lines("进展", prog)
-            lines_b += _field_lines("R 建议（R1）", brief)
+            lines_b += _field_lines("决策建议", advice)
             # “需要 R0 拍板什么”必须落具体内容：角色回报里写明就用回报原文；
             # 回报没写明时回退到任务原话（R0 自己下达时的决策请求）。
             # 绝不把“任务含决策信号…请 R0 裁决；驳回将触发重新派发”这类机制空话写进待决。
@@ -602,7 +624,7 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
                 ask = ""
             if not ask:
                 ask = decisions or task_s
-            lines_b += _field_lines("需要 R0 拍板什么", ask)
+            lines_b += _field_lines("决策内容", ask)
             lines_b += ["- **R0 批阅**：待填"]
             if sum_rel:
                 lines_b += ["- **汇总文件**：" + sum_rel]   # 待决也挂 R1 汇总
@@ -613,7 +635,6 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
             lines_b = [head]
             lines_b += _field_lines("任务", task_s[:160])
             lines_b += _field_lines("进展", prog)
-            lines_b += _field_lines("回报摘要", brief)
             if sum_rel:
                 lines_b += ["- **汇总文件**：" + sum_rel]
             blk = chr(10) + chr(10).join(lines_b) + chr(10)

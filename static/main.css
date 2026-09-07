@@ -189,15 +189,15 @@ main{flex:1;overflow:hidden}
 .sec-btn em{font-style:normal;font-weight:400;color:var(--faint);font-size:10px;letter-spacing:.3px;margin-left:auto;flex:none;white-space:nowrap}
 .sec-btn:disabled{opacity:.5;cursor:not-allowed}
 .sec-body{margin-top:0}
-.prod-wrap{display:flex;flex-direction:column;gap:0}
+.prod-wrap{display:inline-block;vertical-align:top;margin:0 2px}
 .prod-item .arr{color:var(--dim);font-size:10px;flex:none;width:10px}
 .doc-sec .to-doc{max-height:420px;overflow:auto;background:rgba(15,30,50,.05);border:1px dashed var(--line2);border-radius:8px;padding:10px 12px}
-.prod-list{display:flex;flex-direction:column;gap:6px}
-.prod-item{display:flex;align-items:center;gap:8px;padding:0 12px;box-sizing:border-box;height:38px;background:rgba(15,30,50,.04);border:1px solid var(--line2);border-radius:8px;cursor:pointer;font-size:12px;transition:all .15s ease}
-.prod-item:hover{border-color:var(--gold);background:rgba(2,132,199,.08)}
-.prod-item .arr{color:var(--dim);font-size:10px;flex:none;width:12px}
-.prod-item .pi{flex:none;font-size:9.5px;padding:1px 7px;border-radius:99px;border:1px solid rgba(99,102,241,.45);color:var(--indigo);letter-spacing:.3px}
-.prod-item em{font-style:normal;font-family:var(--mono);color:var(--txt);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prod-list{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
+.prod-item{display:inline-flex;align-items:center;gap:5px;padding:2px 11px;box-sizing:border-box;background:rgba(2,132,199,.06);border:1px solid var(--line2);border-radius:99px;cursor:pointer;font-size:11px;white-space:nowrap;transition:all .15s ease}
+.prod-item:hover{border-color:var(--gold);background:rgba(2,132,199,.12)}
+.prod-item .arr{color:var(--dim);font-size:10px;flex:none;width:10px}
+.prod-item .pi{flex:none;font-size:9.5px;padding:1px 7px;border-radius:99px;border:1px solid rgba(99,102,241,.45);color:var(--indigo);letter-spacing:.2px}
+.prod-item em{font-style:normal;font-family:var(--mono);color:var(--txt);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 详情字段值按 markdown 渲染时的紧凑排版 */
 .piyue-main .fld .markdown-body,.piyue-main .markdown-body.fld-md{font-size:12.5px;line-height:1.75;color:var(--txt);margin:0}
 .piyue-main .fld .markdown-body h1,.piyue-main .markdown-body.fld-md h1{font-size:16px;margin:8px 0 4px}
@@ -1245,6 +1245,8 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .a-item.a-dec .a-ico{color:var(--red-bright);border-color:rgba(239,68,68,.55)}
 .a-item.a-dec .t{color:var(--txt)}
 .arch-badge.dec{color:var(--gold);border-color:rgba(2,132,199,.5)}
+/* 已阅/已裁决 印章 */
+.stamp{display:inline-block;font-size:13px;font-weight:800;color:#c0392b;border:2px solid #c0392b;border-radius:6px;padding:0 10px;margin-left:10px;transform:rotate(-8deg);opacity:.85;letter-spacing:3px;vertical-align:middle}
 .verdict{display:flex;align-items:baseline;gap:14px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:rgba(15,30,50,.04);flex-wrap:wrap}
 .verdict b{flex:none;font-family:var(--serif);font-size:20px;letter-spacing:4px;border:2px solid;padding:2px 14px;border-radius:8px}
 .verdict span{font-size:12.5px;color:var(--txt);line-height:1.7;white-space:pre-wrap;word-break:break-word;min-width:0}
