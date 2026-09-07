@@ -47,6 +47,9 @@ def bootstrap():
     except Exception:
         pass
     h = chr(10)
+    # 知识库分类目录（含「OPC 规范」——员工手册归宿）：建目录便于沉淀与手册落盘
+    for cat in config.KB_CATEGORIES:
+        (config.KB_ROOT / cat).mkdir(parents=True, exist_ok=True)
     from . import templates as _tpl
     seeds = {
         config.LOG_REL: "## 决策日志" + h,

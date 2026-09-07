@@ -102,7 +102,7 @@ ROOT = _resolve_root()
 # 三个自动文件夹（相对根目录）
 KB_ROOT = ROOT / "知识库"          # 知识档案（员工手册等；内容由各角色产出经 R1 审核归档入场，不做元数据文件）
 # 知识库分类（主题域目录）：沉淀按《知识库/<分类>/》归档；OKF 只是每篇的知识型(type)标注，不是目录名
-KB_CATEGORIES = ["产品", "技术", "运营与增长", "用户与市场", "方法", "数据", "决策", "经验教训"]
+KB_CATEGORIES = ["OPC 规范", "产品", "技术", "运营与增长", "用户与市场", "方法", "数据", "决策", "经验教训"]
 BATCH_ROOT = ROOT / "批阅台"       # R0/R1 公文与日志（批阅台 / 任务队列 / 派发单 / 回报队列 / 调度日志）
 WORKSPACE_ROOT = ROOT / "工作区"   # 角色作业区（按角色名称建子文件夹）
 PROJECT_ROOT = ROOT / "项目"        # 公共项目区（源码/工程性产出；工程标签角色可写，其他只读）
@@ -116,7 +116,7 @@ LOG_REL = "批阅台/决策日志.md"          # R0 决策记录 + 派发单（p
 
 SCHED_LOG_REL = "批阅台/调度日志.md"   # R1/控制台运行日志（log_schedule 追加）
 TIMELINE_REL = "批阅台/时间轴.json"   # R1 模型提炼的时间轴缓存（build_timeline 写入，get_timeline 读取）
-HANDBOOK_REL = "知识库/员工手册.md"   # 全员唯一行为准则（templates.handbook_text 写入，bootstrap 创建）。
+HANDBOOK_REL = "知识库/OPC 规范/员工手册.md"   # 全员唯一行为准则（templates.handbook_text 写入，bootstrap 创建；归入「OPC 规范」分类）。
 # 注：OPC智能体角色架构.md / 知识库索引.md 已移除 —— 不作为知识档案入库（组织架构以首页 /api/org 实时为准，知识库看板由 kb_entries 实时聚合）
 
 TEMPLATES = BASE / "templates"
