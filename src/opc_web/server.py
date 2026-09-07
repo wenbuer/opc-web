@@ -95,6 +95,16 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _serve_html(self, q):
+        """把项目/工作区里的 .html 作为 text/html 直接 serve（供预览 iframe 内嵌打开）。"""
+        rel = unquote((q.get("rel") or [""])[0]).strip()
+        if not rel:
+            raise ApiError(400, "缺少文件路径")
+        p = (config.ROOT / rel).resolve()
+        if not str(p).startswith(str(config.ROOT.resolve())) or not p.is_file() or p.suffix.lower() != ".html":
+            raise ApiError(404, "文件不存在或非 html")
+        self._file(p, "text/html; charset=utf-8")
+
     def _ok(self, fn, err=500):
         """统一输出端点响应：fn 返回 dict → JSON；ApiError 按其状态码；其它异常按 err。"""
         try:
@@ -255,6 +265,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(lambda: {"ok": True, "rows": scheduler.token_rows()})
         elif url == "/api/ws-file":
             self._ok(self._get_ws_file, err=400)
+        elif url == "/api/ws-html":
+            self._serve_html(self._qs())
         elif url == "/api/plan-rows":
             self._ok(lambda: {"ok": True, "rows": store.subtasks()})
         elif url == "/api/task-output":
@@ -516,24 +528,37 @@ class Handler(BaseHTTPRequestHandler):
         extra = {}
         try:
             verb = review.verb_of(judge)
-            if verb == "驳回":
-                # 驳回 = R0 否掉该项，不再派发执行（仅记录 R0 批阅结论，不建任务）
-                review.append_r1_exec(item, "已驳回，不再派发执行")
+            # R1 自己判断：是否需要派发任务给员工执行（模型判断，判不了回退规则）
+            resp = scheduler._r1_respond(item, judge, opinion)
+            if resp is None:
+                # 模型未给出判断：回退规则（驳回不派；批准/修改派）
+                if verb == "驳回":
+                    review.append_r1_exec(item, "已驳回，不再派发执行")
+                    extra = {"task": None}
+                elif verb == "批准":
+                    task_text = "执行 R0 决策（批阅台 待决 #%s）：%s" % (item, opinion or "按批阅意见执行")
+                    no = store.add_task(task_text, "R1 判断")
+                    review.append_r1_exec(item, "已建任务 %s，待 R1 派发执行" % no)
+                    scheduler.scan_once()
+                    extra = {"task": no}
+                else:  # 修改：按批注修改后重报
+                    task_text = "按批阅修改（批阅台 待决 #%s，修改）：%s" % (item, opinion or "按批注修改后重报")
+                    no = store.add_task(task_text, "R1 判断")
+                    review.append_r1_exec(item, "已按批注重新派发执行 %s" % no)
+                    scheduler.scan_once()
+                    extra = {"task": no}
+            elif resp.get("dispatch"):
+                tt = str(resp.get("task") or "").strip() or ("执行 R0 决策（批阅台 待决 #%s）" % item)
+                try:
+                    no = store.add_task(tt, "R1 判断")
+                    review.append_r1_exec(item, "已按 R0 裁决派发任务 %s" % no)
+                    scheduler.scan_once()
+                    extra = {"task": no}
+                except Exception:
+                    extra = {"task": None}
+            else:
+                review.append_r1_exec(item, "已按 R0 裁决处理，未触发新派发")
                 extra = {"task": None}
-            elif verb == "批准":
-                task_text = "执行 R0 决策（批阅台 待决 #%s）：%s" % (item, opinion or "按批阅意见执行")
-                note = "已建任务 %s，待 R1 派发执行"
-                no = store.add_task(task_text, "R1 判断")
-                review.append_r1_exec(item, note % no)
-                scheduler.scan_once()   # 立即生成 R1 拆解指令
-                extra = {"task": no}
-            else:  # 修改：按批注修改后重报
-                task_text = "按批阅修改（批阅台 待决 #%s，修改）：%s" % (item, opinion or "按批注修改后重报")
-                note = "已按批注重新派发执行 %s"
-                no = store.add_task(task_text, "R1 判断")
-                review.append_r1_exec(item, note % no)
-                scheduler.scan_once()
-                extra = {"task": no}
         except Exception:
             extra = {"task": None}
         return {"ok": True, "line": new_line, "item": item, **extra}

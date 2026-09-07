@@ -559,6 +559,27 @@ def _advice_summary(reps, task_text: str) -> str:
     return (text or "").strip() if text else ""
 
 
+def _r1_respond(item: str, judge: str, opinion: str) -> dict:
+    """R0 批阅（批准/驳回/修改）后，R1 自己判断是否需要重新派发任务给员工执行。
+
+    返回 {"dispatch": bool, "task": str}；判不了返回 None（调用方回退规则）。"""
+    prompt = (
+        "你是老板助理 R1。R0 对批阅台待决 #%s 的裁决：%s。批注意见：%s。\n"
+        "请判断是否需要**新派发任务给员工执行**：\n"
+        "- 批准：通常需派发执行该决策（落地/上线等）；若只是记录性确认、无需新执行，则不派发。\n"
+        "- 修改：通常需派发让执行角色按批注修改后重报。\n"
+        "- 驳回：一般=否掉该项，无需再派发。\n"
+        "输出 JSON：{\"dispatch\": true|false, \"task\": \"<若要派发的任务文本，不派发则留空>\"}。只输出 JSON。"
+        % (item, judge, opinion))
+    text = _headless_text(prompt, 300)
+    if not text:
+        return None
+    d = _parse_kb_digest(text)
+    if not isinstance(d, dict):
+        return None
+    return {"dispatch": bool(d.get("dispatch")), "task": str(d.get("task") or "")}
+
+
 def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: list) -> int:
     """任务自动执行完成后：R1 整理回报呈报 R0。
 

@@ -44,7 +44,7 @@
       var n=(j.queue||[]).filter(function(t){ return (t.status||"")!=="完成"; }).length; var r=$("ovRunning"); if(r) r.textContent=n;
       var done=(j.queue||[]).filter(function(t){ return (t.status||"")==="完成"; }).length; var d=$("ovDone"); if(d) d.textContent=done;
     } });
-    api("/api/tokens").then(function(j){ if (j && j.ok){ var t=0; (j.rows||[]).forEach(function(x){ t += (Number(x.tokensIn)||0)+(Number(x.tokensOut)||0); }); var o=$("ovToken"); if(o) o.textContent = t>=1000 ? (t/1000).toFixed(1)+"k" : String(t); } });
+    api("/api/tokens").then(function(j){ if (j && j.ok){ var rows=j.rows||[]; var o=$("ovToken"); if(!rows.length){ if(o) o.textContent="—"; return; } var t=0; rows.forEach(function(x){ t += (Number(x.tokensIn)||0)+(Number(x.tokensOut)||0); }); if(o) o.textContent = t>=1000 ? (t/1000).toFixed(1)+"k" : String(t); } });
     api("/api/kb-entries").then(function(j){ if (j && j.ok){ var k=(j.entries||[]).filter(function(e){ return /okf\//.test(e.rel||""); }).length; var o=$("ovOkf"); if(o) o.textContent=k; } });
     api("/api/daily").then(function(j){ if (j && j.ok){ var d=(j.daily||[])[0]; var o=$("ovDaily"); if(o) o.textContent = d ? d.date : "无"; } });
   }
@@ -1608,6 +1608,10 @@
     if (el) el.classList.add("active");
     $("wsTitle").textContent = rel;
     var body = $("wsBody");
+    if (/.html$/i.test(rel || "")){
+      body.innerHTML = "<div class='ws-note'>HTML · 已内嵌打开</div><iframe class='ws-iframe' src='/api/ws-html?rel=" + encodeURIComponent(rel) + "'></iframe>";
+      return;
+    }
     body.innerHTML = "<div class='placeholder'>加载中…</div>";
     api("/api/ws-file?rel=" + encodeURIComponent(rel)).then(function(j){
       if (!j || !j.ok){
