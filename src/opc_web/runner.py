@@ -129,11 +129,12 @@ def _decode_stdout(data: bytes) -> str:
 
 
 def run_headless_task(task_text: str, timeout: float = 600):
-    """headless + --events-jsonl：返回 (最终文本, 用量 dict|None)。
+    """headless 最终文本模式：返回 (最终文本, 用量 dict|None)。
 
-    用量来自事件流 assistant/chunk 的 data.usage（inputTokens/outputTokens 等），
-    供 chain 写回子任务 meta.json；最终文本取 run/end.text（无则拼 chunk）。"""
-    text = _decode_stdout(_spawn_headless([task_text, "--events-jsonl"], timeout))
+    dsh 0.1.1-rc.2 的 headless profile 已不提供 --events-jsonl，故退化为最终文本模式；
+    usage / run-text 事件拿不到 → 返回 usage=None（token 统计暂不写 meta.json）。
+    保留对事件流的解析：若未来 dsh 恢复 events-jsonl，这里会自动重新拿到 usage。"""
+    text = _decode_stdout(_spawn_headless([task_text], timeout))
     usage = None
     final = ""
     for ln in text.splitlines():
