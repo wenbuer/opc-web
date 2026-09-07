@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
-from . import bootstrap, config, knowledge, parsers, review, roles, runner, scheduler, store, templates
+from . import bootstrap, chain, config, knowledge, parsers, review, roles, runner, scheduler, store, templates
 
 
 def _strip_okf_frontmatter(text: str) -> str:
@@ -355,14 +355,13 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "缺少任务编号 no")
         if not any(t["no"] == no for t in store.tasks()):
             raise ApiError(404, "任务 " + no + " 不在队列中")
-        st = scheduler.SCHED_STATE
-        if st.get("busy") and no in (st.get("tag") or ""):
-            raise ApiError(409, no + " 正在执行中，暂不可删除")
-        # 运行中的子任务不会被删除终止：有执行中/待派/已派子任务 → 拒绝删除，避免孤儿执行 + 运行中产出残留
+        # 停止子任务再删除：对执行中/待派/已派子任务先终止其运行中的 headless 子进程，
+        # 并让执行链提前退出（不再执行剩余子任务、不重写产出），再删除任务，避免孤儿执行与产出残留。
         live = [s for s in store.subtasks(no) if s.get("st") in ("执行中", "待派", "已派")]
         if live:
-            raise ApiError(409, "%s 有 %d 个子任务仍在执行/待派（%s），暂不可删除：请先完成/驳回/重试后再删"
-                           % (no, len(live), "、".join(x["no"] for x in live[:3])))
+            chain.mark_stopped(no)
+            for s in live:
+                runner.kill_spawn(s["no"])
         rep_n = len(store.reports(no))            # 删除将连带移除回报/批阅依据
         store.delete_task(no)
         removed = scheduler.clean_task_files(no)

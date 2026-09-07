@@ -19,6 +19,27 @@ from . import agent, config, runner, scheduler as sch, store
 
 EXEC_TIMEOUT = 900          # 单个子任务的 headless 执行超时（秒）
 
+_STOPPED = set()            # 已被删除/终止的任务号集合；执行链各阶段检查到即提前退出（防删除后重建产出）
+
+def mark_stopped(task_no):
+    """终止任务前调用：执行链将据此提前退出，不再执行剩余子任务/重写产出与元数据。"""
+    _STOPPED.add(task_no)
+
+
+def clear_stopped(task_no):
+    _STOPPED.discard(task_no)
+
+
+def _alive(task_no):
+    """任务是否仍应继续执行：既不在终止集合中，也仍存在于台账。"""
+    if task_no in _STOPPED:
+        return False
+    try:
+        return any(t["no"] == task_no for t in store.tasks())
+    except Exception:
+        return False
+
+
 def _flat(s):
     """dsh headless 把输入当命令行参数：Windows 命令行遇换行即截断，任何给 headless 的文本必须压成单行。"""
     return re.sub(r"\s+", " ", s or "").strip()
@@ -180,6 +201,8 @@ def execute(task_no, task_text):
         sub_nos = store.replace_subtasks(task_no, subs)     # 幂等：重复执行直接覆盖
         ok_cnt, fail = 0, []
         for i, (sub_no, s) in enumerate(zip(sub_nos, subs)):
+            if not _alive(task_no):          # 任务已被删除/终止 → 提前退出，不再执行剩余子任务
+                return
             set_state(tag="执行 %d/%d：%s %s" % (i + 1, total, s["role"], s["sub"][:20]))
             runner.emit({"type": "step/start", "data": {"turn": i + 2, "step": 1}})
             runner.emit({"type": "assistant/chunk",
@@ -192,9 +215,11 @@ def execute(task_no, task_text):
             store.set_subtask(sub_no, "执行中")
             store.open_execution(sub_no, task_no, s["role"])
             try:
-                text, usage = runner.run_headless_task(_flat(spec["prompt"]), EXEC_TIMEOUT)
+                text, usage = runner.run_headless_task(_flat(spec["prompt"]), EXEC_TIMEOUT, act=sub_no)
             except Exception:
                 text, usage = "", None
+            if not _alive(task_no):          # 执行期间被删除 → 丢弃本次产出，直接退出
+                return
             if text:
                 with open(body_p, "a", encoding="utf-8") as fh:          # 完成回报（唯一的子任务产出文件）
                     fh.write("\n\n## 完成回报（控制台自动执行 %s）\n\n%s\n" % (sub_no, text))

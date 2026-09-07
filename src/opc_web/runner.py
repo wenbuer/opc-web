@@ -18,6 +18,7 @@ from . import config
 
 _LOCK = threading.RLock()
 _ACTIVE = {"events": [], "seq": 0}
+_ACTIVE_SPAWN = {}   # act(key: 子任务号) -> 运行中 headless 子进程 pid，供删除任务时终止
 
 
 def _child_env() -> dict:
@@ -51,7 +52,7 @@ def events(since: int = 0) -> dict:
                 "events": [e for e in _ACTIVE["events"] if e["seq"] > since]}
 
 
-def _spawn_headless(argv: list, timeout: float) -> bytes:
+def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
     """启动 dsh headless 子进程并收尾，返回其原始 stdout（stderr 合并）字节。
 
     超时语义：headless 只在 turn 结束后一次性打印 final 文本；因此无输出即任务未启动，
@@ -71,6 +72,8 @@ def _spawn_headless(argv: list, timeout: float) -> bytes:
                              creationflags=flags, startupinfo=si, env=_child_env())
     except Exception:
         return b""
+    if act:
+        _ACTIVE_SPAWN[act] = p.pid
     chunks = []
 
     def _drain():
@@ -114,6 +117,8 @@ def _spawn_headless(argv: list, timeout: float) -> bytes:
         p.stdout.close()
     except Exception:
         pass
+    if act:
+        _ACTIVE_SPAWN.pop(act, None)
     return b"".join(chunks)
 
 
@@ -204,11 +209,28 @@ def read_session_usage() -> dict:
     return _usage_from_session(latest)
 
 
-def run_headless_task(task_text: str, timeout: float = 600):
+def run_headless_task(task_text: str, timeout: float = 600, act: str = ""):
     """headless 最终文本模式：返回 (最终文本, 用量 dict|None)。
 
     dsh 0.1.1-rc.2 的 headless profile 不再提供 --events-jsonl；用量改从 DSH
     持久化的会话日志（~/.dsh/sessions/<cwd>/session-<uuid>/session.jsonl.zstd）抽取，
-    语义同 dsh-tokenledger（assistant/message.data.usage）。无日志或无 zstandard → usage None。"""
-    text = _decode_stdout(_spawn_headless([task_text], timeout)).strip()
+    语义同 dsh-tokenledger（assistant/message.data.usage）。无日志或无 zstandard → usage None。
+    act=子任务号时把运行中 headless 的 pid 注册到 _ACTIVE_SPAWN，供删除任务时 kill_spawn 终止。"""
+    text = _decode_stdout(_spawn_headless([task_text], timeout, act)).strip()
     return text, read_session_usage()
+
+
+def kill_spawn(act: str) -> bool:
+    """终止由 act 对应的运行中 headless 子进程（连同其子进程树）。
+
+    删除任务前调用：若有执行中/待派/已派子任务，先 taskkill 掉 headless，再删任务，
+    避免运行中产出在删除后被重建（孤儿执行与残留文件）。返回是否真的终止了进程。"""
+    pid = _ACTIVE_SPAWN.pop(act, None)
+    if not pid:
+        return False
+    try:
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                       capture_output=True, text=True)
+        return True
+    except Exception:
+        return False
