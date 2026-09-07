@@ -816,9 +816,9 @@
       (it.lines || []).forEach(function(ln){ var i3 = ln.indexOf("**汇总文件**"); if (i3 >= 0){ _sumRel = ln.slice(ln.indexOf("：", i3) + 1).trim(); } });
       var _mmT = /任务[ ]+(T-[0-9A-Za-z-]+)/.exec(it.title || ""); if (_mmT) _taskNo = _mmT[1];
       h0 += "<div class='doc-sec'><button type='button' class='sec-btn' id='btnSum'><span class='arr'>▸</span> R1 汇总报告" + (_taskNo ? " <em>任务 " + esc(_taskNo) + "</em>" : "") + (_sumRel ? "" : "（无汇总文件）") + "</button>";
-      h0 += "<div id='sumBody' class='sec-body markdown-body to-doc' style='display:none'></div></div>";
+      h0 += "<div id='sumBody' class='sec-body markdown-body to-doc'></div></div>";
       d.innerHTML = h0;
-      (function(){ var bs = $("btnSum"); if (!bs || !_sumRel) return; bs.addEventListener("click", function(){ var sb = $("sumBody"); if (!sb) return; if (sb.style.display === "none"){ sb.style.display = ""; bs.querySelector(".arr").textContent = "▾"; if (!sb.dataset.loaded){ sb.dataset.loaded = "1"; loadInto(sb, _sumRel, "汇总"); } } else { sb.style.display = "none"; bs.querySelector(".arr").textContent = "▸"; } }); })();
+      (function(){ var bs = $("btnSum"), sb = $("sumBody"); if (!bs || !sb || !_sumRel) return; bs.querySelector(".arr").textContent = "▾"; loadInto(sb, _sumRel, "R1 汇总"); bs.addEventListener("click", function(){ if (sb.style.display === "none"){ sb.style.display = ""; bs.querySelector(".arr").textContent = "▾"; } else { sb.style.display = "none"; bs.querySelector(".arr").textContent = "▸"; } }); })();
       var pp = $("projProg");
       if (pp){ loadProjText(function(t){ if (pp.isConnected) pp.textContent = t; }); }
       $("piyueForm").hidden = false;
@@ -857,7 +857,7 @@
     if (extraHtml){ h += "<div class='doc-sec'><div class='doc-sec-head'>任务信息</div>" + extraHtml + "</div>"; }
     // R1 汇总报告：折叠按钮，点击在其正下方展开（默认收起）
     h += "<div class='doc-sec'><button type='button' class='sec-btn' id='btnSum'><span class='arr'>▸</span> R1 汇总报告" + (taskNo ? " <em>任务 " + esc(taskNo) + "</em>" : "") + (sumRel ? "" : "（无汇总文件）") + "</button>";
-    h += "<div id='sumBody' class='sec-body markdown-body to-doc' style='display:none'></div></div>";
+    h += "<div id='sumBody' class='sec-body markdown-body to-doc'></div></div>";
     // 执行角色产物：名称列表，点击名称在其正下方展开
     h += "<div class='doc-sec'><div class='doc-sec-head'>执行角色产物</div>";
     h += "<div id='prodList' class='prod-list'>" + (taskNo ? "<div class='placeholder'>加载产物清单…</div>" : "<div class='placeholder'>暂无产物文件</div>") + "</div></div>";
@@ -922,15 +922,12 @@
     var sumBody = $("sumBody");
     var sumLoaded = false;
     if (btnSum && sumRel && sumBody){
+      sumBody.style.display = "";
+      btnSum.querySelector(".arr").textContent = "▾";
+      sumLoaded = true; loadInto(sumBody, sumRel, "R1 汇总");
       btnSum.addEventListener("click", function(){
-        if (sumBody.style.display === "none"){
-          sumBody.style.display = "";
-          btnSum.querySelector(".arr").textContent = "▾";
-          if (!sumLoaded){ sumLoaded = true; loadInto(sumBody, sumRel, "R1 汇总"); }
-        } else {
-          sumBody.style.display = "none";
-          btnSum.querySelector(".arr").textContent = "▸";
-        }
+        if (sumBody.style.display === "none"){ sumBody.style.display = ""; btnSum.querySelector(".arr").textContent = "▾"; }
+        else { sumBody.style.display = "none"; btnSum.querySelector(".arr").textContent = "▸"; }
       });
     } else if (btnSum){ btnSum.disabled = true; }
     // 归档按钮
