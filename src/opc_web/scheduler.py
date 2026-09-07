@@ -559,6 +559,12 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
         task_s = (task_text or "").replace(chr(10), " ").replace("|", "／")
         # 条目 schema：标题只到任务号；长内容字段（回报摘要 / R 建议）保留原始 md 换行与标记，UI 按 markdown 渲染
         prog = "%d/%d 子任务完成%s，回报与产物已归档入库" % (ok_cnt, total, "" if not fail else "；阻塞 " + ",".join(fail))
+        # R1 汇总：无论例行进展还是待决，都生成（R0 查看/决策都需要全量产出汇总）
+        sum_rel = ""
+        try:
+            sum_rel = work_summary(task_no)      # R1 汇总全部 subagent 产出（代码类附变更与目录树）
+        except Exception:
+            sum_rel = ""
         if _needs_decision(task_text, brief_hay or brief):
             lines_b = ["### 待决 %d｜任务 %s" % (n, task_no)]
             lines_b += _field_lines("任务", task_s[:160])
@@ -570,15 +576,12 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
             ask = decisions or task_s
             lines_b += _field_lines("需要 R0 拍板什么", ask)
             lines_b += ["- **R0 批阅**：待填"]
+            if sum_rel:
+                lines_b += ["- **汇总文件**：" + sum_rel]   # 待决也挂 R1 汇总
             blk = chr(10) + chr(10).join(lines_b) + chr(10)
             section = "## 决策裁决"
         else:
             head = "### 工作 %d｜任务 %s" % (n, task_no)
-            sum_rel = ""
-            try:
-                sum_rel = work_summary(task_no)      # R1 汇总全部 subagent 产出（代码类附变更与目录树）
-            except Exception:
-                sum_rel = ""
             lines_b = [head]
             lines_b += _field_lines("任务", task_s[:160])
             lines_b += _field_lines("进展", prog)
@@ -783,7 +786,7 @@ def task_output(no: str) -> dict:
            "executions": store.executions(no),
            "files": [], "log": ""}
     for d in _wb_role_dirs():
-        for p in sorted(d.glob("*.md")) + sorted((d / "已归档").glob("*.md")):
+        for p in sorted((d / "已归档").glob("*.md")):      # 执行角色产物仅展示已归档文件
             if p.name.endswith("-summary.md"):
                 continue
             text = config.read_text(p)

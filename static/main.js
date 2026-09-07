@@ -806,7 +806,14 @@
           + "请直接 <b>驳回 / 修改</b> 让执行角色补写「现状背景 → 可选方案 → 建议」；或在下框批注里按你的判断给出裁决。</div></div>";
       }
       if (adv){ h0 += sec("R1 的建议", adv); }
+      // R1 汇总报告（待决也展示，默认收起）
+      var _sumRel = null, _taskNo = null;
+      (it.lines || []).forEach(function(ln){ var i3 = ln.indexOf("**汇总文件**"); if (i3 >= 0){ _sumRel = ln.slice(ln.indexOf("：", i3) + 1).trim(); } });
+      var _mmT = /任务[ ]+(T-[0-9A-Za-z-]+)/.exec(it.title || ""); if (_mmT) _taskNo = _mmT[1];
+      h0 += "<div class='doc-sec'><button type='button' class='sec-btn' id='btnSum'><span class='arr'>▸</span> R1 汇总报告" + (_taskNo ? " <em>任务 " + esc(_taskNo) + "</em>" : "") + (_sumRel ? "" : "（无汇总文件）") + "</button>";
+      h0 += "<div id='sumBody' class='sec-body markdown-body to-doc' style='display:none'></div></div>";
       d.innerHTML = h0;
+      (function(){ var bs = $("btnSum"); if (!bs || !_sumRel) return; bs.addEventListener("click", function(){ var sb = $("sumBody"); if (!sb) return; if (sb.style.display === "none"){ sb.style.display = ""; bs.querySelector(".arr").textContent = "▾"; if (!sb.dataset.loaded){ sb.dataset.loaded = "1"; loadInto(sb, _sumRel, "汇总"); } } else { sb.style.display = "none"; bs.querySelector(".arr").textContent = "▸"; } }); })();
       var pp = $("projProg");
       if (pp){ loadProjText(function(t){ if (pp.isConnected) pp.textContent = t; }); }
       $("piyueForm").hidden = false;
