@@ -793,9 +793,9 @@
         return !t || /决策信号|请 ?R0 ?裁决|R0 裁决|驳回|重新派发|修改意见|回报未列出|请展开|请直接批复|读完完整产出/.test(String(t));
       }
       var taskTxt = ("任务" in flds) ? flds["任务"] : "";
-      var askRaw = pick("决策内容") || paras.join("\n") || "";
+      var askRaw = pick("决策内容") || pick("拍板") || pick("决策") || paras.join("\n") || "";
       var ask = blankAsk(askRaw) ? "" : askRaw;
-      var adv = pick("决策建议");
+      var adv = pick("决策建议") || pick("建议");
       function sec(title, md){
         return "<div class='doc-sec'><div class='doc-sec-head'>" + esc(title) + "</div>"
           + "<div class='sec-body markdown-body to-doc'>" + renderMd(md || "") + "</div></div>";
