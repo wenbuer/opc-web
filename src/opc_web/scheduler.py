@@ -539,7 +539,14 @@ def kb_digest(task_no: str) -> dict:
             cand = catdir / (mt if mt.endswith(".md") else mt + ".md")
         cand = cand if (cand is not None and cand.is_file()) else target
         target = cand if cand.is_file() else target
-    target.write_text(body.strip() + "\n", encoding="utf-8")
+    # OKF 知识型标注落盘：front-matter 记录 type（concept/decision/method/data/lesson/problem），
+    # knowledge._strip_front / _strip_okf_frontmatter 读取时会剥离，不影响正文渲染，供后续按知识型细分统计。
+    _kb_types = {"concept", "decision", "method", "data", "lesson", "problem"}
+    _tp = str(d.get("type") or "concept").strip().lower()
+    if _tp not in _kb_types:
+        _tp = "concept"
+    front = "---\ntype: %s\ncreated: %s\n---\n" % (_tp, datetime.date.today().isoformat())
+    target.write_text(front + body.strip() + "\n", encoding="utf-8")
     rel = target.relative_to(config.ROOT).as_posix()
     return {"ok": True, "created": True, "action": action, "rel": rel,
             "msg": ("已合并补充到知识库「%s/%s」" % (cat, target.name)) if action == "merge"
