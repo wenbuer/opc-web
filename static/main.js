@@ -981,25 +981,47 @@
     api("/api/kb-entries").then(function(j){
       if (!j || !j.ok){ g.innerHTML = "<div class='placeholder'>加载失败：" + esc(j && j.msg || "") + "</div>"; return; }
       g.innerHTML = "";
-      var lastTop = null;
-      (j.entries || []).forEach(function(e){
-        // 知识库根直接平铺：根目录本身的分组头已去掉（占位组）；仅真实子目录才渲染 kb-group
-        var t2 = (e.top && e.top !== "[根]") ? e.top : "";
-        if (t2 && t2 !== lastTop){ var gh = document.createElement("div"); gh.className = "kb-group"; gh.textContent = "▸ " + t2; g.appendChild(gh); }
-        lastTop = t2;
-        var c = document.createElement("div");
-        c.className = "kb-card";
-        var ic = t2 ? "▸" : "▪";
-        var mt = "";
-        try { mt = new Date((e.mtime || 0) * 1000).toLocaleDateString(); } catch (err) {}
-        c.innerHTML = "<div class='kb-card-head'><span class='kb-ico'>" + ic + "</span><b>" + esc(e.name) + "</b><em>" + mt + "</em></div>" +
-          "<div class='kb-card-sum'>" + esc(e.head) + "</div>" +
-          "<div class='kb-card-meta'>维护：R1（老板助理）归档 · " + esc(e.rel) + "</div>";
-        c.addEventListener("click", function(){ showKbDoc(e.rel, e.name, mt); });
-        g.appendChild(c);
+      var entries = j.entries || [];
+      if (!entries.length){ g.innerHTML = "<div class='placeholder'>知识库暂无档案 —— 各角色产出经 R1 审核归档后自动出现在这里（见《知识库索引》沉淀建议）</div>"; return; }
+      var groups = {}, order = [];
+      entries.forEach(function(e){
+        var key = (e.top && e.top !== "[根]") ? e.top : "（未分类）";
+        if (!groups[key]){ groups[key] = []; order.push(key); }
+        groups[key].push(e);
       });
-      if (!(j.entries || []).length){ g.innerHTML = "<div class='placeholder'>知识库暂无档案 —— 各角色产出经 R1 审核归档后自动出现在这里（见《知识库索引》沉淀建议）</div>"; }
+      order.forEach(function(top){
+        var items = groups[top];
+        var sec = document.createElement("div");
+        sec.className = "kb-section";
+        var head = document.createElement("div");
+        head.className = "kb-section-head";
+        head.innerHTML = "<span class='kb-chev'>" + KB_CHEV + "</span><b>" + esc(top) + "</b><em>" + items.length + " 篇</em>";
+        var body = document.createElement("div");
+        body.className = "kb-section-body";
+        items.forEach(function(e){ body.appendChild(makeKbCard(e)); });
+        sec.appendChild(head);
+        sec.appendChild(body);
+        head.addEventListener("click", function(){
+          sec.classList.toggle("collapsed");
+          var ch = head.querySelector(".kb-chev");
+          if (ch) ch.classList.toggle("closed");
+        });
+        g.appendChild(sec);
+      });
     }).catch(function(e2){ g.innerHTML = "<div class='placeholder'>异常：" + esc(e2.message) + "</div>"; });
+  }
+
+  var KB_CHEV = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>";
+  function makeKbCard(e){
+    var c = document.createElement("div");
+    c.className = "kb-card";
+    var mt = "";
+    try { mt = new Date((e.mtime || 0) * 1000).toLocaleDateString(); } catch (err) {}
+    c.innerHTML = "<div class='kb-card-head'><span class='kb-ico'>▪</span><b>" + esc(e.name) + "</b><em>" + mt + "</em></div>" +
+      "<div class='kb-card-sum'>" + esc(e.head) + "</div>" +
+      "<div class='kb-card-meta'>维护：R1（老板助理）归档 · " + esc(e.rel) + "</div>";
+    c.addEventListener("click", function(){ showKbDoc(e.rel, e.name, mt); });
+    return c;
   }
 
   function showKbDoc(rel, name, dt){

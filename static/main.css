@@ -412,11 +412,20 @@ main{flex:1;overflow:hidden}
 .rno-file{display:flex;flex-direction:column;gap:2px;padding:6px 8px;margin:4px 0;border:1px solid var(--line2);border-radius:6px;cursor:pointer;background:rgba(2,132,199,.05)}
 /* ===== 知识库：档案卡片（R1 管理 · 全体共同维护） ===== */
 #view-kb.active{display:flex;flex-direction:column}
-.kb-group{grid-column:1/-1;font-size:11px;letter-spacing:2px;color:var(--gold);margin:10px 0 2px;padding:4px 0;border-bottom:1px dashed var(--line2)}
+.kb-section{margin-bottom:14px;border:1px solid var(--line2);border-radius:12px;background:rgba(15,30,50,.03);overflow:hidden}
+.kb-section-head{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;font-size:13px;font-weight:700;color:var(--txt);background:rgba(2,132,199,.05);user-select:none}
+.kb-section-head:hover{background:rgba(2,132,199,.1)}
+.kb-section-head b{color:var(--gold);letter-spacing:.05em}
+.kb-section-head em{margin-left:auto;font-style:normal;font-size:10.5px;color:var(--dim);background:rgba(0,0,0,.06);padding:2px 9px;border-radius:99px}
+.kb-chev{display:inline-flex;flex:0 0 auto;width:16px;height:16px;color:var(--gold);transition:transform .18s}
+.kb-chev svg{width:16px;height:16px}
+.kb-chev.closed{transform:rotate(-90deg)}
+.kb-section-body{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;padding:12px 14px}
+.kb-section.collapsed .kb-section-body{display:none}
 .kb-topbar{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:14px 20px 6px}
 .kb-topbar{font-size:15px;color:var(--gold);letter-spacing:.1em}
 .kb-topbar em{font-size:11px;color:var(--faint);letter-spacing:0}
-.kb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;padding:14px 20px 24px;align-content:start;overflow-y:auto;flex:1;min-height:0}
+.kb-grid{display:block;padding:14px 20px 24px;overflow-y:auto;flex:1;min-height:0}
 .kb-card{background:rgba(15,30,50,.05);border:1px solid var(--line2);border-radius:10px;padding:12px 14px;cursor:pointer;transition:border-color .15s,box-shadow .15s;display:flex;flex-direction:column;gap:8px}
 .kb-card:hover{border-color:var(--gold);box-shadow:0 0 12px rgba(2,132,199,.28)}
 .kb-card-head{display:flex;align-items:center;gap:8px}
