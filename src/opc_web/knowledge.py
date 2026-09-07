@@ -13,6 +13,16 @@ def read_md(rel: str) -> str:
     return config.read_text(p)
 
 
+def _strip_front(text: str) -> str:
+    """剥离顶层 YAML front-matter（--- … ---），让卡片摘要取到正文而不是元数据。"""
+    if text.startswith("---\n") or text.startswith("---\r\n"):
+        for sep in ("\n---\n", "\n---\r\n"):
+            end = text.find(sep, 3)
+            if end > 0:
+                return text[end + len(sep):]
+    return text
+
+
 def latest_daily() -> list:
     """返回《批阅台/每日简报-*.md》列表（按文件名日期降序，无日期兜底按修改时间）。"""
     d = config.BATCH_ROOT
@@ -42,6 +52,7 @@ def kb_entries() -> list:
             t = config.read_text(p)
         except Exception:
             continue
+        t = _strip_front(t)   # 摘要取正文，跳过 front-matter（okf 等档案的元数据不泄漏进卡片）
         body_lines = [ln.strip() for ln in t.split("\n") if ln.strip() and not ln.strip().startswith("#")]
         table_rows = [ln for ln in body_lines if ln.startswith("|")]
         head = []
