@@ -51,12 +51,16 @@ def bootstrap():
     for cat in config.KB_CATEGORIES:
         (config.KB_ROOT / cat).mkdir(parents=True, exist_ok=True)
     from . import templates as _tpl
+    # 员工手册默认入知识库：优先用随包分发的 _seed/员工手册.md（打包场景，内容可随包替换），
+    # 否则回退内置权威文本 handbook_text()。
+    _seed_hb = config.BASE / "_seed" / "员工手册.md"
+    hb = (_seed_hb.read_text(encoding="utf-8") if _seed_hb.is_file() else _tpl.handbook_text())
     seeds = {
         config.LOG_REL: "## 决策日志" + h,
         # 批阅台：空骨架 = 工作内容（例行进展）/ 决策裁决（需 R0 拍板）/ 已批阅归档 三区
         config.PIYUETAI_REL: "## 工作内容" + h + h + "## 决策裁决" + h + h + "## 已批阅归档" + h,
         # 员工手册：全员唯一行为准则（OPC智能体角色架构.md / 知识库索引.md 已移除：不作为知识档案入库）
-        config.HANDBOOK_REL: _tpl.handbook_text(),
+        config.HANDBOOK_REL: hb,
     }
     for rel, text in seeds.items():
         p = config.ROOT / rel

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """入口：python run.py / python -m opc_web / console script 共用。
    python -m opc_web roles list|add  角色管理子命令。"""
+import os
 import sys
 import threading
 import webbrowser
@@ -30,6 +31,11 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == 'roles':
         _roles_cli(sys.argv[2:])
         return
+    # 捆绑分发（PyInstaller 打包）：exe 旁 _dsh/ 内置 dsh 运行时（node + @deepseek-ai/dsh），
+    # 把其加入 PATH，使 shutil.which("dsh") 命中内置 dsh，实现"开箱即用"免装 dsh
+    _dsh = config.BASE / "_dsh"
+    if _dsh.is_dir():
+        os.environ["PATH"] = str(_dsh) + os.pathsep + os.environ.get("PATH", "")
     bootstrap.bootstrap()
     for line in bootstrap.BOOT_LOG:
         print('  · ' + line)
