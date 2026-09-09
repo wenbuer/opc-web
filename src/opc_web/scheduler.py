@@ -658,18 +658,57 @@ def _advice_summary(reps, task_text: str) -> str:
     return (text or "").strip() if text else ""
 
 
+def decision_context(task_text: str, limit: int = 2400) -> str:
+    """从任务文本提取「待决 #N」引用 → 读批阅台对应条目的「决策建议」全文。
+
+    R0 批阅意见往往只有一句（如「先实现A吧」），方案 A 的定义在待决条目的
+    「决策建议」栏里 —— 拆解器与执行角色都必须拿到它，否则只能望文生义
+    （T-006 事故：拆解器在不知道方案 A 是什么的情况下瞎编了子任务）。
+    找不到引用 / 条目 / 字段返回 ""。"""
+    m = re.search(r"待决\s*#?\s*(\d+)", task_text or "")
+    if not m:
+        return ""
+    try:
+        p = config.ROOT / config.PIYUETAI_REL
+        text = config.read_text(p) if p.exists() else ""
+    except Exception:
+        return ""
+    mm = re.search(r"^###\s+待决\s+%s\s*[｜|][^\n]*$" % m.group(1), text, re.M)
+    if not mm:
+        return ""
+    seg = text[mm.end():]
+    nxt = re.search(r"^###\s", seg, re.M)
+    if nxt:
+        seg = seg[:nxt.start()]
+    vals, grab = [], False
+    for ln in seg.split("\n"):
+        if ln.startswith("- **决策建议**："):
+            grab = True
+            vals.append(ln[len("- **决策建议**："):].strip())
+            continue
+        if grab:
+            if ln.startswith("  ") and ln.strip():
+                vals.append(ln.strip())
+            elif ln.startswith(("- **", "### ")):
+                break
+    out = "\n".join(v for v in vals if v).strip()
+    return out[:limit] if out else ""
+
+
 def _r1_respond(item: str, judge: str, opinion: str) -> dict:
     """R0 批阅（批准/驳回/修改）后，R1 自己判断是否需要重新派发任务给员工执行。
 
     返回 {"dispatch": bool, "task": str}；判不了返回 None（调用方回退规则）。"""
     prompt = (
         "你是老板助理 R1。R0 对批阅台待决 #%s 的裁决：%s。批注意见：%s。\n"
+        "该待决条目的「决策建议」全文如下（R0 批阅意见往往只是简称，方案定义以此为准）：\n%s\n"
         "请判断是否需要**新派发任务给员工执行**：\n"
         "- 批准：通常需派发执行该决策（落地/上线等）；若只是记录性确认、无需新执行，则不派发。\n"
         "- 修改：通常需派发让执行角色按批注修改后重报。\n"
         "- 驳回：一般=否掉该项，无需再派发。\n"
+        "生成 task 文本时必须把方案的具体边界写进去（不得只写「实现方案A」这类简称）。\n"
         "输出 JSON：{\"dispatch\": true|false, \"task\": \"<若要派发的任务文本，不派发则留空>\"}。只输出 JSON。"
-        % (item, judge, opinion))
+        % (item, judge, opinion, decision_context("待决 #%s" % item) or "（条目未附决策建议）"))
     text = _headless_text(prompt, 300)
     if not text:
         return None

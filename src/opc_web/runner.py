@@ -216,8 +216,9 @@ def read_session_usage(since: float = 0.0) -> dict:
 
     if since:
         now = [d for d in dirs if _ztime(d) >= since]     # 本次 headless 会话必然在 since 之后落盘
-        if now:
-            dirs = now
+        if not now:
+            return None        # 本次调用没有留下会话日志（如 headless 秒退）—— 宁缺勿错，
+        dirs = now             #   绝不拿旧会话的 usage 冒充（T-006：R3 秒退未落日志，读到了拆解会话的 token）
     try:
         latest = max(dirs, key=_ztime)
     except OSError:

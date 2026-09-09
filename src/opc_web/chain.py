@@ -130,7 +130,8 @@ def decompose(task_no, task_text):
               "只有确实需要多个职能接力/分工、单角色覆盖不了时才拆多个（会按顺序逐个执行，请拆成可独立交付的子任务）—— 宁少勿多，总数不超过 %d 个。"
               "只输出派发单表格行，每行格式：| %s | 子任务描述 | R编号 | 期望产出 | 待派 |；"
               "示例：| %s | 设计产品落地页 | R6 | 界面设计稿 | 待派 |。"
-              "不要输出任何解释、提问或多余文字。任务：%s" % (max_subs, task_no, task_no, task_text))
+              "不要输出任何解释、提问或多余文字。任务：%s%s"
+              % (max_subs, task_no, task_no, task_text, _decision_block(task_text)))
     try:
         text = runner.run_headless_sync(prompt, config.tune("decomposeTimeout"))
     except Exception:
@@ -161,6 +162,29 @@ def prepare_files(sub_no, task_no, sub, spec):
         "createdAt": datetime.datetime.now().isoformat(timespec="seconds"),
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return body, meta
+
+
+def _meaningful_reply(text: str, min_len: int = 60) -> str:
+    """headless 回报有效性检查：U+FFFD（替换符）占比过高或实质内容过短 → 判为无效，返回空串。
+
+    headless 瞬时故障往往只吐一句错误/说明文本；stdout 解码失败时更会固化成一串
+    U+FFFD —— 不校验就会以「完成」入库（T-006 事故：一句乱码被当成完成，零产出归档）。"""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    bad = t.count("\ufffd")
+    if bad * 20 >= len(t):          # >5% 替换符 → 解码已坏，原文不可信
+        return ""
+    return t if len(t) >= min_len else ""
+
+
+def _decision_block(task_text: str) -> str:
+    """把待决条目的「决策建议」全文附进 prompt（拆解器与执行角色都需要）。
+
+    R0 批阅意见常是简称（「先实现A吧」），方案的真实边界在待决条目里 ——
+    不注入就只能望文生义（T-006 事故：拆解器不知道方案 A 是什么，瞎编了子任务）。"""
+    ctx = sch.decision_context(task_text)
+    return ("\n\n【R0 已拍板的决策上下文（任务文本里的「方案A/B/C」等简称以此为准）】\n%s" % ctx) if ctx else ""
 
 
 def execute(task_no, task_text):
@@ -207,7 +231,7 @@ def execute(task_no, task_text):
             runner.emit({"type": "step/start", "data": {"turn": i + 2, "step": 1}})
             runner.emit({"type": "assistant/chunk",
                          "data": {"text": "▶ 自动执行 %s（%s）：%s —— headless 直跑" % (sub_no, s["role"], s["sub"][:70])}})
-            spec = agent.subtask_spec(s["role"], "执行子任务：%s。期望产出：%s。" % (s["sub"], s["expect"]),
+            spec = agent.subtask_spec(s["role"], "执行子任务：%s。期望产出：%s。%s" % (s["sub"], s["expect"], _decision_block(task_text)),
                                       expect=s["expect"], sub_no=sub_no)
             prepare_files(sub_no, task_no, s, spec)
             body_p = config.ROOT / spec["output"]
@@ -220,6 +244,8 @@ def execute(task_no, task_text):
                 text, usage = "", None
             if not _alive(task_no):          # 执行期间被删除 → 丢弃本次产出，直接退出
                 return
+            raw = (text or "").strip()
+            text = _meaningful_reply(text)   # 产出校验：过短/乱码 → 不予采信（T-006 事故教训）
             if text:
                 with open(body_p, "a", encoding="utf-8") as fh:          # 完成回报（唯一的子任务产出文件）
                     fh.write("\n\n## 完成回报（控制台自动执行 %s）\n\n%s\n" % (sub_no, text))
@@ -240,22 +266,24 @@ def execute(task_no, task_text):
                 runner.emit({"type": "assistant/chunk",
                              "data": {"text": "✔ %s（%s）执行完成，产出回报已写入：%s（归档时改名 output）" % (sub_no, s["role"], spec["output"])}})
             else:
+                reason = (("headless 回报无效：原始输出 %d 字符，过短或含乱码（疑似瞬时故障），不予采信" % len(raw))
+                          if raw else "headless 无输出")
                 try:
                     with open(body_p, "a", encoding="utf-8") as fh:
-                        fh.write("\n\n## 执行结果\n\n【本子任务 headless 执行无输出，置阻塞】\n")
+                        fh.write("\n\n## 执行结果\n\n【%s，置阻塞】\n" % reason)
                     meta = json.loads(meta_p.read_text(encoding="utf-8"))
                     meta["status"] = "阻塞"
                     meta_p.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 except Exception:
                     pass
-                store.settle_execution(sub_no, "阻塞", "headless 无输出")
+                store.settle_execution(sub_no, "阻塞", reason[:40])
                 fail.append(sub_no)
                 runner.emit({"type": "assistant/chunk",
-                             "data": {"text": "✗ %s 执行无输出（已置阻塞，可删除或点名重试）" % sub_no}})
+                             "data": {"text": "✗ %s %s（已置阻塞，可点名重试）" % (sub_no, reason)}})
             agent.log_schedule("自动执行 %s" % sub_no,
                                "角色 %s %s 执行子任务：%s\n产出文件：%s\n结果：%s"
                                % (s["role"], spec["roleName"], s["sub"], spec["output"],
-                                  "完成" if text else "阻塞（headless 无输出）"))
+                                  "完成" if text else "阻塞"))
             runner.emit({"type": "step/end", "data": {"turn": i + 2, "step": 1,
                         "reason": {"kind": "完成" if text else "阻塞"}}})
         # 归档入库：已完成/阻塞子任务回报落库、正文与元数据移入 已归档/（幂等，会顺带做任务级回填）
