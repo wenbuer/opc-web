@@ -279,7 +279,7 @@ def execute(task_no, task_text):
         except Exception:
             pass
         try:
-            sch.build_daily_report()
+            sch.build_daily_report(task_no)
         except Exception:
             pass
 

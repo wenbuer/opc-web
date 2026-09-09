@@ -639,7 +639,7 @@
       d.dataset.n = it.n;
       var prev = "";
       (it.lines || []).forEach(function(ln){
-        if (ln.indexOf("背景") >= 0 || ln.indexOf("决策内容") >= 0){ prev += ln.split("：").pop() + " "; }
+        if (ln.indexOf("背景") >= 0 || ln.indexOf("决策内容") >= 0 || ln.indexOf("决策建议") >= 0){ prev += ln.split("：").pop() + " "; }
       });
       var _pj = (it.lines || []).some(function(ln){ var m = /^-\s*\*\*R0 批阅\*\*\s*[:：]\s*(.+)$/.exec(ln); return m && m[1].trim() && m[1].trim() !== "待填"; });
       d.innerHTML = "<span class='name'>" + esc(it.title) + "</span>" + (_pj ? "<span class='stamp'>已裁决</span>" : "")
@@ -758,13 +758,14 @@
       d.className = "dossier pending-lean";
       var rd = splitPiyueLines(it.lines);
       function pickA(sub){ for (var k in rd.flds){ if (k.indexOf(sub) >= 0) return rd.flds[k]; } return ""; }
-      var askA = pickA("拍板") || pickA("决策") || rd.paras.join("\n") || "";
+      var advA = pickA("决策建议");
+      var askA = advA || pickA("拍板") || pickA("决策") || rd.paras.join("\n") || "";
       var judgeA = (rd.flds["R0 批阅"] || "").trim();
       var execA = (rd.flds["R1 执行"] || "").trim();
       var verbA = judgeA.indexOf("驳回") >= 0 ? "驳回" : (judgeA.indexOf("批准") >= 0 || judgeA.indexOf("同意") >= 0 ? "批准" : "修改");
       var secA = function(t, inner){ return "<div class='doc-sec'><div class='doc-sec-head'>" + esc(t) + "</div>" + inner + "</div>"; };
       var hA = "<div class='piyue-head'><h1><span class='n'>决策 #" + it.n + "</span> " + esc(it.title) + "</h1><div class='piyue-head-ops'><span class='arch-badge dec'>✓ 决策已批</span></div></div>";
-      hA += secA("决策内容", askA ? "<div class='markdown-body to-doc'>" + renderMd(askA) + "</div>" : "<span class='empty'>（原文未写明内容）</span>");
+      hA += secA(advA ? "决策建议" : "决策内容", askA ? "<div class='markdown-body to-doc'>" + renderMd(askA) + "</div>" : "<span class='empty'>（原文未写明内容）</span>");
       var vCls = verbA === "批准" ? "v-ok" : (verbA === "驳回" ? "v-rej" : "v-mod");
       hA += secA("R0 决策", "<div class='verdict " + vCls + "'><b>" + verbA + "</b><span>" + esc(judgeA || "（无批语）") + "</span></div>");
       var mT = /(T-\d+)/.exec(execA || "");
@@ -793,9 +794,13 @@
         return !t || /决策信号|请 ?R0 ?裁决|R0 裁决|驳回|重新派发|修改意见|回报未列出|请展开|请直接批复|读完完整产出/.test(String(t));
       }
       var taskTxt = ("任务" in flds) ? flds["任务"] : "";
-      var askRaw = pick("决策内容") || pick("拍板") || pick("决策") || paras.join("\n") || "";
+      /* 字段合并兼容：新条目只有「决策建议」一栏（决策点/背景/建议/拍板后动作同源），
+         旧条目仍有「决策内容」+「决策建议」两栏 —— 旧两栏照旧分节，新单栏只出一节 */
+      var hasAskField = !!pick("决策内容");
+      var adv = pick("决策建议") || pick("建议") || "";
+      var askRaw = hasAskField ? (pick("决策内容") || pick("拍板") || pick("决策") || paras.join("\n") || "")
+                               : (adv || paras.join("\n") || "");
       var ask = blankAsk(askRaw) ? "" : askRaw;
-      var adv = pick("决策建议") || pick("建议");
       function sec(title, md){
         return "<div class='doc-sec'><div class='doc-sec-head'>" + esc(title) + "</div>"
           + "<div class='sec-body markdown-body to-doc'>" + renderMd(md || "") + "</div></div>";
@@ -803,14 +808,17 @@
       /* 当“需要拍板什么”就是任务原话（回报没另写）时不重复展示 dec-sub */
       if (taskTxt && (!ask || ask.indexOf(taskTxt) !== 0)){ h0 += "<div class='dec-sub'>任务：" + esc(taskTxt) + "</div>"; }
       h0 += "<div class='doc-sec'><div class='doc-sec-head'>项目当前进展</div><div id='projProg' class='proj-line'>计算中…</div></div>";
-      if (ask){
+      if (ask && (!adv || ask !== adv)){
         h0 += sec("决策内容", ask);
-      } else {
+      }
+      if (adv){
+        h0 += sec("决策建议", adv);
+      }
+      if (!ask && !adv){
         h0 += "<div class='doc-sec'><div class='doc-sec-head'>需要决策什么</div>"
           + "<div class='noask'>这条回报只标了「需拍板」却没写出具体要拍板的内容（只写了机制说明，读不出问题）。"
           + "请直接 <b>驳回 / 修改</b> 让执行角色补写「现状背景 → 可选方案 → 建议」；或在下框批注里按你的判断给出裁决。</div></div>";
       }
-      if (adv){ h0 += sec("决策建议", adv); }
       // R1 汇总报告（待决也展示，默认收起）
       var _sumRel = null, _taskNo = null;
       (it.lines || []).forEach(function(ln){ var i3 = ln.indexOf("**汇总文件**"); if (i3 >= 0){ _sumRel = ln.slice(ln.indexOf("：", i3) + 1).trim(); } });
