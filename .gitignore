@@ -15,7 +15,6 @@ opc-config.json
 知识库/
 
 # ===== 临时文件 =====
-tests/
 *.log
 .DS_Store
 Thumbs.db
