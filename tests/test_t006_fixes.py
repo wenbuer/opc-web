@@ -43,15 +43,14 @@ class TestDecisionContext(unittest.TestCase):
         shutil.rmtree(root, ignore_errors=True)
         (root / "批阅台").mkdir(parents=True)
         self._old_root = config.ROOT
+        self._tmp_root = root                      # 直接保存引用：tearDown 不经 config.ROOT
         config.ROOT = root
         (root / "批阅台" / "批阅台.md").write_text(PIYUETAI, encoding="utf-8")
 
     def tearDown(self):
-        config.ROOT = self._old_root
-        shutil.rmtree(self._root(), ignore_errors=True)
-
-    def _root(self):
-        return config.ROOT
+        shutil.rmtree(self._tmp_root, ignore_errors=True)   # 先删测试目录
+        config.ROOT = self._old_root                        # 再恢复真实 ROOT——
+        # （事故教训：原写法先恢复 ROOT 再 rmtree(config.ROOT)，删的是真实 keeptalk！）
 
     def test_extracts_advice_for_referenced_item(self):
         ctx = scheduler.decision_context("执行 R0 决策（批阅台 待决 #6）：先实现A吧")
