@@ -12,6 +12,7 @@ v1.15：任务/子任务/回报三张表由 SQLite 承载，md 只留正文与�
 import datetime
 import json
 import re
+import subprocess
 import threading
 import time
 
@@ -83,15 +84,42 @@ def schedule_once():
         pass
 
 
+def _git_snapshot(reason: str):
+    """keeptalk 运行数据自动 git 快照：无变更 / 非仓库 / git 不可用 → 静默跳过。
+
+    09-09 两次数据误删事故（15:06、16:08）的教训：运行数据必须随业务变化
+    持续入库，误删才能无损找回——git 快照是唯一可靠的兜底。"""
+    try:
+        if not (config.ROOT / ".git").is_dir():
+            return
+        def _run(args):
+            return subprocess.run(["git", "-C", str(config.ROOT)] + args,
+                                  capture_output=True, timeout=60)
+        if _run(["add", "-A"]).returncode != 0:
+            return
+        if not _run(["status", "--short"]).stdout.strip():
+            return                       # 无变更不空提交
+        _run(["commit", "-m", "自动快照: " + reason])
+    except Exception:
+        pass
+
+
+_SNAPSHOT_EVERY = 5              # auto_pilot 每 N 轮做一次数据快照（pollSeconds 默认 8 秒 ≈ 40 秒）
+
+
 def auto_pilot():
-    """常驻调度守护：轮询台账 + 定时任务触发检查 + 自动归档；
+    """常驻调度守护：轮询台账 + 定时任务触发检查 + 自动归档 + 数据自动快照；
     有待派任务即启动自动执行链，子任务完结后自动归档（无需手动点「归档」）。
     轮询间隔见 opc-config.json 的 pollSeconds（默认 8 秒，手改即时生效）。"""
+    _tick = 0
     while True:
         time.sleep(config.tune("pollSeconds"))
         schedule_once()
         scan_once()
         archive_once()
+        _tick = (_tick + 1) % _SNAPSHOT_EVERY
+        if _tick == 0:
+            _git_snapshot("调度轮询")
 
 
 def _title_of(text: str, fallback: str) -> str:
@@ -173,6 +201,7 @@ def archive_once():
                     continue
                 if st in ("完成", "部分", "阻塞"):
                     r1_archive()
+                    _git_snapshot("归档入库")
                     return
     except Exception:
         pass

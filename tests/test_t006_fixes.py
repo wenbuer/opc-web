@@ -114,6 +114,40 @@ class TestDshCommand(unittest.TestCase):
             self.assertEqual(runner._dsh_command(), ["dsh"])
 
 
+class TestGitSnapshot(unittest.TestCase):
+    """_git_snapshot：非仓库静默；有变更才 commit；无变更不空提交。"""
+
+    def _run_with(self, root_exists, status_out):
+        import tempfile
+        from unittest import mock
+        calls = []
+        def fake_run(args, capture_output=True, timeout=60):
+            calls.append(args)
+            r = mock.MagicMock()
+            r.returncode = 0
+            r.stdout = status_out if "status" in args else b""
+            return r
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            if root_exists:
+                (root / ".git").mkdir()
+            with mock.patch("opc_web.config.ROOT", root), \
+                 mock.patch("opc_web.scheduler.subprocess.run", side_effect=fake_run):
+                scheduler._git_snapshot("测试")
+        return calls
+
+    def test_non_repo_silent(self):
+        self.assertEqual(self._run_with(root_exists=False, status_out=b""), [])
+
+    def test_commits_when_changes(self):
+        calls = self._run_with(root_exists=True, status_out=b" M x.md")
+        self.assertTrue(any("commit" in c for c in calls))
+
+    def test_no_empty_commit(self):
+        calls = self._run_with(root_exists=True, status_out=b"")
+        self.assertFalse(any("commit" in c for c in calls))
+
+
 class TestSessionUsageNoBorrow(unittest.TestCase):
     """read_session_usage：since 之后没有新会话 → None，不拿旧会话的用量冒充。"""
 
