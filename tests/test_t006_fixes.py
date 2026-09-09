@@ -90,6 +90,30 @@ class TestMeaningfulReply(unittest.TestCase):
         self.assertEqual(chain._meaningful_reply(body), body)
 
 
+class TestDshCommand(unittest.TestCase):
+    """_dsh_command：优先 node 直跑 bin.js（绕过 dsh.cmd shim 的 8191 字符 cmd.exe 限制）。"""
+
+    def test_prefers_node_with_bin_js(self):
+        import tempfile
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            pkg = Path(td) / "node_modules" / "@deepseek-ai" / "dsh" / "lib"
+            pkg.mkdir(parents=True)
+            js = pkg / "bin.js"
+            js.write_text("//stub", encoding="utf-8")
+            with mock.patch("opc_web.runner.shutil.which",
+                            side_effect=lambda n: str(Path(td) / (n + ".cmd")) if n in ("dsh", "node") else None):
+                cmd = runner._dsh_command()
+            self.assertEqual(cmd[0], str(Path(td) / "node.cmd"))   # node 可执行
+            self.assertEqual(cmd[1], str(js))                      # bin.js
+            self.assertEqual(cmd[2:], [])
+
+    def test_falls_back_to_dsh(self):
+        from unittest import mock
+        with mock.patch("opc_web.runner.shutil.which", return_value=None):
+            self.assertEqual(runner._dsh_command(), ["dsh"])
+
+
 class TestSessionUsageNoBorrow(unittest.TestCase):
     """read_session_usage：since 之后没有新会话 → None，不拿旧会话的用量冒充。"""
 

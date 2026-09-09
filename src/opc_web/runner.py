@@ -52,6 +52,22 @@ def events(since: int = 0) -> dict:
                 "events": [e for e in _ACTIVE["events"] if e["seq"] > since]}
 
 
+def _dsh_command() -> list:
+    """dsh 启动命令：优先 node 直跑包内 bin.js。
+
+    npm 的 dsh.cmd shim 经 cmd.exe 中转，命令行上限仅 8191 字符 —— 长 prompt
+    （角色卡全文 + 决策上下文轻松过万）会被系统以「命令行太长。」秒杀，
+    GBK 错误文本再被 stdout 解码固化成一串乱码（T-006 两次秒退的真凶）。
+    node 直跑 lib/bin.js 走 CreateProcessW 原生上限 32767 字符，余量充足。"""
+    exe = shutil.which("dsh")
+    if exe:
+        js = Path(exe).parent / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
+        node = shutil.which("node")
+        if js.is_file() and node:
+            return [node, str(js)]
+    return ["dsh"]
+
+
 def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
     """启动 dsh headless 子进程并收尾，返回其原始 stdout（stderr 合并）字节。
 
@@ -60,14 +76,14 @@ def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
     所以「有输出」并不代表即将结束 —— 若生成过长或挂死，无限等待会卡死调度（SCHED_STATE.busy 永不回 False）。
     故统一：无输出超 timeout 强杀；有输出后再给 timeout*3 的硬上限，超过也强杀（判为阻塞）。
     spawn 失败返回 b""。"""
-    exe = shutil.which("dsh") or "dsh"
+    base = _dsh_command()
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     si = subprocess.STARTUPINFO() if hasattr(subprocess, "STARTUPINFO") else None
     if si is not None:
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         si.wShowWindow = 0
     try:
-        p = subprocess.Popen([exe, "--profile", "headless"] + argv,
+        p = subprocess.Popen(base + ["--profile", "headless"] + argv,
                              cwd=str(config.ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                              creationflags=flags, startupinfo=si, env=_child_env())
     except Exception:
