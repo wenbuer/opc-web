@@ -250,11 +250,15 @@ main{flex:1;overflow:hidden}
 .overview-bar{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch;padding:12px 20px 0;flex:none}
 .ov-item{flex:1;min-width:120px;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:11px;color:var(--dim)}
 .ov-item b{display:block;font-size:20px;font-weight:700;color:var(--gold);margin-top:3px}
-/* ===== 首页第三列：项目进度 ===== */
+/* ===== 首页第三列：项目进度 + 公共项目区（文件树） ===== */
 .prog-panel{display:flex;flex-direction:column;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-y:auto}
 .prog-body{display:flex;flex-direction:column;gap:1px}
 .hp-sep{margin:12px 0 6px;font-size:10px;letter-spacing:.12em;color:var(--gold);border-bottom:1px dashed var(--line2);padding-bottom:3px}
 .hp-pg{margin:9px 0}
+/* 公共项目区挪进第三列后：去掉自带外框与固定高度，跟随面板滚动；缩进收窄以适配窄列 */
+.prog-panel .proj-shared-list{max-height:none;overflow:visible;margin-top:14px;padding:12px 0 0;border-top:1px dashed var(--line2);scrollbar-width:auto}
+.prog-panel .proj-shared-list .proj-file-item,.prog-panel .pf-dir{padding-left:6px}
+.prog-panel .proj-shared-list .pf-dir .pf-name,.prog-panel .proj-shared-list .wsi-name{font-size:11px}
 .hp-pg-head{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim)}
 .hp-pg-head b{color:var(--txt);font-size:12px}
 .hp-pg-head em{font-style:normal;font-size:10px;color:var(--faint)}
@@ -1416,16 +1420,15 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .rc-tags i{font-style:normal;font-size:9px;padding:1px 7px;border-radius:99px;border:1px solid var(--line2);color:var(--dim);background:rgba(2,132,199,.06);letter-spacing:.5px}
 :root[data-theme="dark"] .rc-tags i{background:rgba(232,183,61,.08);color:var(--gold)}
 
-/* ===== 公共项目区（项目/：工程可写 · 全员只读） ===== */
-.proj-shared{margin-bottom:10px;border:1px dashed var(--line2);border-radius:8px;padding:6px 8px;background:rgba(2,132,199,.05)}
+/* ===== 公共项目区（项目/：工程可写 · 全员只读）——现在挂在首页第三列，容器样式见 .prog-panel 段 ===== */
 .proj-shared-head{font-size:11px;font-weight:700;color:var(--gold);display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
 .proj-shared-head em{font-style:normal;font-size:9.5px;color:var(--dim);font-weight:400}
 .proj-shared-note{font-size:10px;color:var(--dim);margin-bottom:4px}
 .proj-shared-list .proj-file-item{display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:6px;cursor:pointer;font-size:11px;color:var(--txt)}
 .proj-shared-list .proj-file-item:hover{background:rgba(2,132,199,.12)}
 .proj-shared-list .proj-file-item em{margin-left:auto;font-style:normal;font-size:9.5px;color:var(--faint)}
-/* 公共项目区：固定高度 + 滚动条（文件多时不再把面板撑长）；目录树节点 */
-.proj-shared-list{max-height:240px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding-right:2px}
+/* 公共项目区文件树（首页第三列里由 .prog-panel .proj-shared-list 接管高度与滚动） */
+.proj-shared-list{overscroll-behavior:contain;padding-right:2px}
 .proj-shared-list::-webkit-scrollbar{width:6px}
 .proj-shared-list::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
 .proj-shared-list::-webkit-scrollbar-track{background:transparent}
@@ -1448,7 +1451,6 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .ws-fs-exit:hover{background:rgba(0,0,0,.72);border-color:#fff}
 .ws-fs-exit:active{transform:scale(.95)}
 .ws-fs-exit svg{display:block}
-:root[data-theme="dark"] .proj-shared{background:rgba(232,183,61,.05)}
 :root[data-theme="dark"] .proj-shared-list .proj-file-item:hover{background:rgba(232,183,61,.1)}
 
 

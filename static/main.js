@@ -55,6 +55,7 @@
       if (!j || !j.ok) return;
       renderProg(j.progress || {});
     }).catch(function(){});
+    loadProjectShared();      // 公共项目区（文件树）也挂在首页第三列
   }
   function renderProg(p){
     var box = $("progBody"); if (!box) return;
@@ -69,11 +70,6 @@
       + "<div class='hp-facts'><span>项目文件 <b>" + (p.projFiles || 0) + "</b></span>"
       + "<span>知识库 <b>" + (p.kbEntries || 0) + "</b></span>"
       + "<span>每日简报 <b>" + (p.dailyReports || 0) + "</b></span></div>";
-    if ((p.recent || []).length){
-      h += "<div class='hp-sep'>最近完成</div>" + p.recent.map(function(r){
-        return "<div class='hp-done'><b>" + esc(r.no || "") + "</b><em title='" + esc(r.title || "") + "'>" + esc(r.title || "") + "</em></div>";
-      }).join("");
-    }
     box.innerHTML = h;
   }
   function loadHome(){
@@ -1716,7 +1712,6 @@
     });
   }
   function loadWsFiles(){
-    loadProjectShared();
     wsRole = ""; wsTask = "";
     var rs = $("wsRoleSel"), ts = $("wsTaskSel");
     if (rs) rs.innerHTML = "<option value=''>全部角色</option>";
