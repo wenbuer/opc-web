@@ -303,7 +303,8 @@
       });
       if (!g){ if (fb) fb.innerHTML = "<div class='placeholder'>该角色暂无已落盘的 headless 产出（执行中或为空）</div>"; return; }
       fb.innerHTML = "";
-      var allFiles = g.files || [];
+      // 后端按文件名排序，这里按修改时间倒序，取到的才是「最近」的三个
+      var allFiles = (g.files || []).slice().sort(function(a, b){ return (b.mtime || 0) - (a.mtime || 0); });
       if (allFiles.length > 3){
         /* 面板内只留最近 3 个，其余去「项目文件」按角色看 */
         var more = document.createElement("button");
