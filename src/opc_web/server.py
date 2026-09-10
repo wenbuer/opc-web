@@ -243,7 +243,7 @@ class Handler(BaseHTTPRequestHandler):
             ctype = "text/css; charset=utf-8" if rel.endswith(".css") else "text/javascript; charset=utf-8"
             self._file(config.STATIC / rel, ctype)
         elif url == "/api/kb-entries":
-            self._ok(lambda: {"ok": True, "manager": "老板助理（枢纽）R1",
+            self._ok(lambda: {"ok": True, "manager": "老板助理R1",
                               "entries": knowledge.kb_entries()})
         elif url == "/api/md":
             self._ok(self._get_md, err=400)

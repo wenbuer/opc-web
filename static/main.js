@@ -1046,7 +1046,7 @@
     if (!g || !d) return;
     g.style.display = "none"; d.style.display = "";
     d.innerHTML = "<div class='back-bar'><a href='javascript:void(0)' id='kbBack'>← 返回档案列表</a></div>" +
-      "<div class='file-title'>" + esc(name) + " ｜ 知识库档案 · 管理员 老板助理（枢纽）R1 · 更新 " + esc(dt || "") + "</div>" +
+      "<div class='file-title'>" + esc(name) + " ｜ 知识库档案 · 管理员 老板助理R1 · 更新 " + esc(dt || "") + "</div>" +
       "<div class='markdown-body'><div class='placeholder'>加载中…</div></div>";
     api("/api/md?rel=" + encodeURIComponent(rel)).then(function(j){
       var b = d.querySelector(".markdown-body");

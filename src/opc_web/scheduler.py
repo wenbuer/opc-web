@@ -379,7 +379,7 @@ def _decision_items(reps: list) -> str:
 
 
 def work_summary(task_no: str) -> str:
-    """R1 汇总任务全部 subagent 产出 →《工作区/老板助理（枢纽）/T-xxx-工作汇总.md》。
+    """R1 汇总任务全部 subagent 产出 →《工作区/老板助理/T-xxx-工作汇总.md》。
 
     内容：各角色工作与产出全文；代码类工作附「改动/产出文件 + 当前目录结构」。
     返回 rel（供工作内容条目挂载，UI 直接查看）；失败返回 None。"""
