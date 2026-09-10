@@ -132,6 +132,10 @@ LOG_FILE = ROOT / SCHED_LOG_REL
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
+
+# 执行引擎：谁在执行角色任务（engines/ 包）。缺省 dsh；改这里或环境变量 OPC_ENGINE 即可换引擎。
+# 取值必须是 engines.registry 里已注册的名字——写错会抛 EngineError，不静默回退（防配置错误被吞）。
+ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or "dsh")
 # 首页「今日用量」的估算单价（元 / 百万 token）。默认值只是占位，按你实际模型价格改：
 # 环境变量 OPC_TOKEN_PRICE_IN / OPC_TOKEN_PRICE_OUT（或 opc-config.json 的 priceIn/priceOut）。
 TOKEN_PRICE_IN = float(os.environ.get("OPC_TOKEN_PRICE_IN") or _CFG.get("priceIn") or 1.0)

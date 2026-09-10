@@ -295,8 +295,9 @@ def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
 
 
 def run_headless_sync(task_text: str, timeout: float = 600) -> str:
-    """同步直跑 dsh headless（最终文本模式），返回 stdout。"""
-    return _spawn_headless([task_text], timeout).decode("utf-8", "replace").strip()
+    """同步直跑一次（最终文本模式），返回文本。走配置的执行引擎（默认 dsh）。"""
+    from .engines import get_engine
+    return get_engine().run(task_text, timeout=timeout).text
 
 
 def _decode_stdout(data: bytes) -> str:
@@ -398,22 +399,37 @@ def read_session_usage(since: float = 0.0, session_dir=None) -> dict:
     return _usage_from_session(latest)
 
 
-def run_headless_task(task_text: str, timeout: float = 600, act: str = ""):
-    """headless 最终文本模式：返回 (最终文本, 用量 dict|None)。
+def _run_prompt_dsh(task_text: str, timeout: float, act: str = ""):
+    """dsh 引擎的底层实现（阶段 1 暂寄本模块，阶段 2 搬入 engines/dsh.py）。
 
-    dsh 0.1.1-rc.2 的 headless profile 不再提供 --events-jsonl；用量改从 DSH
-    持久化的会话日志（~/.dsh/sessions/<cwd>/session-<uuid>/session.jsonl.zstd）抽取，
-    语义同 dsh-tokenledger（assistant/message.data.usage）。无日志或无 zstandard → usage None。
-    act=子任务号时把运行中 headless 的 pid 注册到 _ACTIVE_SPAWN，供删除任务时 kill_spawn 终止。
-    base=下次调用 read_session_usage 的 since 锚点（当前时刻，早于本次 headless 会话落盘）。"""
+    返回 (最终文本, 用量 dict|None, 会话标识)。headless 只在结束时打印 final 文本；
+    用量从 DSH 会话日志（~/.dsh/sessions/<cwd>/session-<uuid>/session.jsonl.zstd）抽取，
+    会话由 _watch_session 三重校验认领，避免并发下认领到别的会话。"""
     base = time.time()
     text = _decode_stdout(_spawn_headless([task_text], timeout, act)).strip()
     with _EXEC_LOCK:
         claimed = _LAST_SESSION.pop(act, None) if act else None
-    return text, read_session_usage(base, claimed)
+    sess = Path(claimed).name[-12:] if claimed else ""
+    return text, read_session_usage(base, claimed), sess
+
+
+def run_headless_task(task_text: str, timeout: float = 600, act: str = ""):
+    """headless 最终文本模式：返回 (最终文本, 用量 dict|None)。走配置的执行引擎。
+
+    解耦后本函数不再直接碰 dsh：由 engines.get_engine() 选实现（默认 DshEngine）。
+    签名与语义保持不变，chain / scheduler / server 无需改动。"""
+    from .engines import get_engine
+    res = get_engine().run(task_text, timeout=timeout, act=act)
+    return res.text, res.usage
 
 
 def kill_spawn(act: str) -> bool:
+    """终止 act 对应的运行（删除任务前调用）。走配置的执行引擎。"""
+    from .engines import get_engine
+    return get_engine().kill(act)
+
+
+def _kill_spawn(act: str) -> bool:
     """终止由 act 对应的运行中 headless 子进程（连同其子进程树）。
 
     删除任务前调用：若有执行中/待派/已派子任务，先 taskkill 掉 headless，再删任务，
