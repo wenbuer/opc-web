@@ -320,7 +320,13 @@
         fd.className = "rno-cap";
         fd.innerHTML = "<span class='rc-name'>" + esc(f.name) + "</span>";
         fd.title = String(f.head || "").replace(/\s+/g, " ").trim();
-        fd.addEventListener("click", function(){ showRoleFile(f.rel, code); });
+        /* 点击产物 → 切到「项目文件」、预设该角色筛选，并直接打开这个文件 */
+        fd.addEventListener("click", function(){
+          pendingWsRole = roleName(code);
+          pendingWsFile = f.rel;
+          var tab = document.querySelector('.tab[data-view="wsfiles"]');
+          if (tab) tab.click(); else loadWsFiles();
+        });
         fb.appendChild(fd);
       });
     }).catch(function(e){ if (fb) fb.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
@@ -1604,7 +1610,7 @@
   }
 
   /* ================= 04 项目文件：各角色工作区（按角色/任务筛选；md 渲染、文本 txt 查看、不可读不放行） ================= */
-  var wsFiles = [], wsRole = "", wsTask = "", pendingWsRole = ""; function gotoRoleFiles(role){ pendingWsRole = role; var tab = document.querySelector('.tab[data-view="wsfiles"]'); if (tab){ tab.click(); } else { document.querySelectorAll(".view").forEach(function(x){ x.classList.remove("active"); }); var v = $("view-wsfiles"); if (v) v.classList.add("active"); loadWsFiles(); } }
+  var wsFiles = [], wsRole = "", wsTask = "", pendingWsRole = "", pendingWsFile = ""; function gotoRoleFiles(role){ pendingWsRole = role; var tab = document.querySelector('.tab[data-view="wsfiles"]'); if (tab){ tab.click(); } else { document.querySelectorAll(".view").forEach(function(x){ x.classList.remove("active"); }); var v = $("view-wsfiles"); if (v) v.classList.add("active"); loadWsFiles(); } }
   function wsFmtSize(n){
     n = Number(n) || 0;
     if (n < 1024) return n + " B";
@@ -1837,6 +1843,12 @@
     }
     box.innerHTML = "";
     renderWsTree(wsTree(rows), box, 0, (wsRole || wsTask) ? 2 : 1);
+    if (pendingWsFile){                       // 从首页产物跳过来：定位并打开对应文件
+      var wantFile = pendingWsFile;
+      pendingWsFile = "";
+      var hit = box.querySelector(".ws-item[data-rel='" + wantFile + "']");
+      if (hit) showWsFile(wantFile, hit);
+    }
   }
   function showWsFile(rel, el){
     document.querySelectorAll(".ws-item").forEach(function(x){ x.classList.remove("active"); });

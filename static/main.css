@@ -300,7 +300,7 @@ main{flex:1;overflow:hidden}
 .org-link{text-align:center;font-size:10px;color:var(--faint);letter-spacing:3px;padding:1px 0;line-height:1.6;position:relative}
 .org-link::after{content:"▼";display:inline-block;font-size:11px;color:var(--dim);margin-left:5px;letter-spacing:0;vertical-align:1px}
 /* 角色卡：宽了才并排两列，列宽不足 300px 就一行一个——硬挤两列会把卡片压变形 */
-.org-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:9px;margin-top:4px}
+.org-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:9px;margin-top:4px}
 .role-card{padding:9px 12px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;position:relative}
 .role-card .rc-top{display:flex;align-items:center;gap:8px}
 .role-card .rc-n{font-family:var(--serif);font-style:italic;font-weight:700;color:var(--gold);font-size:13px}
@@ -1547,3 +1547,8 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .role-pane.files .pane-body{flex:none;max-height:none;overflow:hidden;display:flex;flex-wrap:nowrap;align-items:center;gap:6px}
 .role-pane.card .pane-body{flex:1;min-height:0;max-height:none;overflow-y:auto}
 .role-pane.files .pane-body .rno-more{flex:none;margin:0 6px 0 0}
+
+/* 角色卡两列时的保护：右上状态标签（如「待命中」）不换行、不被挤压；
+   名称行已预留 58px 让位，所以两列也不会把标签压在文字上。 */
+.org-tree .role-card .rc-st{white-space:nowrap;pointer-events:none}
+.org-tree .role-card .rc-top{gap:6px}
