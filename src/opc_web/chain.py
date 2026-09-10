@@ -217,7 +217,7 @@ def execute(task_no, task_text):
             store.set_task(task_no, "阻塞", msg)
             runner.emit({"type": "assistant/chunk",
                          "data": {"text": "✗ " + msg + " —— 任务置阻塞，等待手动指派"}})
-            runner.emit({"type": "run/end", "text": "%s 拆解失败：%s" % (task_no, msg[:60])})
+            runner.emit({"type": "run/end", "text": "%s 拆解失败：%s" % (task_no, msg)})
             set_state(lastOk=False, tag="拆解失败 %s" % task_no)
             return
         total = len(subs)
@@ -232,7 +232,7 @@ def execute(task_no, task_text):
             set_state(tag="执行 %d/%d：%s %s" % (i + 1, total, s["role"], s["sub"][:20]))
             runner.emit({"type": "step/start", "data": {"turn": i + 2, "step": 1}})
             runner.emit({"type": "assistant/chunk",
-                         "data": {"text": "▶ 自动执行 %s（%s）：%s —— headless 直跑" % (sub_no, s["role"], s["sub"][:70])}})
+                         "data": {"text": "▶ 自动执行 %s（%s）：%s —— headless 直跑" % (sub_no, s["role"], s["sub"])}})
             spec = agent.subtask_spec(s["role"], "执行子任务：%s。期望产出：%s。%s" % (s["sub"], s["expect"], _decision_block(task_text)),
                                       expect=s["expect"], sub_no=sub_no)
             prepare_files(sub_no, task_no, s, spec)

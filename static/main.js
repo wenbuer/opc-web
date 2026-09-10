@@ -1188,7 +1188,8 @@
   function newRunSec(ev){
     var lg = $("runLog"); if (!lg) return null;
     var no = runSecNo(ev);
-    var label = String((ev && ev.task) || "任务").replace(no, "").replace(/^[\s·｜|:：-]+/, "").slice(0, 42);
+    /* 不截断：全文进 DOM，宽度交给 .rs-label 的 CSS 省略号，title 悬浮看全称 */
+    var label = String((ev && ev.task) || "任务").replace(no, "").replace(/^[\s·｜|:：-]+/, "");
     var sec = document.createElement("div");
     sec.className = "run-sec open";
     var head = document.createElement("div");
@@ -1197,7 +1198,7 @@
     if (ev.provider) meta.push(String(ev.provider));
     if (ev.model) meta.push(String(ev.model));
     head.innerHTML = "<span class='rs-arrow'>▾</span><span class='rs-no'>" + esc(no || "事件") + "</span>"
-      + "<span class='rs-label'>" + esc(label || "") + "</span>"
+      + "<span class='rs-label' title='" + esc(label || "") + "'>" + esc(label || "") + "</span>"
       + (meta.length ? "<em>" + esc(meta.join(" / ")) + "</em>" : "");
     var body = document.createElement("div");
     body.className = "run-sec-body";
@@ -1292,10 +1293,13 @@
     } else if (type === "step/end"){
       body.appendChild(runStepEl(d.turn, d.step, "步骤完成"));
     } else if (type === "run/end"){
+      /* 不截断：全文进 DOM，超长由 .run-out 折叠 + 「展开全部」承载 */
       var e4 = document.createElement("div");
       e4.className = "run-banner end";
-      e4.textContent = "执行结束 · " + String((ev.text || "")).slice(0, 600);
-      body.appendChild(e4);
+      e4.textContent = "执行结束 · " + String(ev.text || "");
+      var obEnd = runOutEl("", "");
+      obEnd.appendChild(e4);
+      body.appendChild(obEnd);
     } else if (type === "run/exited"){
       var e5 = document.createElement("div");
       e5.className = "run-step";
