@@ -1620,15 +1620,72 @@
       note.className = "proj-shared-note";
       note.textContent = "全员只读 · 可写：" + wtx;
       box.appendChild(note);
-      files.forEach(function(f){
-        var el = document.createElement("div");
-        el.className = "proj-file-item";
-        el.innerHTML = "<span class='wsi-name'>" + esc(f.name) + "</span><em>" + esc(wsFmtSize(f.size)) + "</em>";
-        el.title = f.rel;
-        el.addEventListener("click", function(){ showWsFile(f.rel, el); });
-        box.appendChild(el);
-      });
+      /* 文件多了平铺太长：按 rel 路径建树、目录可折叠；容器固定高度 + 滚动条（见 CSS） */
+      renderProjTree(projTree(files), box, 0);
     }).catch(function(e){ if (box) box.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
+  }
+  /* ===== 公共项目区：文件夹树 ===== */
+  function projParts(f){
+    return String(f.rel || f.name || "").split("/").filter(function(x){ return x; });
+  }
+  function projTree(files){
+    /* 剥掉所有文件共有的公共前缀目录（公共项目区本就位于《项目/》下，不再白占一层） */
+    var lists = files.map(projParts);
+    var drop = 0;
+    if (lists.length){
+      var first = lists[0];
+      while (drop < first.length - 1 &&
+             lists.every(function(p){ return p.length > drop + 1 && p[drop] === first[drop]; })){
+        drop++;
+      }
+    }
+    var root = { dirs: {}, files: [] };
+    lists.forEach(function(parts, idx){
+      var segs = parts.slice(drop), node = root, i;
+      for (i = 0; i < segs.length - 1; i++){
+        node.dirs[segs[i]] = node.dirs[segs[i]] || { dirs: {}, files: [] };
+        node = node.dirs[segs[i]];
+      }
+      if (segs.length) node.files.push({ f: files[idx], name: segs[segs.length - 1] });
+    });
+    return root;
+  }
+  function projCount(node){
+    var n = node.files.length;
+    Object.keys(node.dirs).forEach(function(k){ n += projCount(node.dirs[k]); });
+    return n;
+  }
+  function renderProjTree(node, box, depth){
+    Object.keys(node.dirs).sort().forEach(function(name){
+      var sub = node.dirs[name];
+      var row = document.createElement("div");
+      row.className = "pf-dir";
+      row.style.paddingLeft = (6 + depth * 13) + "px";
+      row.innerHTML = "<span class='pf-arrow'>" + (depth >= 1 ? "▸" : "▾") + "</span>"
+        + "<span class='pf-name'>" + esc(name) + "</span><em>" + projCount(sub) + " 项</em>";
+      var kids = document.createElement("div");
+      kids.className = "pf-kids";
+      if (depth >= 1) kids.style.display = "none";        // 深层默认折叠，顶层展开
+      renderProjTree(sub, kids, depth + 1);
+      row.addEventListener("click", function(){
+        var open = kids.style.display !== "none";
+        kids.style.display = open ? "none" : "";
+        var a = row.querySelector(".pf-arrow");
+        if (a) a.textContent = open ? "▸" : "▾";
+      });
+      box.appendChild(row);
+      box.appendChild(kids);
+    });
+    node.files.sort(function(a, b){ return a.name.localeCompare(b.name); }).forEach(function(it){
+      var f = it.f;
+      var el = document.createElement("div");
+      el.className = "proj-file-item";
+      el.style.paddingLeft = (6 + depth * 13) + "px";
+      el.innerHTML = "<span class='wsi-name'>" + esc(it.name) + "</span><em>" + esc(wsFmtSize(f.size)) + "</em>";
+      el.title = f.rel;
+      el.addEventListener("click", function(){ showWsFile(f.rel, el); });
+      box.appendChild(el);
+    });
   }
   function loadWsFiles(){
     loadProjectShared();
