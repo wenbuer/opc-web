@@ -1977,7 +1977,7 @@
   function loadEngineSkills(){
     var box = $("dshSkillList");
     if (box) box.innerHTML = "<div class='placeholder'>加载中…</div>";
-    api("/api/engine-skills").then(function(j){
+    api("/api/skill-sources").then(function(j){
       if (!j || !j.ok){ if (box) box.innerHTML = "<div class='placeholder'>加载失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
       engSkills = j.skills || [];
       engSkillMsg = j.msg || "";

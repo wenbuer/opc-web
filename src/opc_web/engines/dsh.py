@@ -12,7 +12,6 @@ runner 只保留事件缓冲与执行状态（两套引擎共用），不再含�
 """
 import json
 import os
-import re
 import shutil
 import subprocess
 import threading
@@ -397,47 +396,6 @@ def _run_prompt_dsh(task_text: str, timeout: float, act: str = "", on_progress=N
     return text, read_session_usage(base, claimed), sess
 
 
-# ---------- 可装配技能（dsh 生态：本引擎独有，api 引擎没有） ----------
-
-def skill_dirs() -> list:
-    """候选技能目录（同名去重，先到先得）：dsh 用户级 → agents 平台 → npm 插件包。"""
-    home = Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh"))
-    dirs, seen = [], set()
-
-    def add(p):
-        if p.is_dir() and (p / "SKILL.md").exists() and p.name not in seen:
-            seen.add(p.name)
-            dirs.append(p)
-
-    def add_root(root):
-        if root.is_dir():
-            for p in sorted(root.iterdir()):
-                add(p)
-
-    add_root(home / "skills")                        # ~/.dsh/skills
-    add_root(Path.home() / ".agents" / "skills")     # ~/.agents/skills
-    prof = home / "profiles"
-    if prof.is_dir():
-        for pd in sorted(prof.iterdir()):
-            nm = pd / "node_modules"
-            if nm.is_dir():
-                for sk in sorted(nm.glob("**/skills/*/SKILL.md")):
-                    add(sk.parent)
-    return sorted(dirs, key=lambda p: p.name.lower())
-
-
-def _skill_desc(sk) -> str:
-    """从 SKILL.md 的 front-matter 里摘 description（供技能页显示一行说明）。"""
-    try:
-        txt = Path(sk).read_text(encoding="utf-8", errors="replace")
-    except Exception:
-        return ""
-    m = re.search(r"^---\s*\n([\s\S]*?)\n---", txt)
-    fm = m.group(1) if m else ""
-    dm = re.search(r"(?m)^description:\s*[>|]?\s*([\s\S]*?)(?=^---|\Z)", fm)
-    return " ".join((dm.group(1) or "").split())[:200] if dm else ""
-
-
 class DshEngine(Engine):
     name = "dsh"
     label = "DSH（DeepSeek Harness）"
@@ -465,8 +423,5 @@ class DshEngine(Engine):
     def kill(self, act: str) -> bool:
         return bool(_kill_spawn(act))
 
-    def skills(self) -> list:
-        """本引擎可提供的可装配技能（装配与导入由控制台负责，这里只报来源）。"""
-        return [{"name": p.name, "desc": _skill_desc(p / "SKILL.md"), "path": str(p)}
-                for p in skill_dirs() if p.name and not p.name.startswith(".")
-                and (p / "SKILL.md").exists()]
+    # 注：可装配技能的来源扫描在 opc_web.skills，不在这里 —— 技能是项目资产（prompt 的一部分），
+    # 与引擎无关；本引擎只在 capabilities 里声明「能直接执行技能里需要工具的步骤」。

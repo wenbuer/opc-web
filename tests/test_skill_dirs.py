@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
-"""技能来源：dsh 用户级 / agents 平台 / npm 插件包三个根（同名去重），且由引擎自报。
+"""技能来源：dsh 用户级 / agents 平台 / npm 插件包三个根（同名去重）。
 
-技能是**引擎的能力**，不是控制台的：扫描逻辑归 engines/dsh.py，api 引擎没有技能体系。"""
+技能是**项目资产**（执行时拼进 prompt，两套引擎共用同一份），不是某个引擎的能力：
+扫描逻辑在 opc_web.skills，与当前引擎无关；引擎只在 capabilities.skills 里声明
+「能不能直接执行技能里那些需要工具/脚本的步骤」。"""
 import os
 import shutil
 import sys
@@ -12,8 +14,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from opc_web import engines  # noqa: E402
-from opc_web.engines import dsh as edsh  # noqa: E402
+from opc_web import engines, skills  # noqa: E402
 
 
 def _mk_skill(root: Path, name: str):
@@ -43,7 +44,7 @@ class TestSkillDirs(unittest.TestCase):
 
     def _dirs(self):
         with mock.patch.object(Path, "home", classmethod(lambda cls: self._tmp)):
-            return edsh.skill_dirs()
+            return skills.sources()
 
     def test_agents_root_scanned(self):
         names = [p.name for p in self._dirs()]
@@ -59,16 +60,22 @@ class TestSkillDirs(unittest.TestCase):
         names = [p.name for p in self._dirs()]
         self.assertEqual(names.count("code-review"), 1)
 
-    def test_engine_reports_its_own_skills(self):
-        """引擎自报技能：dsh 给带说明的清单，api 引擎明确为空（技能页据此显示）。"""
+    def test_describe_reads_frontmatter(self):
+        """技能说明从 SKILL.md 的 front-matter 摘出（技能页显示一行说明）。"""
         with mock.patch.object(Path, "home", classmethod(lambda cls: self._tmp)):
-            dsh_skills = edsh.DshEngine().skills()
-            api_skills = engines.get_engine("api").skills()
-        self.assertEqual(api_skills, [])
-        got = {s["name"]: s for s in dsh_skills}
+            got = {p.name: p for p in skills.sources()}
         self.assertIn("code-review", got)
-        self.assertTrue(got["code-review"]["desc"])          # 说明从 SKILL.md 的 front-matter 摘出
-        self.assertTrue(got["code-review"]["path"])
+        self.assertIn("测试用技能 code-review", skills.describe(got["code-review"] / "SKILL.md"))
+
+    def test_skills_are_engine_independent(self):
+        """技能来源与当前引擎无关；引擎只用 capabilities.skills 声明执行能力。
+
+        dsh 自带工具沙箱，能直接跑技能里那些需要命令/读写的步骤；直连 API 引擎只有
+        4 个基础工具，所以声明 False —— 但技能正文照样进 prompt，两套引擎共用一份。"""
+        with mock.patch.object(Path, "home", classmethod(lambda cls: self._tmp)):
+            self.assertTrue(skills.sources())                  # 有源就列，不因引擎而变
+        self.assertTrue(engines.get_engine("dsh").capabilities()["skills"])
+        self.assertFalse(engines.get_engine("api").capabilities()["skills"])
 
 
 if __name__ == "__main__":

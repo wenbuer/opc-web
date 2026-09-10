@@ -11,7 +11,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
-from . import bootstrap, chain, config, engines, knowledge, parsers, review, roles, runner, scheduler, store, templates
+from . import (bootstrap, chain, config, engines, knowledge, parsers, review, roles, runner,
+               scheduler, skills, store, templates)
 
 
 def _strip_okf_frontmatter(text: str) -> str:
@@ -170,29 +171,24 @@ class Handler(BaseHTTPRequestHandler):
         names = sorted(p.name for p in d.glob("*.md")) if d.is_dir() else []
         return {"ok": True, "skills": names, "dir": str(d)}
 
-    def _get_engine_skills(self):
-        """当前引擎可提供的技能（引擎自报）：dsh 扫本地技能目录，api 引擎没有技能。
+    def _get_skill_sources(self):
+        """可导入的技能（扫本机技能源）：**与当前引擎无关** —— 技能是项目资产，不是引擎能力。
 
-        「有哪些技能可用」是引擎的能力，不是控制台的：这里曾经直接读 ~/.dsh/skills，
-        换成 API 引擎后照样读 —— 技能页与正在跑的引擎对不上。现在统一问引擎的 skills()。"""
+        技能 md 导入后进共享技能库 agents/skills/，角色卡登记装配，执行时由
+        agent_prompt() 拼进 prompt，所以两套引擎用的是同一份技能。引擎的差别只在
+        capabilities.skills：技能里那些「跑命令 / 读写文件」的步骤，dsh 自带工具沙箱能直接
+        执行，直连 API 引擎只有 4 个基础工具。"""
         eng = engines.get_engine()
+        cap = bool((eng.capabilities() or {}).get("skills"))
         lib = config.AGENTS_DIR / config.SKILLS_REL
         lib_names = {p.name for p in lib.glob("*.md")} if lib.is_dir() else set()
-        try:
-            items = eng.skills() or []
-        except Exception as e:
-            return {"ok": False, "engine": eng.name, "skills": [], "msg": "读取技能失败：%s" % e}
-        skills = [{"name": s.get("name", ""), "desc": s.get("desc", ""), "path": s.get("path", ""),
-                   "installed": (s.get("name", "") + ".md") in lib_names}
-                  for s in items if s.get("name")]
-        if skills:
-            msg = ""
-        elif eng.name == "dsh":
-            msg = "未找到技能目录（~/.dsh/skills 为空）"
-        else:
-            msg = "当前引擎「%s」不提供可装配技能；切到 DSH 引擎后可用" % eng.label
-        return {"ok": True, "engine": eng.name, "engineLabel": eng.label,
-                "skills": skills, "msg": msg}
+        rows = [{"name": p.name, "desc": skills.describe(p / "SKILL.md"), "path": str(p),
+                 "installed": (p.name + ".md") in lib_names}
+                for p in skills.sources()
+                if p.name and not p.name.startswith(".") and (p / "SKILL.md").exists()]
+        return {"ok": True, "skills": rows, "engine": eng.name, "engineLabel": eng.label,
+                "engineRunsSkills": cap,
+                "msg": "" if rows else "本机没找到技能源（~/.dsh/skills、~/.agents/skills、npm 插件包三处）"}
 
     def _import_skill(self):
         body = self._body() or {}
@@ -201,17 +197,15 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "缺少技能名 name")
         if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
             raise ApiError(400, "技能名非法")
-        eng = engines.get_engine()
-        sk = next((s for s in (eng.skills() or []) if s.get("name") == name), None)
-        src = Path(str(sk.get("path") or "")) if sk else None
+        src = next((p for p in skills.sources() if p.name == name), None)
         if src is None or not (src / "SKILL.md").is_file():
-            raise ApiError(404, "当前引擎（%s）没有技能「%s」" % (eng.name, name))
+            raise ApiError(404, "本机技能源里没有「%s」" % name)
         lib = config.AGENTS_DIR / config.SKILLS_REL
         lib.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src / "SKILL.md", lib / (name + ".md"))
         shutil.copytree(src, lib / name, dirs_exist_ok=True)
         return {"ok": True, "name": name, "installed": True,
-                "msg": "已导入「" + name + "」到技能库", "skills": self._get_engine_skills()["skills"]}
+                "msg": "已导入「" + name + "」到技能库", "skills": self._get_skill_sources()["skills"]}
 
     def _get_daily(self):
         return {"ok": True, "daily": knowledge.latest_daily()}
@@ -272,8 +266,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._get_role_card)
         elif url == "/api/skills":
             self._ok(self._get_skill_lib)
-        elif url in ("/api/engine-skills", "/api/dsh-skills"):   # 旧名保留兼容，前端已切新名
-            self._ok(self._get_engine_skills)
+        elif url in ("/api/skill-sources", "/api/engine-skills", "/api/dsh-skills"):
+            self._ok(self._get_skill_sources)      # 后两个是旧名，保留兼容
         elif url == "/api/templates":
             self._json({"ok": True, "templates": templates.templates()})
         elif url == "/api/handbook":

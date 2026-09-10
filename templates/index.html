@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260910f">
+<link rel="stylesheet" href="/static/main.css?v=20260910h">
 </head>
 <body>
 <div class="shell">
@@ -323,7 +323,7 @@
             <span id="skillMsg" class="set-msg"></span>
           </div>
           <div id="dshSkillList" class="skill-import-list"><div class="placeholder">加载中…</div></div>
-          <div class="set-note"><b>技能来源由当前执行引擎决定</b>：DSH 引擎列出本机已装技能（<code>~/.dsh/skills/</code> 等三处目录），直连 API 引擎没有技能体系、这里会显示为空。<br>导入后成为共享技能库 <code>agents/skills/&lt;技能名&gt;.md</code>，角色可在「装配技能」勾选。搜索在线市场：<code>npx skills find &lt;关键词&gt;</code></div>
+          <div class="set-note"><b>技能对所有引擎都生效</b>：导入后进共享技能库 <code>agents/skills/&lt;技能名&gt;.md</code>，由角色卡登记装配，执行时拼进角色 prompt —— 主引擎是 DSH 还是直连 API，用的是同一份技能。<br>差别只在执行能力：技能里若含「跑命令 / 读写文件」的步骤，DSH 引擎（自带工具沙箱）能直接执行，直连 API 引擎只有 4 个基础工具。<br>来源扫描本机三处：<code>~/.dsh/skills</code>、<code>~/.agents/skills</code>、npm 插件包。搜索在线市场：<code>npx skills find &lt;关键词&gt;</code></div>
         </div>
         <div class="snav-pane" data-pane="tokens">
             <div class="set-head">任务 Token 统计</div>
@@ -416,6 +416,6 @@
     </div>
   </div>
 </div>
-<script src="/static/main.js?v=20260910g"></script>
+<script src="/static/main.js?v=20260910h"></script>
 </body>
 </html>

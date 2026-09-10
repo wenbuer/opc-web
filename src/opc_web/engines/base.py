@@ -47,7 +47,10 @@ class Engine:
     description = ""      # 一句话说明（设置页与自检提示用）
 
     def capabilities(self) -> dict:
-        """能力声明：控制台据此决定 UI 与提示词策略。"""
+        """能力声明：控制台据此决定 UI 与提示词策略。
+
+        skills＝本引擎能否直接执行技能里那些需要工具/脚本/沙箱的步骤；
+        技能本身（md 正文）是提示词的一部分，对所有引擎都生效，不由这里决定。"""
         return {"tools": False, "streaming": False, "usage": False, "skills": False, "sandbox": False}
 
     def preflight(self):
@@ -69,6 +72,3 @@ class Engine:
         """终止 act 对应的运行（返回是否真的终止了）。"""
         return False
 
-    def skills(self) -> list:
-        """该引擎可提供的可装配技能（无则空列表）。"""
-        return []
