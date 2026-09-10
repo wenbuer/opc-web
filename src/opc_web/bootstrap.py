@@ -78,9 +78,19 @@ def bootstrap():
         seeds["知识库/OPC 规范/模板-%s.md" % kind] = _tpl.doc_template(kind)
     for rel, text in seeds.items():
         p = config.ROOT / rel
+        # 规范类种子（《OPC 规范》下的模板与员工手册）与代码同源：内容变了就覆盖，
+        # 否则知识库那份会停在首次生成的样子、与 doc_template 分叉。其余种子（运行数据骨架）
+        # 只创建不覆盖，避免把人写的内容冲掉。
         if not p.exists():
             p.write_text(text, encoding="utf-8")
             BOOT_LOG.append("创建 " + rel)
+        elif rel.startswith("知识库/OPC 规范/"):
+            try:
+                if p.read_text(encoding="utf-8") != text:
+                    p.write_text(text, encoding="utf-8")
+                    BOOT_LOG.append("同步 " + rel)
+            except Exception:
+                pass
     if not config.LOG_FILE.exists():
         config.LOG_FILE.write_text("## R1 调度日志" + h, encoding="utf-8")
         BOOT_LOG.append("创建 " + config.SCHED_LOG_REL)
