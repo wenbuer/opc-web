@@ -1227,7 +1227,7 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .tl-strip,
 .wb-col,
 .daily-list,
-.daily-main{background:rgba(255,255,255,.58)}
+.daily-main{background:rgba(255,255,255,.38)}
 :root[data-theme="dark"] .prog-panel,
 :root[data-theme="dark"] .org-panel,
 :root[data-theme="dark"] .role-panel,
