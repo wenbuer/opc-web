@@ -6,8 +6,8 @@
 [![python deps](https://img.shields.io/badge/python%20deps-0%20pip%20packages-brightgreen.svg)](pyproject.toml)
 [![runtime](https://img.shields.io/badge/runtime-requires%20DSH-important.svg)](#快速开始)
 [![network](https://img.shields.io/badge/network-127.0.0.1%20only-purple.svg)](#配置与数据)
-[![stars](https://img.shields.io/github/stars/wenbuer/opc-web-dsh?style=social)](https://github.com/wenbuer/opc-web-dsh)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![stars](https://img.shields.io/github/stars/wenbuer/opc-web-dsh?style=social)](https://github.com/wenbuer/opc-web-dsh)
 
 ---
 
@@ -48,6 +48,7 @@ opc-web 是一个本地运行的「AI 员工团队」管理控制台。你创建
 - **批阅即驱动执行**：批准会立即创建「执行 R0 决策」任务继续往下跑，驳回则按批注重做——形成「下达 → 执行 → 批阅 → 归档」闭环。
 - **过程实时可见**：角色卡显示当前任务代号；工作台四列看板（待派 / 已派 / 完成 / 阻塞）配实时事件流，能看到执行到哪一步、调了什么工具。
 - **可替换执行引擎**：dsh 与「直连 API 自建 agent 循环」两套实现，改配置即切换，上层调用零改动。
+- **OKF 知识库**：任务收尾由 R1 判定有无沉淀价值，有价值才按主题域归档入库、同主题合并进已有档案；每篇带 OKF 知识型标注（概念 / 决策 / 方法 / 数据 / 教训 / 问题），流水账一律不沉淀。
 - **本地零依赖**：Python 标准库 + SQLite + md 文件，仅监听本机；数据全在本地，可回溯、不上云。
 - **深浅双主题**：一键切换并记忆。
 
