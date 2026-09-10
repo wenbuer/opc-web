@@ -275,7 +275,7 @@ main{flex:1;overflow:hidden}
 :root[data-theme="dark"] .prog-panel{background:rgba(255,255,255,.02);border-color:var(--line2)}
 :root[data-theme="dark"] .prog-panel .proj-shared-list{scrollbar-color:rgba(232,183,61,.3) transparent}
 :root[data-theme="dark"] .hp-track{background:rgba(255,255,255,.08)}
-.home-grid{display:grid;grid-template-columns:1.02fr 1.1fr .9fr;gap:14px;flex:1 1 0;min-height:0;padding:14px 18px 8px;overflow:hidden}
+.home-grid{display:grid;grid-template-columns:.88fr 1fr 1.12fr;gap:14px;flex:1 1 0;min-height:0;padding:14px 18px 8px;overflow:hidden}
 .panel-head{font-size:12px;letter-spacing:2px;color:var(--gold);margin-bottom:12px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .panel-head em{font-style:normal;color:var(--faint);font-size:10.5px;letter-spacing:.5px}
 .org-panel,.tl-panel,.task-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px}
@@ -426,9 +426,9 @@ main{flex:1;overflow:hidden}
 .role-edit-form .role-edit-actions #ieMsg{font-size:11px;color:var(--dim);margin-left:2px}
 
 /* 挂载技能胶囊（角色卡下方、工作区产物上方） */
-.role-pane.skills .pane-body.skill-caps{display:flex;flex-wrap:wrap;gap:6px;padding-right:0}
-.skill-cap{display:inline-flex;align-items:center;background:rgba(2,132,199,.10);color:var(--gold);border:1px solid rgba(2,132,199,.45);border-radius:999px;padding:2px 10px;font-size:10.5px;line-height:1.6;white-space:nowrap;cursor:default}
-.skill-cap.add{background:transparent;border:1px dashed var(--gold);color:var(--gold);cursor:pointer}
+.role-pane.skills .pane-body.skill-caps{display:flex;flex-wrap:nowrap;overflow:hidden;align-items:center;gap:6px;padding-right:0}
+.skill-cap{display:inline-flex;align-items:center;flex:none;max-width:100%;padding:3px 11px;border-radius:99px;border:1px solid var(--line2);background:rgba(2,132,199,.08);color:var(--txt);font-size:10.5px;font-family:var(--mono);border-radius:999px;padding:2px 10px;font-size:10.5px;line-height:1.6;white-space:nowrap;cursor:default}
+.skill-cap.add{background:none;border:1px dashed var(--line2);color:var(--gold);cursor:pointer}
 .skill-cap.add:hover{background:rgba(2,132,199,.10);border-style:solid}
 /* 工作区产物：胶囊 chip（文件名一行一个，摘要走 tooltip）——深色下用亮字与描边保证可读 */
 /* 「查看全部产物」：虚线胶囊按钮，点击跳「项目文件」按该角色看全量 */
@@ -1135,7 +1135,10 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .org-node.add .oid{background:rgba(232,183,61,.14);border-color:rgba(232,183,61,.5)}
 :root[data-theme="dark"] .modal-mask{background:rgba(3,6,12,.72)}
 :root[data-theme="dark"] .skill-opt.sel{color:#1a1206}
-:root[data-theme="dark"] .skill-cap{background:rgba(232,183,61,.14);border-color:rgba(232,183,61,.5)}
+:root[data-theme="dark"] .skill-cap{background:rgba(232,183,61,.08);border-color:rgba(232,183,61,.28);color:#e6ecf7}
+:root[data-theme="dark"] .skill-cap:hover{background:rgba(232,183,61,.16);border-color:var(--gold)}
+.skill-cap:hover{border-color:var(--gold);background:rgba(2,132,199,.18);color:var(--gold)}
+:root[data-theme="dark"] .skill-cap.add{background:none;border-color:rgba(232,183,61,.35);color:var(--gold)}
 :root[data-theme="dark"] .skills-pick{background:rgba(0,0,0,.25);border-color:rgba(232,183,61,.25)}
 :root[data-theme="dark"] .modal-box{box-shadow:0 18px 60px rgba(0,0,0,.55),0 0 0 1px rgba(232,183,61,.15)}
 :root[data-theme="dark"] .modal-box .form input:focus,.modal-box .form textarea:focus{box-shadow:0 0 0 2px rgba(232,183,61,.15)}
@@ -1534,3 +1537,13 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .role-pane.skills .pane-body,
 .role-pane.files .pane-body{flex:1;min-height:0;max-height:none;overflow-y:auto}
 .role-pane .pane-title{flex:none}
+
+/* ===== 角色工作区高度分配（覆盖此前的 6:2:2 比例）=====
+   技能与产物各只占「一行胶囊」的高度，剩下的全部给角色卡——默认不出滚动条，视觉最干净。
+   只有角色卡内容真的超长时，才在角色卡内部滚动。 */
+.role-pane.card{flex:1 1 auto}
+.role-pane.skills,.role-pane.files{flex:none}
+.role-pane.skills .pane-body,
+.role-pane.files .pane-body{flex:none;max-height:none;overflow:hidden;display:flex;flex-wrap:nowrap;align-items:center;gap:6px}
+.role-pane.card .pane-body{flex:1;min-height:0;max-height:none;overflow-y:auto}
+.role-pane.files .pane-body .rno-more{flex:none;margin:0 6px 0 0}
