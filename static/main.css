@@ -1211,11 +1211,21 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
    ③ 批阅台决策项：只留 项目进展 / 待决内容全文 / R1 建议 的精简排版本。
    ================================================================ */
 
-/* ① 简报归档 —— 不再用灰色底 */
-.daily-list{background:linear-gradient(180deg,rgba(2,132,199,.13),rgba(2,132,199,.03)),var(--panel)}
-:root[data-theme="dark"] .daily-list{background:linear-gradient(180deg,rgba(232,183,61,.14),rgba(232,183,61,.04)),var(--panel)}
-.daily-main{background:linear-gradient(180deg,rgba(250,252,254,.75),rgba(236,241,248,.35))}
-:root[data-theme="dark"] .daily-main{background:linear-gradient(180deg,rgba(13,18,30,.6),rgba(10,14,21,.35))}
+/* ① 简报归档 —— 与「项目进度」统一面板底（不再用独立渐变） */
+.daily-list,.daily-main{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+:root[data-theme="dark"] .daily-list,:root[data-theme="dark"] .daily-main{background:rgba(255,255,255,.02);border-color:var(--line2)}
+
+/* ===== 统一面板底：把「项目进度」的底色套到其余主区块 =====
+   浅色下组织架构/角色工作区/OPC 时间线本来就用 var(--panel)，差异主要在深色主题
+   （原来只有 .prog-panel 有轻微提亮 rgba(255,255,255,.02)）；工作台三列与简报页
+   则是另一套底，这里一并归到同一张面板上。*/
+.wb-col{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+:root[data-theme="dark"] .org-panel,
+:root[data-theme="dark"] .role-panel,
+:root[data-theme="dark"] .tl-strip,
+:root[data-theme="dark"] .wb-col,
+:root[data-theme="dark"] .daily-list,
+:root[data-theme="dark"] .daily-main{background:rgba(255,255,255,.02);border-color:var(--line2)}
 
 /* ② 工作台：三列固定（左列收成 ~250px 缩略栏，看板/详情分到剩余宽度；点任务与子任务不改版式） */
 .wb-cols{grid-template-columns:250px minmax(0,1.25fr) minmax(0,1fr)}
