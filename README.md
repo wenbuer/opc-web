@@ -1,6 +1,6 @@
 # OPC 智能体工作台
 
-> 用一支能长期协作的 **AI 员工团队**把活干完：配置岗位、装配技能、下达任务，拆解 / 执行 / 汇总 / 归档由团队自主完成——你只负责审阅与拍板。
+一人公司全流程智能体工作台。
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![python deps](https://img.shields.io/badge/python%20deps-0%20pip%20packages-brightgreen.svg)](pyproject.toml)
@@ -8,10 +8,6 @@
 [![network](https://img.shields.io/badge/network-127.0.0.1%20only-purple.svg)](#配置与数据)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![stars](https://img.shields.io/github/stars/wenbuer/opc-web-dsh?style=social)](https://github.com/wenbuer/opc-web-dsh)
-
----
-
-欢迎 **Fork** 改成你自己的版本——岗位、技能、流程、执行引擎都能按需替换；如果它对你有用，**顺手点个 Star** 就是最好的支持。
 
 ---
 
