@@ -299,7 +299,8 @@ main{flex:1;overflow:hidden}
 .ostatus.off{color:var(--faint);border-color:var(--line)}
 .org-link{text-align:center;font-size:10px;color:var(--faint);letter-spacing:3px;padding:1px 0;line-height:1.6;position:relative}
 .org-link::after{content:"▼";display:inline-block;font-size:11px;color:var(--dim);margin-left:5px;letter-spacing:0;vertical-align:1px}
-.org-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:9px;margin-top:4px}
+/* 角色卡：宽了才并排两列，列宽不足 300px 就一行一个——硬挤两列会把卡片压变形 */
+.org-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:9px;margin-top:4px}
 .role-card{padding:9px 12px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;position:relative}
 .role-card .rc-top{display:flex;align-items:center;gap:8px}
 .role-card .rc-n{font-family:var(--serif);font-style:italic;font-weight:700;color:var(--gold);font-size:13px}
@@ -1515,3 +1516,9 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .role-pane.card .pane-body{min-width:0}
 .role-card-doc h1,.role-card-doc h2,.role-card-doc h3{overflow-wrap:anywhere}
 .prog-panel .proj-shared-list .wsi-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 角色卡内部自适应：右上角状态标签是绝对定位，卡片一窄就会盖住角色名 */
+.org-tree .role-card .rc-top{padding-right:58px}
+.org-tree .role-card .rc-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.org-tree .role-card .rc-n{flex:none}
+.org-tree .role-card .rc-duty,.org-tree .role-card .rc-cur{overflow-wrap:anywhere}
