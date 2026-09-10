@@ -1660,11 +1660,11 @@
       var row = document.createElement("div");
       row.className = "pf-dir";
       row.style.paddingLeft = (6 + depth * 13) + "px";
-      row.innerHTML = "<span class='pf-arrow'>" + (depth >= 1 ? "▸" : "▾") + "</span>"
+      row.innerHTML = "<span class='pf-arrow'>▸</span>"
         + "<span class='pf-name'>" + esc(name) + "</span><em>" + projCount(sub) + " 项</em>";
       var kids = document.createElement("div");
       kids.className = "pf-kids";
-      if (depth >= 1) kids.style.display = "none";        // 深层默认折叠，顶层展开
+      kids.style.display = "none";                        // 默认全部收起，点目录逐级展开
       renderProjTree(sub, kids, depth + 1);
       row.addEventListener("click", function(){
         var open = kids.style.display !== "none";
