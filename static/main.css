@@ -1569,3 +1569,10 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .eng-caps i{font-style:normal;font-size:9.5px;color:var(--dim);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
 :root[data-theme="dark"] .eng-item{background:rgba(255,255,255,.02)}
 :root[data-theme="dark"] .eng-item.current{border-color:rgba(232,183,61,.5);background:rgba(232,183,61,.06)}
+
+/* ===== 工作台三列：底色透明 =====
+   原来三列各有一层面板底（浅色 var(--panel)、深色 rgba(255,255,255,.02)），
+   把页面底纹盖住了。这里只去底色，描边 / 圆角 / 内边距保留 —— 否则三列分栏看不出来。
+   （同特异性 + 后定义，覆盖上面 .wb-col 的两处底色；其余面板不受影响。）*/
+.wb-col{background:transparent}
+:root[data-theme="dark"] .wb-col{background:transparent}
