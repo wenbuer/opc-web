@@ -1,4 +1,4 @@
-# OPC 智能体工作台（opc-web）
+# OPC 智能体工作台
 
 > 用一支能长期协作的 **AI 员工团队**把活干完：配置岗位、装配技能、下达任务，拆解 / 执行 / 汇总 / 归档由团队自主完成——你只负责审阅与拍板。
 
@@ -8,6 +8,10 @@
 [![network](https://img.shields.io/badge/network-127.0.0.1%20only-purple.svg)](#配置与数据)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![stars](https://img.shields.io/github/stars/wenbuer/opc-web-dsh?style=social)](https://github.com/wenbuer/opc-web-dsh)
+
+---
+
+欢迎 **Fork** 改成你自己的版本——岗位、技能、流程、执行引擎都能按需替换；如果它对你有用，**顺手点个 Star** 就是最好的支持。
 
 ---
 
@@ -32,12 +36,13 @@ opc-web 是一个本地运行的「AI 员工团队」管理控制台。你创建
 <td width="25%"><img src="images/opc-command-center-04.png" alt="项目文件"><br><sub>项目文件 · 工作区产物</sub></td>
 </tr>
 <tr>
-<td width="25%"><img src="images/opc-command-center-05.png" alt="知识库（浅色）"><br><sub>知识库 · 浅色主题</sub></td>
+<td width="25%"><img src="images/opc-command-center-05.png" alt="项目文件（网页）"><br><sub>项目文件 · 文件预览</sub></td>
 <td width="25%"><img src="images/opc-command-center-06.png" alt="知识库（深色）"><br><sub>知识库 · 深色主题</sub></td>
 <td width="25%"><img src="images/opc-command-center-07.png" alt="每日简报"><br><sub>每日简报 · 当天摘要</sub></td>
 <td width="25%"><img src="images/opc-command-center-08.png" alt="设置 Token 统计"><br><sub>设置 · Token 用量</sub></td>
 </tr>
 </table>
+
 
 ---
 
@@ -63,7 +68,7 @@ python run.py                 # 命令行启动（推荐）
 # Windows 也可双击「启动控制台.bat」（自动开浏览器）
 ```
 
-1. 访问 http://127.0.0.1:8901（首次启动自动生成目录与骨架文件）；
+1. 访问 http://127.0.0.1:8901 （首次启动自动生成目录与骨架文件）；
 2. 到「设置 → 模型接入」填入大模型 API Key；
 3. 在「作战面板」或「工作台」下达第一个任务。
 
