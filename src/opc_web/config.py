@@ -148,6 +148,21 @@ TOKEN_PRICE_OUT = float(os.environ.get("OPC_TOKEN_PRICE_OUT") or _CFG.get("price
 # engine 的取值合法性由 server 校验（必须是已注册的引擎名），此处只负责存盘。
 SETTING_KEYS = ("root", "port", "engine")   # 设置页可写的字段；其余键只允许手改 opc-config.json
 
+
+# 按用途路由：同一个控制台里，不同用途可以走不同引擎（opc-config.json 的 engineFor 段）。
+# 例：{"engineFor": {"prompt": "api", "execute": "dsh"}} —— 拆解/汇总用便宜的 API，
+# 角色任务交给带沙箱与技能的 dsh。留空即回退主引擎，不影响任何既有行为。
+def engine_for(purpose: str = "") -> str:
+    """按用途取引擎名：engineFor.<用途> 优先，空则回退主引擎。
+
+    用途约定：prompt = 拆解 / 汇总这类轻文本推理，execute = 角色任务执行。"""
+    key = str(purpose or "").strip()
+    if key:
+        want = str((_CFG.get("engineFor") or {}).get(key) or "").strip()
+        if want:
+            return want
+    return ENGINE
+
 # 运行调参：手改 opc-config.json 即时生效（每次读盘，文件几百字节，代价可忽略）。
 # 刻意不进 SETTING_KEYS —— 这些是调优旋钮，不该占设置页的位置。
 _TUNABLES = {

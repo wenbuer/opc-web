@@ -30,6 +30,7 @@ _DEFAULTS = {
     "commandTimeout": 300,   # 单条命令超时（秒）
 }
 _CANCEL = {}                 # act -> True（kill() 置位，循环内检查）
+_RUNNING = set()             # 正在跑的 act（kill 据此回答「现在是否真的有在跑」）
 _CANCEL_LOCK = threading.Lock()
 
 SYSTEM_PROMPT = """你是 OPC 项目里的执行角色，在项目根目录内独立完成任务。
@@ -241,11 +242,15 @@ class ApiEngine(Engine):
         return True, "API 引擎就绪：%s · %s" % (cfg["model"], cfg["baseUrl"])
 
     def kill(self, act: str) -> bool:
+        """终止 act 上的运行；返回「现在是否真的有在跑」。
+
+        取消标志先置位（run 还没开始就 kill 也生效，清理时机见 run 内的注释），
+        返回值只表示当前确有运行 —— 多引擎共存/按用途路由时，上层靠它判断该找谁终止。"""
         if not act:
             return False
         with _CANCEL_LOCK:
             _CANCEL[act] = True
-        return True
+            return act in _RUNNING
 
     def run(self, prompt: str, *, timeout: float = 600, act: str = "",
             cwd=None, on_progress=None) -> RunResult:
@@ -254,6 +259,10 @@ class ApiEngine(Engine):
         deadline = t0 + float(timeout or 600)
         # 注意：这里**不能**清取消标志——kill() 可能在 run() 之前被调用（删除任务/超时），
         # 清掉就等于把取消吞了。标志由 finally 在本次运行结束时清理，保证不残留到下次。
+
+        if act:
+            with _CANCEL_LOCK:
+                _RUNNING.add(act)
 
         def cancelled() -> bool:
             with _CANCEL_LOCK:
@@ -340,3 +349,4 @@ class ApiEngine(Engine):
         finally:
             with _CANCEL_LOCK:
                 _CANCEL.pop(act, None)
+                _RUNNING.discard(act)

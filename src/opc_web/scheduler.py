@@ -446,7 +446,7 @@ def work_summary(task_no: str) -> str:
 def _headless_text(prompt: str, timeout: float = 600) -> str:
     """尝试用 dsh headless 让 R1 做文本类收尾（汇总/抽取）；失败返回空串。"""
     try:
-        text, _ = runner.run_headless_task(prompt, timeout)
+        text, _ = runner.run_headless_task(prompt, timeout, purpose="prompt")
         return (text or "").strip()
     except Exception:
         return ""

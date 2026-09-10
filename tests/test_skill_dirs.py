@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""技能目录扫描：dsh 用户级 / agents 平台 / npm 插件包三个根，同名去重。"""
+"""技能来源：dsh 用户级 / agents 平台 / npm 插件包三个根（同名去重），且由引擎自报。
+
+技能是**引擎的能力**，不是控制台的：扫描逻辑归 engines/dsh.py，api 引擎没有技能体系。"""
 import os
 import shutil
 import sys
@@ -10,7 +12,8 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from opc_web import server  # noqa: E402
+from opc_web import engines  # noqa: E402
+from opc_web.engines import dsh as edsh  # noqa: E402
 
 
 def _mk_skill(root: Path, name: str):
@@ -40,7 +43,7 @@ class TestSkillDirs(unittest.TestCase):
 
     def _dirs(self):
         with mock.patch.object(Path, "home", classmethod(lambda cls: self._tmp)):
-            return server.Handler._dsh_skill_dirs(None)
+            return edsh.skill_dirs()
 
     def test_agents_root_scanned(self):
         names = [p.name for p in self._dirs()]
@@ -55,6 +58,17 @@ class TestSkillDirs(unittest.TestCase):
     def test_dedup_keeps_single_entry(self):
         names = [p.name for p in self._dirs()]
         self.assertEqual(names.count("code-review"), 1)
+
+    def test_engine_reports_its_own_skills(self):
+        """引擎自报技能：dsh 给带说明的清单，api 引擎明确为空（技能页据此显示）。"""
+        with mock.patch.object(Path, "home", classmethod(lambda cls: self._tmp)):
+            dsh_skills = edsh.DshEngine().skills()
+            api_skills = engines.get_engine("api").skills()
+        self.assertEqual(api_skills, [])
+        got = {s["name"]: s for s in dsh_skills}
+        self.assertIn("code-review", got)
+        self.assertTrue(got["code-review"]["desc"])          # 说明从 SKILL.md 的 front-matter 摘出
+        self.assertTrue(got["code-review"]["path"])
 
 
 if __name__ == "__main__":

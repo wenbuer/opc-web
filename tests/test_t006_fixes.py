@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from opc_web import chain, config, runner, scheduler  # noqa: E402
+from opc_web.engines import dsh as edsh  # noqa: E402
 
 
 PIYUETAI = """## 工作内容
@@ -100,17 +101,17 @@ class TestDshCommand(unittest.TestCase):
             pkg.mkdir(parents=True)
             js = pkg / "bin.js"
             js.write_text("//stub", encoding="utf-8")
-            with mock.patch("opc_web.runner.shutil.which",
+            with mock.patch("opc_web.engines.dsh.shutil.which",
                             side_effect=lambda n: str(Path(td) / (n + ".cmd")) if n in ("dsh", "node") else None):
-                cmd = runner._dsh_command()
+                cmd = edsh._dsh_command()
             self.assertEqual(cmd[0], str(Path(td) / "node.cmd"))   # node 可执行
             self.assertEqual(cmd[1], str(js))                      # bin.js
             self.assertEqual(cmd[2:], [])
 
     def test_falls_back_to_dsh(self):
         from unittest import mock
-        with mock.patch("opc_web.runner.shutil.which", return_value=None):
-            self.assertEqual(runner._dsh_command(), ["dsh"])
+        with mock.patch("opc_web.engines.dsh.shutil.which", return_value=None):
+            self.assertEqual(edsh._dsh_command(), ["dsh"])
 
 
 class TestGitSnapshot(unittest.TestCase):
@@ -166,7 +167,7 @@ class TestSessionUsageNoBorrow(unittest.TestCase):
         old = os.environ.get("DSH_HOME")
         os.environ["DSH_HOME"] = str(home)
         try:
-            self.assertIsNone(runner.read_session_usage(since=time.time()))
+            self.assertIsNone(edsh.read_session_usage(since=time.time()))
         finally:
             if old is None:
                 os.environ.pop("DSH_HOME", None)

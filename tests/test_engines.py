@@ -176,5 +176,45 @@ class TestApiEngineConfig(unittest.TestCase):
         self.assertEqual(cfg["model"], "cheap-model")     # 引擎级覆盖优先
 
 
+class TestPurposeRouting(unittest.TestCase):
+    """按用途路由：engineFor.<用途> 优先，留空回退主引擎（不配则行为与解耦前一致）。"""
+
+    def test_falls_back_to_main_engine(self):
+        with mock.patch.dict(config._CFG, {"engineFor": {}}, clear=False):
+            with mock.patch.object(config, "ENGINE", "main"):
+                self.assertEqual(config.engine_for("prompt"), "main")
+                self.assertEqual(config.engine_for("execute"), "main")
+                self.assertEqual(config.engine_for(), "main")      # 不传用途 = 主引擎
+
+    def test_purpose_overrides_main_engine(self):
+        with mock.patch.dict(config._CFG, {"engineFor": {"prompt": "api", "execute": "dsh"}}, clear=False):
+            with mock.patch.object(config, "ENGINE", "main"):
+                self.assertEqual(config.engine_for("prompt"), "api")
+                self.assertEqual(config.engine_for("execute"), "dsh")
+                self.assertEqual(config.engine_for("未约定用途"), "main")
+
+    def test_runner_routes_by_purpose(self):
+        """真实路径：runner 的两个入口按 purpose 选到对应引擎。"""
+        calls = []
+
+        def make(name):
+            class _E(ebase.Engine):
+                pass
+            _E.name = name
+
+            def run(self, prompt, *, timeout=600, act="", cwd=None, on_progress=None):
+                calls.append(name)
+                return ebase.RunResult(text="ok")
+
+            _E.run = run
+            return _E
+
+        with mock.patch("opc_web.engines.registry._ENGINES", {"pa": make("pa"), "pb": make("pb")}):
+            with mock.patch.dict(config._CFG, {"engineFor": {"prompt": "pa", "execute": "pb"}}, clear=False):
+                runner.run_headless_sync("拆解用", timeout=1, purpose="prompt")
+                runner.run_headless_task("执行用", timeout=1, act="T-9-S1", purpose="execute")
+        self.assertEqual(calls, ["pa", "pb"])
+
+
 if __name__ == "__main__":
     unittest.main()

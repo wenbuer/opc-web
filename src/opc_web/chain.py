@@ -136,7 +136,7 @@ def decompose(task_no, task_text):
               "不要输出任何解释、提问或多余文字。任务：%s%s"
               % (max_subs, task_no, task_no, task_text, _decision_block(task_text)))
     try:
-        text = runner.run_headless_sync(prompt, config.tune("decomposeTimeout"))
+        text = runner.run_headless_sync(prompt, config.tune("decomposeTimeout"), purpose="prompt")
     except Exception:
         return []                       # 拆解通道不可用 → 走 execute 的统一兜底/阻塞，不留待派反复重触发
     return [row for row in parse_dispatch_rows(text) if row["role"] in ok][:max_subs]
@@ -290,7 +290,8 @@ def execute(task_no, task_text):
                 size0 = 0
             t_exec = time.time()
             try:
-                text, usage = runner.run_headless_task(_flat(spec["prompt"]), EXEC_TIMEOUT, act=sub_no)
+                text, usage = runner.run_headless_task(_flat(spec["prompt"]), EXEC_TIMEOUT, act=sub_no,
+                                           purpose="execute")
             except Exception:
                 text, usage = "", None
             if not _alive(task_no):          # 执行期间被删除 → 丢弃本次产出，直接退出

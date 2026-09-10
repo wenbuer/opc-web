@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260910b">
+<link rel="stylesheet" href="/static/main.css?v=20260910c">
 </head>
 <body>
 <div class="shell">
@@ -316,11 +316,11 @@
           <div class="snav-pane" data-pane="skill">
           <div class="set-head">Skill 导入</div>
           <div class="skill-import-toolbar">
-            <input id="skillSearch" class="skill-search" placeholder="搜索 dsh 技能…">
+            <input id="skillSearch" class="skill-search" placeholder="搜索技能…">
             <span id="skillMsg" class="set-msg"></span>
           </div>
           <div id="dshSkillList" class="skill-import-list"><div class="placeholder">加载中…</div></div>
-          <div class="set-note">来源：dsh 已安装技能（~/.dsh/skills/）。导入后成为共享技能库 <code>agents/skills/&lt;技能名&gt;.md</code>，角色可在「装配技能」勾选。搜索在线市场：<code>npx skills find &lt;关键词&gt;</code></div>
+          <div class="set-note"><b>技能来源由当前执行引擎决定</b>：DSH 引擎列出本机已装技能（<code>~/.dsh/skills/</code> 等三处目录），直连 API 引擎没有技能体系、这里会显示为空。<br>导入后成为共享技能库 <code>agents/skills/&lt;技能名&gt;.md</code>，角色可在「装配技能」勾选。搜索在线市场：<code>npx skills find &lt;关键词&gt;</code></div>
         </div>
         <div class="snav-pane" data-pane="tokens">
             <div class="set-head">任务 Token 统计</div>
@@ -413,6 +413,6 @@
     </div>
   </div>
 </div>
-<script src="/static/main.js?v=20260910b"></script>
+<script src="/static/main.js?v=20260910c"></script>
 </body>
 </html>

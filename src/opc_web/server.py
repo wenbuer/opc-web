@@ -163,52 +163,29 @@ class Handler(BaseHTTPRequestHandler):
         names = sorted(p.name for p in d.glob("*.md")) if d.is_dir() else []
         return {"ok": True, "skills": names, "dir": str(d)}
 
-    def _dsh_skill_dirs(self):
-        """候选技能目录（同名去重，先到先得）：dsh 用户级 → agents 平台 → npm 插件包。"""
-        home = Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh"))
-        dirs, seen = [], set()
-        def add(p):
-            if p.is_dir() and (p / "SKILL.md").exists() and p.name not in seen:
-                seen.add(p.name); dirs.append(p)
-        def add_root(root):
-            if root.is_dir():
-                for p in sorted(root.iterdir()):
-                    add(p)
-        add_root(home / "skills")                        # ~/.dsh/skills
-        add_root(Path.home() / ".agents" / "skills")     # ~/.agents/skills（python-src-project 等）
-        prof = home / "profiles"
-        if prof.is_dir():
-            for pd in sorted(prof.iterdir()):
-                nm = pd / "node_modules"
-                if nm.is_dir():
-                    for sk in sorted(nm.glob("**/skills/*/SKILL.md")):
-                        add(sk.parent)
-        return sorted(dirs, key=lambda p: p.name.lower())
+    def _get_engine_skills(self):
+        """当前引擎可提供的技能（引擎自报）：dsh 扫本地技能目录，api 引擎没有技能。
 
-    def _skill_desc(self, sk):
-        try:
-            txt = sk.read_text(encoding="utf-8", errors="replace")
-        except Exception:
-            return ""
-        m = re.search(r"^---\s*\n([\s\S]*?)\n---", txt)
-        fm = m.group(1) if m else ""
-        dm = re.search(r"(?m)^description:\s*[>|]?\s*([\s\S]*?)(?=^---|\Z)", fm)
-        return " ".join((dm.group(1) or "").split())[:200] if dm else ""
-
-    def _get_dsh_skills(self):
-        dirs = self._dsh_skill_dirs()
-        if not dirs:
-            return {"ok": True, "skills": [], "dirs": [], "msg": "未找到 dsh 技能目录"}
+        「有哪些技能可用」是引擎的能力，不是控制台的：这里曾经直接读 ~/.dsh/skills，
+        换成 API 引擎后照样读 —— 技能页与正在跑的引擎对不上。现在统一问引擎的 skills()。"""
+        eng = engines.get_engine()
         lib = config.AGENTS_DIR / config.SKILLS_REL
         lib_names = {p.name for p in lib.glob("*.md")} if lib.is_dir() else set()
-        skills = []
-        for p in dirs:
-            if not p.is_dir() or p.name.startswith("."):
-                continue
-            if (p / "SKILL.md").exists():
-                skills.append({"name": p.name, "desc": self._skill_desc(p / "SKILL.md"),
-                               "installed": (p.name + ".md") in lib_names, "path": str(p)})
-        return {"ok": True, "skills": skills, "dirs": [str(x) for x in dirs]}
+        try:
+            items = eng.skills() or []
+        except Exception as e:
+            return {"ok": False, "engine": eng.name, "skills": [], "msg": "读取技能失败：%s" % e}
+        skills = [{"name": s.get("name", ""), "desc": s.get("desc", ""), "path": s.get("path", ""),
+                   "installed": (s.get("name", "") + ".md") in lib_names}
+                  for s in items if s.get("name")]
+        if skills:
+            msg = ""
+        elif eng.name == "dsh":
+            msg = "未找到技能目录（~/.dsh/skills 为空）"
+        else:
+            msg = "当前引擎「%s」不提供可装配技能；切到 DSH 引擎后可用" % eng.label
+        return {"ok": True, "engine": eng.name, "engineLabel": eng.label,
+                "skills": skills, "msg": msg}
 
     def _import_skill(self):
         body = self._body() or {}
@@ -217,15 +194,17 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "缺少技能名 name")
         if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
             raise ApiError(400, "技能名非法")
-        src = next((p for p in self._dsh_skill_dirs() if p.name == name), None)
-        if src is None or not (src / "SKILL.md").exists():
-            raise ApiError(404, "dsh 技能 " + name + " 不存在")
+        eng = engines.get_engine()
+        sk = next((s for s in (eng.skills() or []) if s.get("name") == name), None)
+        src = Path(str(sk.get("path") or "")) if sk else None
+        if src is None or not (src / "SKILL.md").is_file():
+            raise ApiError(404, "当前引擎（%s）没有技能「%s」" % (eng.name, name))
         lib = config.AGENTS_DIR / config.SKILLS_REL
         lib.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src / "SKILL.md", lib / (name + ".md"))
         shutil.copytree(src, lib / name, dirs_exist_ok=True)
         return {"ok": True, "name": name, "installed": True,
-                "msg": "已导入「" + name + "」到技能库", "skills": self._get_dsh_skills()["skills"]}
+                "msg": "已导入「" + name + "」到技能库", "skills": self._get_engine_skills()["skills"]}
 
     def _get_daily(self):
         return {"ok": True, "daily": knowledge.latest_daily()}
@@ -286,8 +265,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._get_role_card)
         elif url == "/api/skills":
             self._ok(self._get_skill_lib)
-        elif url == "/api/dsh-skills":
-            self._ok(self._get_dsh_skills)
+        elif url in ("/api/engine-skills", "/api/dsh-skills"):   # 旧名保留兼容，前端已切新名
+            self._ok(self._get_engine_skills)
         elif url == "/api/templates":
             self._json({"ok": True, "templates": templates.templates()})
         elif url == "/api/handbook":

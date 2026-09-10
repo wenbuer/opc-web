@@ -12,6 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from opc_web import config, knowledge, parsers, review, runner, store  # noqa: E402
+from opc_web.engines import dsh as edsh  # noqa: E402
 
 
 class _TmpKB(unittest.TestCase):
@@ -209,7 +210,7 @@ class TestChildEnv(unittest.TestCase):
         os.environ["DEMO_OVERRIDE"] = "from-process"
         config.ENV_FILE = tmp
         try:
-            env = runner._child_env()
+            env = edsh._child_env()
             self.assertEqual(env["DEMO_KEY_FROM_FILE"], "abc")        # 文件里的密钥进得了子进程
             self.assertEqual(env["DEMO_OVERRIDE"], "from-process")    # 环境变量优先于文件
         finally:

@@ -21,6 +21,7 @@ import zstandard as zstd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from opc_web import chain, config, runner  # noqa: E402
+from opc_web.engines import dsh as edsh  # noqa: E402
 
 
 def _zst_write(path: Path, events: list):
@@ -79,7 +80,7 @@ class TestWatchSession(unittest.TestCase):
 
     def test_watch_session_folds_tools_and_beats(self):
         os.environ["DSH_HOME"] = str(self._home)
-        sess_dir = runner._dsh_sessions_dir() / "keeptalk" / "session-w1"
+        sess_dir = edsh._dsh_sessions_dir() / "keeptalk" / "session-w1"
         cwd = str(config.ROOT)
         task = "执行子任务：梳理现有项目内容并迁移代码"
         _zst_write(sess_dir / "session.jsonl.zstd", [
@@ -97,8 +98,8 @@ class TestWatchSession(unittest.TestCase):
             def poll(self_inner):
                 calls["n"] += 1
                 return None if calls["n"] == 1 else 0
-        runner._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30,
-                              set(), task)
+        edsh._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30,
+                              set(), task, on_progress=runner._progress_sink(self._act))
         st = runner.exec_state()[self._act]
         self.assertEqual(st["tools"], 1)
         self.assertIn("pwsh", st["lastTool"])
@@ -112,7 +113,7 @@ class TestWatchSession(unittest.TestCase):
     def test_watch_skips_session_present_before_spawn(self):
         """pre 快照里的会话不是本次任务的，不得认领（否则会显示别的会话的文本）。"""
         os.environ["DSH_HOME"] = str(self._home)
-        sess_dir = runner._dsh_sessions_dir() / "keeptalk" / "session-old"
+        sess_dir = edsh._dsh_sessions_dir() / "keeptalk" / "session-old"
         task = "执行子任务：梳理现有项目内容并迁移代码"
         _zst_write(sess_dir / "session.jsonl.zstd", [
             {"type": "session", "cwd": str(config.ROOT)},
@@ -125,14 +126,14 @@ class TestWatchSession(unittest.TestCase):
         class _P:
             def poll(self_inner):
                 return 0
-        runner._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30,
-                              {"session-old"}, task)
+        edsh._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30,
+                              {"session-old"}, task, on_progress=runner._progress_sink(self._act))
         self.assertNotIn(self._act, runner.exec_state())
 
     def test_watch_requires_prompt_match(self):
         """cwd 相同但任务文本对不上的会话不得认领（T-007-S1 认领错会话的根因）。"""
         os.environ["DSH_HOME"] = str(self._home)
-        sess_dir = runner._dsh_sessions_dir() / "keeptalk" / "session-other"
+        sess_dir = edsh._dsh_sessions_dir() / "keeptalk" / "session-other"
         _zst_write(sess_dir / "session.jsonl.zstd", [
             {"type": "session", "cwd": str(config.ROOT)},
             {"type": "user/message", "data": {"message": {"content": [
@@ -144,13 +145,14 @@ class TestWatchSession(unittest.TestCase):
         class _P:
             def poll(self_inner):
                 return 0
-        runner._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30,
-                              set(), "执行子任务：梳理现有项目内容并迁移代码")
+        edsh._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30,
+                              set(), "执行子任务：梳理现有项目内容并迁移代码",
+                              on_progress=runner._progress_sink(self._act))
         self.assertNotIn(self._act, runner.exec_state())
 
     def test_watch_session_skips_foreign_cwd(self):
         os.environ["DSH_HOME"] = str(self._home)
-        sess_dir = runner._dsh_sessions_dir() / "other-proj" / "session-x1"
+        sess_dir = edsh._dsh_sessions_dir() / "other-proj" / "session-x1"
         _zst_write(sess_dir / "session.jsonl.zstd", [
             {"type": "session", "cwd": "C:\\somewhere-else"},
             {"type": "tool/call", "data": {"name": "pwsh", "arguments": "rm"}},
@@ -158,7 +160,8 @@ class TestWatchSession(unittest.TestCase):
         class _P:
             def poll(self_inner):
                 return 0      # 立即结束：只应完成"找不到匹配会话"的静默退出
-        runner._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30)
+        edsh._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30,
+                              on_progress=runner._progress_sink(self._act))
         self.assertNotIn(self._act, runner.exec_state())
 
 
@@ -178,7 +181,7 @@ class TestUsageFromClaimedSession(unittest.TestCase):
         shutil.rmtree(self._tmp, ignore_errors=True)
 
     def _mk_session(self, name, mtime_ago=3600.0):
-        d = runner._dsh_sessions_dir() / "proj" / name
+        d = edsh._dsh_sessions_dir() / "proj" / name
         _zst_write(d / "session.jsonl.zstd", [
             {"type": "session", "cwd": "C:/x/proj"},
             {"type": "assistant/message", "data": {"usage": {
@@ -192,15 +195,15 @@ class TestUsageFromClaimedSession(unittest.TestCase):
     def test_claimed_session_wins_over_since_filter(self):
         d = self._mk_session("session-old", mtime_ago=3600)
         # 按 mtime 猜：会话早于 since → 抽不到
-        self.assertIsNone(runner.read_session_usage(since=time.time()))
+        self.assertIsNone(edsh.read_session_usage(since=time.time()))
         # 给定已认领的会话：直接取到用量
-        got = runner.read_session_usage(since=time.time(), session_dir=d)
+        got = edsh.read_session_usage(since=time.time(), session_dir=d)
         self.assertEqual(got["inputTokens"], 100)
         self.assertEqual(got["cacheReadTokens"], 900)
 
     def test_none_session_falls_back_to_scan(self):
         d = self._mk_session("session-new", mtime_ago=0)
-        got = runner.read_session_usage(since=time.time() - 60, session_dir=None)
+        got = edsh.read_session_usage(since=time.time() - 60, session_dir=None)
         self.assertIsNotNone(got)
         self.assertEqual(got["outputTokens"], 20)
 

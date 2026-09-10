@@ -18,6 +18,7 @@ class Progress:
     lastTool: str = ""        # 最近一次工具（名称 + 参数摘要）
     lastText: str = ""        # 最近一段模型文本（单行、已压缩）
     session: str = ""         # 引擎侧的会话标识（dsh 给会话目录尾号；API 引擎给 request id）
+    finished: bool = False    # 本次运行已结束：上层据此清掉「执行中」状态（引擎不直接碰上层状态）
 
 
 @dataclass

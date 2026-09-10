@@ -1962,22 +1962,24 @@
 
   /* ================= 设置：目录选择 / 配置保存 ================= */
   /* ================= 设置：项目管理（一个 opc-web 对应多个 OPC 项目） ================= */
-  var dshSkills = [];
-  function loadDshSkills(){
+  var engSkills = [];
+  var engSkillMsg = "";      // 引擎自报的说明（无技能时告诉用户为什么）
+  function loadEngineSkills(){
     var box = $("dshSkillList");
     if (box) box.innerHTML = "<div class='placeholder'>加载中…</div>";
-    api("/api/dsh-skills").then(function(j){
+    api("/api/engine-skills").then(function(j){
       if (!j || !j.ok){ if (box) box.innerHTML = "<div class='placeholder'>加载失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
-      dshSkills = j.skills || [];
-      renderDshSkills();
+      engSkills = j.skills || [];
+      engSkillMsg = j.msg || "";
+      renderEngineSkills();
     }).catch(function(e){ if (box) box.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
   }
-  function renderDshSkills(){
+  function renderEngineSkills(){
     var box = $("dshSkillList"); if (!box) return;
     var ss = $("skillSearch");
     var q = (ss && ss.value || "").toLowerCase();
-    var list = dshSkills.filter(function(s){ return (!q || (s.name + " " + (s.desc || "")).toLowerCase().indexOf(q) >= 0); });
-    if (!list.length){ box.innerHTML = "<div class='placeholder'>无匹配技能；也可用 npx skills find 搜索在线市场</div>"; return; }
+    var list = engSkills.filter(function(s){ return (!q || (s.name + " " + (s.desc || "")).toLowerCase().indexOf(q) >= 0); });
+    if (!list.length){ box.innerHTML = "<div class='placeholder'>" + esc(engSkillMsg || "无匹配技能；也可用 npx skills find 搜索在线市场") + "</div>"; return; }
     box.innerHTML = "";
     list.forEach(function(s){
       var el = document.createElement("div");
@@ -1985,13 +1987,13 @@
       el.innerHTML = "<div class='skill-import-info'><b>" + esc(s.name) + "</b><em>" + esc(s.desc || "") + "</em></div>"
         + (s.installed ? "<span class='skill-import-st done'>已导入</span>" : "<button class='skill-import-btn'>导入</button>");
       var btn = el.querySelector(".skill-import-btn");
-      if (btn) btn.addEventListener("click", function(){ importDshSkill(s.name); });
+      if (btn) btn.addEventListener("click", function(){ importEngineSkill(s.name); });
       box.appendChild(el);
     });
   }
-  function importDshSkill(name){
+  function importEngineSkill(name){
     post("/api/skill-import", {name: name}).then(function(j){
-      if (j && j.ok){ dshSkills = j.skills || []; renderDshSkills(); var m = $("skillMsg"); if (m) m.textContent = (j.msg || "已导入"); }
+      if (j && j.ok){ engSkills = j.skills || []; renderEngineSkills(); var m = $("skillMsg"); if (m) m.textContent = (j.msg || "已导入"); }
       else { alert((j && j.msg) || "导入失败"); }
     }).catch(function(e){ alert("导入失败：" + (e.message || "")); });
   }
@@ -2032,6 +2034,7 @@
       if (note){
         var t = "<b>选哪个</b> 直连 API 用一个内置工具的 agent 循环跑任务，进度是流式增量，但<b>不支持装配技能</b>（Skill 导入只对 DSH 有意义）；"
           + "DSH 自带工具沙箱与技能生态，进度取自会话日志。切换后立即生效，正在跑的任务不受影响。";
+        t += "<br><b>按用途路由</b> 可在 <code>opc-config.json</code> 的 <code>engineFor</code> 段里给 <code>prompt</code>（拆解/汇总）与 <code>execute</code>（角色任务）分别指定引擎，留空即用这里选的主引擎。";
         if (j.envOverride) t += "<br><b>注意</b> 环境变量 <code>OPC_ENGINE=" + esc(j.envOverride) + "</code> 优先于这里的选择，改这里不会生效。";
         var errs = j.errors || {};
         var ek = Object.keys(errs);
@@ -2294,11 +2297,11 @@
         var pane = document.querySelector('.snav-pane[data-pane="' + k + '"]');
         if (pane) pane.classList.add("active");
         if (k === "tokens") loadTokenStats();
-        if (k === "skill") loadDshSkills();
+        if (k === "skill") loadEngineSkills();
         if (k === "engine") loadEngines();
       });
     });
-    var sss = $("skillSearch"); if (sss && !sss.dataset.bound){ sss.dataset.bound = "1"; sss.addEventListener("input", renderDshSkills); }
+    var sss = $("skillSearch"); if (sss && !sss.dataset.bound){ sss.dataset.bound = "1"; sss.addEventListener("input", renderEngineSkills); }
 
     var sac = $("skillAddClose"); if (sac) sac.addEventListener("click", closeSkillAdd);
     var li2 = $("linkImportSkill2"); if (li2) li2.addEventListener("click", gotoSkillImport);
