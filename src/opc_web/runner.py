@@ -14,11 +14,100 @@ import threading
 import time
 from pathlib import Path
 
+import zstandard as zstd
+
 from . import config
 
 _LOCK = threading.RLock()
 _ACTIVE = {"events": [], "seq": 0}
 _ACTIVE_SPAWN = {}   # act(key: 子任务号) -> 运行中 headless 子进程 pid，供删除任务时终止
+_EXEC_LOCK = threading.Lock()
+_EXEC_STATE = {}     # act -> {startedAt, tools, lastTool, lastText, beatMono, session}——执行实时状态值
+
+
+def exec_state() -> dict:
+    """各执行中子任务的实时状态值（工作台 /api/run/events 的 state.exec 透出）。"""
+    with _EXEC_LOCK:
+        return {k: dict(v) for k, v in _EXEC_STATE.items()}
+
+
+def _exec_beat(act: str, tools: int, last_tool: str, last_text: str, t0: float):
+    """刷新心跳与状态值（事件追踪线程专用），并节流 emit 进度事件。"""
+    now = time.monotonic()
+    with _EXEC_LOCK:
+        st = _EXEC_STATE.setdefault(act, {"startedAt": time.strftime("%H:%M:%S", time.localtime()),
+                                          "tools": 0, "lastTool": "", "lastText": "",
+                                          "beatMono": now - 999, "session": ""})
+        st["tools"] = tools
+        if last_tool:
+            st["lastTool"] = last_tool
+        if last_text:
+            st["lastText"] = last_text
+        st["beatMono"] = now
+        snap = dict(st)
+    _append({"type": "exec/progress",
+             "data": {"sub": act, "elapsed": int(now - t0), "tools": tools,
+                      "lastTool": last_tool, "lastText": (last_text or "")[:160]}})
+
+
+def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float):
+    """跟踪本次 headless 的 dsh 会话事件日志（数据源 ~/.dsh/sessions/<cwd>/session-*.jsonl.zstd）。
+
+    借鉴 dsh-better-sidebar 的 lastActivity：只取 tool/call 与 assistant/message 两类事件，
+    反向折叠出「最近工具调用 + 最近文本」，忽略生命周期与 chunk 碎片。每次解析到新事件
+    刷新 _EXEC_STATE 心跳 —— 供存活判定（事件在增长 = 活着），并 emit exec/progress
+    到工作台实时事件。"""
+    root = _dsh_sessions_dir()
+    sess = None
+    seen = 0
+    tools = 0
+    last_tool = ""
+    last_text = ""
+    while p.poll() is None:
+        time.sleep(2)
+        try:
+            if sess is None:
+                # 找会话：spawn 之后有落盘动作、且 cwd 与本次项目根一致的会话
+                for d in root.glob("*/session-*"):
+                    zf = d / "session.jsonl.zstd"
+                    if not zf.is_file() or zf.stat().st_mtime < spawn_epoch - 5:
+                        continue
+                    with open(zf, "rb") as fh:
+                        raw = zstd.ZstdDecompressor().stream_reader(fh).read()
+                    evs = [json.loads(x) for x in raw.decode("utf-8", "replace").splitlines() if x.strip()]
+                    cwd = next((ev.get("cwd", "") for ev in evs if ev.get("type") == "session"), "")
+                    if str(cwd).rstrip("\\").lower() != str(config.ROOT).rstrip("\\").lower():
+                        continue
+                    sess = (d, evs)
+                    break
+                if sess is None:
+                    continue
+                # seen 保持 0：spawn 之后新建的会话（按 mtime 过滤）里的事件全属本次任务
+            d, _ = sess
+            zf = d / "session.jsonl.zstd"
+            with open(zf, "rb") as fh:
+                raw = zstd.ZstdDecompressor().stream_reader(fh).read()
+            evs = [json.loads(x) for x in raw.decode("utf-8", "replace").splitlines() if x.strip()]
+            if len(evs) <= seen:
+                continue
+            for ev in evs[seen:]:
+                if ev.get("type") == "tool/call":
+                    dd = ev.get("data") or {}
+                    name = str(dd.get("name") or "?")
+                    args = str(dd.get("arguments") or "")
+                    brief = args[:110] + ("…" if len(args) > 110 else "")
+                    tools += 1
+                    last_tool = name + " " + brief if brief else name
+                elif ev.get("type") == "assistant/message":
+                    for part in (ev.get("data", {}).get("message") or {}).get("content") or []:
+                        if part.get("type") == "text" and part.get("text", "").strip():
+                            last_text = part["text"].strip()[:160]
+            seen = len(evs)
+            with _EXEC_LOCK:
+                _EXEC_STATE.setdefault(act, {})["session"] = d.name[-12:]
+            _exec_beat(act, tools, last_tool, last_text, t0)
+        except Exception:
+            continue
 
 
 def _child_env() -> dict:
@@ -48,7 +137,7 @@ def emit(ev: dict) -> int:
 def events(since: int = 0) -> dict:
     """自 since 之后的新事件（前端用返回的 state.seq 作为下次游标）。"""
     with _LOCK:
-        return {"ok": True, "state": {"seq": _ACTIVE["seq"]},
+        return {"ok": True, "state": {"seq": _ACTIVE["seq"], "exec": exec_state()},
                 "events": [e for e in _ACTIVE["events"] if e["seq"] > since]}
 
 
@@ -71,10 +160,10 @@ def _dsh_command() -> list:
 def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
     """启动 dsh headless 子进程并收尾，返回其原始 stdout（stderr 合并）字节。
 
-    超时语义：headless 只在 turn 结束后一次性打印 final 文本；因此无输出即任务未启动，
-    超 timeout 强杀（防静默挂死泄漏进程树）。但执行路径用 --events-jsonl 时会边生成边输出，
-    所以「有输出」并不代表即将结束 —— 若生成过长或挂死，无限等待会卡死调度（SCHED_STATE.busy 永不回 False）。
-    故统一：无输出超 timeout 强杀；有输出后再给 timeout*3 的硬上限，超过也强杀（判为阻塞）。
+    存活语义（v1.17）：headless 只在 turn 结束后一次性打印 final 文本，stdout 全程静默，
+    因此「无输出」不能当死亡判据 —— 900 秒无输出强杀曾把正在干活 15+ 分钟的 R3/R4 误判阻塞。
+    现在以 _watch_session 追踪的会话事件心跳为准：事件持续增长即存活；心跳停摆超 timeout
+    才判死（真挂死），另有 timeout*3 的总时长硬上限兜底。act 为空时退回纯 stdout 语义。
     spawn 失败返回 b""。"""
     base = _dsh_command()
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -100,8 +189,11 @@ def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
             pass
 
     threading.Thread(target=_drain, daemon=True).start()
+    if act:
+        threading.Thread(target=_watch_session, args=(act, p, time.time(), time.monotonic()),
+                         daemon=True).start()
     t0 = time.monotonic()
-    t_first = None        # 首个输出时刻（有输出 = 任务在活动，但不等同即将结束）
+    t_first = None        # stdout 首帧时刻（headless 期末才打印，平时靠会话事件心跳）
 
     def _kill():
         try:
@@ -117,17 +209,25 @@ def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
             except Exception:
                 pass
 
-    hard = max(timeout * 3, 1800.0)     # 有输出后的硬上限，防长生成/挂死卡住调度
+    hard = max(timeout * 3, 1800.0)     # 总时长硬上限，防长生成/挂死卡住调度
     while True:
         if p.poll() is not None:
             break                       # 自然结束
         if chunks and t_first is None:
             t_first = time.monotonic()  # 首帧输出：任务开始活动
         now = time.monotonic()
-        if t_first is None and now - t0 > timeout:
-            _kill(); break              # 全程无输出且超时 → 判死
-        if t_first is not None and now - t_first > hard:
-            _kill(); break              # 有输出但迟迟不结束 → 判阻塞，防死锁
+        last = t_first
+        if act:
+            beat = (_EXEC_STATE.get(act) or {}).get("beatMono") or 0
+            if beat > (last or 0):
+                last = beat             # 会话事件心跳 = 真实的活动信号
+        if last is None:
+            if now - t0 > timeout:
+                _kill(); break          # 全程无任何活动且超时 → 判死
+        elif now - last > timeout:
+            _kill(); break              # 心跳停摆超 timeout（事件不再增长）→ 真挂死
+        if now - t0 > hard:
+            _kill(); break              # 总时长硬上限 → 判阻塞
         time.sleep(0.5)
     try:
         p.stdout.close()
@@ -135,6 +235,8 @@ def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
         pass
     if act:
         _ACTIVE_SPAWN.pop(act, None)
+        with _EXEC_LOCK:
+            _EXEC_STATE.pop(act, None)
     return b"".join(chunks)
 
 
@@ -164,11 +266,7 @@ def _usage_from_session(session_dir: Path) -> dict:
     if not zf.is_file():
         return None
     try:
-        import zstandard as zstd
-    except Exception:
-        return None
-    try:
-        with zstd.ZstdDecompressor().stream_reader(open(zf, "rb")) as _s:
+        with open(zf, "rb") as fh, zstd.ZstdDecompressor().stream_reader(fh) as _s:
             text = _s.read().decode("utf-8", "replace")
     except Exception:
         return None

@@ -1301,11 +1301,55 @@
       e5.className = "run-step";
       e5.textContent = "进程退出码：" + (d.code != null ? d.code : "?");
       body.appendChild(e5);
+    } else if (type === "exec/progress"){
+      /* 执行心跳（会话事件日志折叠出的「最近工具 + 最近文本」）：进度行 */
+      var el = (d.elapsed || 0), mm = Math.floor(el / 60), ss = ("0" + (el % 60)).slice(-2);
+      var pr = document.createElement("div");
+      pr.className = "run-prog";
+      pr.innerHTML = "<em>[" + mm + ":" + ss + "]</em> " + esc(d.sub || "") + " · 操作 " + (d.tools || 0) + " 次"
+        + (d.lastTool ? " · 最近：" + esc(d.lastTool) : "")
+        + (d.lastText ? "<div class='rp-text'>" + esc(d.lastText) + "</div>" : "");
+      body.appendChild(pr);
     }
+    runFoldCheck();
     lg.scrollTop = lg.scrollHeight;
     // 状态变化即导火索：任一事件到达就防抖刷新工作台；run 边界再刷新任务详情
     scheduleWbRefresh(type === "run/end" || type === "run/start" || type === "run/exited");
   }
+  /* ===== 长输出折叠：CSS 限高但 DOM 全文保留（不截断），超限行加「展开全部」 ===== */
+  function runFoldCheck(){
+    var lg = $("runLog"); if (!lg) return;
+    Array.prototype.forEach.call(lg.querySelectorAll(".run-out:not(.fchk)"), function(ob){
+      ob.classList.add("fchk");
+      if (ob.scrollHeight <= ob.clientHeight + 8) return;
+      ob.classList.add("folded");
+      ob.style.position = "relative";
+      var t = document.createElement("button");
+      t.className = "run-fold-btn"; t.type = "button"; t.textContent = "展开全部";
+      t.addEventListener("click", function(){
+        var ex = ob.classList.toggle("expanded");
+        t.textContent = ex ? "收起" : "展开全部";
+      });
+      ob.appendChild(t);
+    });
+  }
+  /* ===== 实时事件面板全屏：class 切换（节点不搬家，事件轮询不受影响），ESC 退出 ===== */
+  var RUN_FS_SVG = WS_FS_SVG, RUN_MIN_SVG = WS_MIN_SVG;
+  var runFsBtn = $("runFsBtn");
+  if (runFsBtn) runFsBtn.addEventListener("click", function(){
+    var lg = $("runLog"); if (!lg) return;
+    var on = lg.classList.toggle("fullscreen");
+    runFsBtn.innerHTML = on ? RUN_MIN_SVG : RUN_FS_SVG;
+    runFsBtn.title = on ? "退出全屏" : "全屏显示";
+    runFsBtn.setAttribute("aria-label", runFsBtn.title);
+  });
+  document.addEventListener("keydown", function(e){
+    if (e.key !== "Escape") return;
+    var lg = $("runLog");
+    if (lg && lg.classList.contains("fullscreen")){
+      var b = $("runFsBtn"); if (b) b.click();
+    }
+  });
   /* ================= 每日简报 ================= */
   /* ================= 角色管理 ================= */
   function parseCardFields(card){
