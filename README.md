@@ -7,7 +7,7 @@
 [![engine](https://img.shields.io/badge/engine-API%20%7C%20DSH-blueviolet.svg)](#执行引擎)
 [![network](https://img.shields.io/badge/network-127.0.0.1%20only-purple.svg)](#配置与数据)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![stars](https://img.shields.io/github/stars/wenbuer/opc-web-dsh?style=social)](https://github.com/wenbuer/opc-web-dsh)
+[![stars](https://img.shields.io/github/stars/wenbuer/opc-web?style=social)](https://github.com/wenbuer/opc-web)
 
 ---
 
