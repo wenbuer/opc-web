@@ -1218,6 +1218,25 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .daily-list,.daily-main{background:var(--panel);border:1px solid var(--line);border-radius:12px}
 :root[data-theme="dark"] .daily-list,:root[data-theme="dark"] .daily-main{background:rgba(255,255,255,.02);border-color:var(--line2)}
 
+/* ===== 面板底统一为半透明叠加层（浅色 = 透出底色的白，深色 = 微弱提亮） =====
+   浅色原先用不透明的 var(--panel)（#f8fafc），深色才用 rgba(255,255,255,.02)；
+   现在两套主题一致：都是叠加层，页面渐变能透出来。 */
+.prog-panel,
+.org-panel,
+.role-panel,
+.tl-strip,
+.wb-col,
+.daily-list,
+.daily-main{background:rgba(255,255,255,.58)}
+:root[data-theme="dark"] .prog-panel,
+:root[data-theme="dark"] .org-panel,
+:root[data-theme="dark"] .role-panel,
+:root[data-theme="dark"] .tl-strip,
+:root[data-theme="dark"] .wb-col,
+:root[data-theme="dark"] .daily-list,
+:root[data-theme="dark"] .daily-main{background:rgba(255,255,255,.02)}
+
+
 /* ===== 统一面板底：把「项目进度」的底色套到其余主区块 =====
    浅色下组织架构/角色工作区/OPC 时间线本来就用 var(--panel)，差异主要在深色主题
    （原来只有 .prog-panel 有轻微提亮 rgba(255,255,255,.02)）；工作台三列与简报页
