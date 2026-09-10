@@ -136,7 +136,11 @@ PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
 # 执行引擎：谁在执行角色任务（engines/ 包）。缺省 api（直连大模型 API，不依赖 dsh）；
 # 可在「设置 → 执行引擎」里切到 dsh，或手改 opc-config.json 的 engine / 环境变量 OPC_ENGINE。
 # 取值必须是 engines.registry 里已注册的名字——写错会抛 EngineError，不静默回退（防配置错误被吞）。
-ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or "api")
+# 默认引擎与默认备用引擎提成常量：既给生产代码用，也让测试断言「默认值」而不必去读
+# 本机配置文件（那是用户的选择，会随设置页变化，拿它当断言依据必然时绿时红）。
+DEFAULT_ENGINE = "api"          # 直连大模型 API：不依赖 dsh，装好即可用
+DEFAULT_FALLBACK = "api"        # 主力 dsh 没跑起来时用直连 API 兜底
+ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or DEFAULT_ENGINE)
 # 首页「今日用量」的估算单价（元 / 百万 token）。默认值只是占位，按你实际模型价格改：
 # 环境变量 OPC_TOKEN_PRICE_IN / OPC_TOKEN_PRICE_OUT（或 opc-config.json 的 priceIn/priceOut）。
 TOKEN_PRICE_IN = float(os.environ.get("OPC_TOKEN_PRICE_IN") or _CFG.get("priceIn") or 1.0)
@@ -177,7 +181,7 @@ def engine_fallback(main: str = "") -> str:
     elif "engineFallback" in _CFG:
         want = str(_CFG.get("engineFallback") or "").strip()
     else:
-        want = "api"
+        want = DEFAULT_FALLBACK
     if not want or want == str(main or ENGINE).strip().lower():
         return ""
     return want
@@ -244,7 +248,7 @@ def reload() -> dict:
     LOG_FILE = ROOT / SCHED_LOG_REL
     PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
     # 引擎也随配置热生效：设置页切换后下一次派发就用新引擎，无需重启控制台。
-    ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or "api")
+    ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or DEFAULT_ENGINE)
     return settings_info()
 
 

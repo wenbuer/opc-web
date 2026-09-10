@@ -89,10 +89,13 @@ class TestRunnerDelegates(unittest.TestCase):
 
 
 class TestDefaultEngine(unittest.TestCase):
-    @unittest.skipIf(os.environ.get("OPC_ENGINE"), "OPC_ENGINE 覆盖了默认值")
-    def test_default_is_api(self):
-        """默认引擎是直连 API（不依赖 dsh）；dsh 作为可选项保留。"""
-        self.assertEqual(str(config.ENGINE), "api")
+    def test_default_engine_is_api(self):
+        """默认引擎是直连 API（不依赖 dsh）；dsh 作为可选项保留。
+
+        断言代码里的默认值常量，而不是 config.ENGINE —— 后者读的是本机 opc-config.json，
+        用户用设置页一改就变，拿它当断言依据会让测试时绿时红。"""
+        self.assertEqual(config.DEFAULT_ENGINE, "api")
+        self.assertEqual(config.DEFAULT_FALLBACK, "api")     # 默认 api 兜底 dsh
 
 
 class TestDescribe(unittest.TestCase):
@@ -265,8 +268,9 @@ class TestEngineFallback(unittest.TestCase):
         cfg.pop("engineFallback", None)                      # 未配置 = 用默认方向
         with mock.patch.dict(config._CFG, cfg, clear=True):
             with mock.patch.object(config, "ENGINE", "api"):
-                self.assertEqual(config.engine_fallback("dsh"), "api")   # dsh 没起来 → api 兜底
-                self.assertEqual(config.engine_fallback("api"), "")      # 自己兜自己无意义
+                with mock.patch.object(config, "DEFAULT_FALLBACK", "api"):
+                    self.assertEqual(config.engine_fallback("dsh"), "api")   # dsh 没起来 → api 兜底
+                    self.assertEqual(config.engine_fallback("api"), "")      # 自己兜自己无意义
 
     def test_explicit_empty_disables_fallback(self):
         with mock.patch.dict(config._CFG, {"engineFallback": ""}, clear=False):
