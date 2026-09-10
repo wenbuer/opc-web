@@ -112,7 +112,6 @@ main{flex:1;overflow:hidden}
   background:rgba(15,30,50,.035);border:1px solid var(--line);border-radius:6px;
 }
 .a-item .n{font-family:var(--mono);color:var(--dim)}
-.a-item .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .piyue-main{flex:1;overflow-y:auto;padding:26px 30px;display:flex;flex-direction:column;gap:18px;min-width:0}
 
@@ -181,7 +180,6 @@ main{flex:1;overflow:hidden}
 .sec-btn .arr{color:var(--dim);font-size:10px;flex:none;width:12px;transition:transform .15s}
 .sec-body{margin-top:0}
 .prod-wrap{display:inline-block;vertical-align:top;margin:0 2px}
-.prod-item .arr{color:var(--dim);font-size:10px;flex:none;width:10px}
 .doc-sec .to-doc{max-height:420px;overflow:auto;background:rgba(15,30,50,.05);border:1px dashed var(--line2);border-radius:8px;padding:10px 12px}
 .prod-list{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
 .prod-item{display:inline-flex;align-items:center;gap:5px;padding:2px 11px;box-sizing:border-box;background:rgba(2,132,199,.06);border:1px solid var(--line2);border-radius:99px;cursor:pointer;font-size:11px;white-space:nowrap;transition:all .15s ease}
@@ -263,8 +261,8 @@ main{flex:1;overflow:hidden}
 :root[data-theme="dark"] .prog-panel .proj-shared-list{scrollbar-color:rgba(232,183,61,.3) transparent}
 :root[data-theme="dark"] .hp-track{background:rgba(255,255,255,.08)}
 .home-grid{display:grid;grid-template-columns:.88fr 1fr 1.12fr;gap:14px;flex:1 1 0;min-height:0;padding:14px 18px 8px;overflow:hidden}
-.panel-head{font-size:12px;letter-spacing:2px;color:var(--gold);margin-bottom:12px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.panel-head em{font-style:normal;color:var(--faint);font-size:10.5px;letter-spacing:.5px}
+.panel-head{margin-bottom:12px}
+.panel-head em{letter-spacing:.5px}
 .org-panel,.tl-panel,.task-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px}
 .org-panel{overflow-y:auto;min-height:0}
 
@@ -308,7 +306,7 @@ main{flex:1;overflow:hidden}
 
 @media (max-width:1100px){.home-grid{grid-template-columns:1fr}}
 /* ===== 任务下达与 R1 调度面板 ===== */
-.dispatch-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:16px 20px 0}
+.dispatch-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px}
 .panel-head{font-size:12px;letter-spacing:2px;color:var(--gold);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .panel-head em{font-style:normal;color:var(--faint);font-size:10.5px}
 .launch-row{display:flex;gap:10px;margin-top:12px;align-items:center}
@@ -324,7 +322,7 @@ main{flex:1;overflow:hidden}
 .dq-state.busy{color:var(--gold);animation:blink 1.2s infinite}
 @keyframes blink{50%{opacity:.45}}
 .dq-table{display:flex;flex-direction:column;gap:5px;margin-top:10px}
-.dq-row{display:grid;grid-template-columns:64px 96px 1fr 90px 64px auto;gap:8px;align-items:center;padding:6px 10px;background:rgba(15,30,50,.035);border:1px solid var(--line);border-radius:7px;font-size:10.5px}
+.dq-row{display:grid;gap:8px;align-items:center;padding:6px 10px;background:rgba(15,30,50,.035);border:1px solid var(--line);border-radius:7px;font-size:10.5px}
 .dq-row.open{border-color:rgba(239,68,68,.45)}
 .dq-row.done{opacity:.6}
 .dq-row .dno{font-family:var(--mono);color:var(--gold)}
@@ -335,8 +333,8 @@ main{flex:1;overflow:hidden}
 
 
 /* ===== 作战面板：角色工作区 ===== */
-.role-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow:hidden;min-height:0}
-.role-detail{max-height:560px;overflow:auto;margin-top:10px;border:1px dashed var(--line2);border-radius:8px;background:rgba(15,30,50,.05);padding:12px 14px}
+.role-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow:hidden}
+.role-detail{margin-top:10px;border-radius:8px}
 .role-detail .placeholder{color:var(--faint);font-size:11px}
 .role-pane.skills .placeholder,.role-pane.files .placeholder{padding:2px 0;text-align:left;line-height:1.7}
 .role-card-doc h1{font-size:15px;color:var(--gold);margin:0 0 8px}
@@ -348,25 +346,21 @@ main{flex:1;overflow:hidden}
 .role-card-doc code{background:rgba(2,132,199,.12);color:var(--gold);padding:1px 4px;border-radius:4px;font-size:10.5px}
 .role-card-doc{overflow-wrap:break-word;word-break:break-word}
 .back-bar{margin-bottom:8px}
-.back-bar a{color:var(--gold);font-size:11px;cursor:pointer}
 .org-tree .role-card{cursor:pointer}
 .org-tree .role-card:hover{border-color:var(--gold);box-shadow:0 0 10px rgba(2,132,199,.25)}
 @media (max-width:1100px){.wb-grid{grid-template-columns:1fr}}
 .sched-ctl .dq-state{font-size:11px;color:var(--dim)}
 .btn-gold.small{padding:4px 10px;font-size:11px;border-radius:7px}
-.dq-state.paused{color:var(--gold)}
 .task-table,.dq-table,.r1-out,.rn-out,.timeline,.role-detail{max-height:340px;overflow-y:auto;overscroll-behavior:contain;padding-right:4px}
 .task-table::-webkit-scrollbar,.dq-table::-webkit-scrollbar,.r1-out::-webkit-scrollbar,.rn-out::-webkit-scrollbar,.timeline::-webkit-scrollbar,.role-detail::-webkit-scrollbar{width:6px}
 .task-table::-webkit-scrollbar-thumb,.dq-table::-webkit-scrollbar-thumb,.r1-out::-webkit-scrollbar-thumb,.rn-out::-webkit-scrollbar-thumb,.timeline::-webkit-scrollbar-thumb,.role-detail::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
 .task-table::-webkit-scrollbar-track,.dq-table::-webkit-scrollbar-track,.r1-out::-webkit-scrollbar-track,.rn-out::-webkit-scrollbar-track,.timeline::-webkit-scrollbar-track,.role-detail::-webkit-scrollbar-track{background:rgba(15,30,50,.06)}
 /* ===== 作战面板：角色卡 / 工作区产物 双框 ===== */
-.role-detail{display:flex;flex-direction:column;gap:8px;border:none;padding:0;background:transparent;max-height:none;overflow:visible}
+.role-detail{border:none;padding:0;background:transparent;max-height:none;overflow:visible}
 .role-pane{background:rgba(15,30,50,.05);border:1px solid var(--line2);border-radius:10px;padding:8px 11px}
-.role-pane.card{flex:none}
 .role-pane.skills,.role-pane.files{flex:none;display:flex;flex-direction:column}
 .role-pane .pane-title{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.12em;color:var(--gold);margin-bottom:6px;border-bottom:1px dashed var(--line2);padding-bottom:5px}
 .role-pane .pane-title em{flex:1}
-#btnEditRole{margin-left:auto;flex:none}
 .role-pane .pane-title em{color:var(--faint);font-style:normal;margin-left:6px;letter-spacing:0}
 .role-pane .pane-body{max-height:220px;overflow-y:auto;padding-right:4px}
 .role-pane.skills .pane-body,.role-pane.files .pane-body{min-height:21px}
@@ -374,7 +368,7 @@ main{flex:1;overflow:hidden}
 .role-pane .pane-body::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
 .role-pane .pane-body::-webkit-scrollbar-track{background:rgba(15,30,50,.06)}
 /* 角色卡：完整显示全文、随内容增高、最低为默认高度、不出现内部滚动条 */
-.role-pane.card .pane-body{max-height:300px;min-height:0;overflow-y:auto;padding-right:0}
+.role-pane.card .pane-body{padding-right:0}
 /* 就地编辑角色：角色卡面板内联表单（复用弹窗表单观感，字体 inherit） */
 .role-edit-form label{display:block;font-size:10px;color:var(--dim);letter-spacing:.3px;margin-bottom:3px;font-family:inherit}
 .role-edit-form input,.role-edit-form textarea{width:100%;box-sizing:border-box;background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:7px 10px;font-size:11.5px;outline:none;margin-bottom:8px;font-family:inherit;transition:border-color .15s ease, box-shadow .15s ease}
@@ -471,10 +465,8 @@ main{flex:1;overflow:hidden}
 .a-item.active .t{color:var(--gold)}
 
 /* ===== 工作台：按钮下方左右两栏（左=任务/展开，右=调度记录） ===== */
-.wb-cols{display:grid;grid-template-columns:1fr 1.12fr .95fr;gap:14px;margin-top:12px;align-items:stretch}
 @media (max-width:1100px){.wb-cols{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}}
-.wb-col{display:flex;flex-direction:column;gap:8px;min-width:0}
-.wb-col{display:flex;flex-direction:column;min-width:0}
+.wb-col{min-width:0}
 .wb-left .dq-table{max-height:280px;overflow-y:auto}
 .wb-col .run-log{max-height:300px}
 .dq-state.on{color:var(--ok);border-color:var(--ok)}
@@ -511,21 +503,17 @@ main{flex:1;overflow:hidden}
 .act-item .ano{font-family:var(--mono);font-size:9.5px;color:var(--gold)}
 .act-item .ast{font-size:8.5px;color:var(--faint);margin-left:auto}
 .act-item.on .ast{color:var(--ok)}
-.wb-col .dq-table{max-height:320px}
-.wb-col .task-out{max-height:240px}
 .wb-col .rn-out{max-height:200px}
 /* ===== 工作台：两列填满视口，无底部留白；列内按比例分配、各自滚动 ===== */
 .dispatch-panel{display:flex;flex-direction:column;height:calc(100% - 16px);margin:16px 20px 0;box-sizing:border-box}
-.wb-cols{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr;gap:14px;margin-top:10px;min-height:0}
 /* 两列均填满容器高：内容超高时列内竖向滚动条，不再整页溢出 */
-.wb-col{min-height:0;overflow:hidden}
 .wb-col .dq-table,.wb-col .act-panel,.wb-col .task-out{overflow-y:auto}
 .wb-col{display:flex;flex-direction:column;gap:6px;min-height:0;overflow:hidden}
 .wb-col .wb-col-head{flex:none}
 /* 左列：任务队列(上 flex 1.6) + 当前任务与执行角色(左下 flex 1，默认空、点击筛选)；右列整列 = 任务输出聚合(内部滚动) */
 .wb-col .dq-table{flex:1.6;max-height:none;overflow-y:auto;min-height:0}
-.wb-col .act-panel{flex:1;max-height:none;min-height:0;overflow-y:auto}
-.wb-col .task-out{flex:none;max-height:calc(100vh - 400px);min-height:0;overflow-y:scroll;overscroll-behavior:contain;scrollbar-width:thin}
+.wb-col .act-panel{min-height:0;overflow-y:auto}
+.wb-col .task-out{scrollbar-width:thin}
 /* 任务输出聚合：任何长行（回报全文/调度日志/报告段落）强制换行，杜绝横向超屏 */
 .task-out pre,.task-out .to-doc,.task-out .to-rows div,.task-out .to-file em{white-space:pre-wrap;word-break:break-all;overflow-wrap:anywhere}
 .act-ctx{font-size:10px;color:var(--dim);padding:3px 2px 2px;letter-spacing:.3px}
@@ -543,12 +531,12 @@ main{flex:1;overflow:hidden}
 .r-item .r-no{font-style:normal;font-family:var(--mono);font-size:9px;color:var(--faint);border:1px solid var(--line);padding:0 5px;border-radius:3px}
 .r-item button{margin-left:auto;padding:3px 9px;font-size:10px;border-radius:5px}
 .form input,.form textarea,.set-fields input,.dir-row>input,.dir-head input{width:100%;box-sizing:border-box}
-.set-msg{font-size:10.5px;color:var(--gold)}
-.dir-list{max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.set-msg{color:var(--gold)}
+.dir-list{display:flex;flex-direction:column;gap:4px}
 .dir-list::-webkit-scrollbar{width:6px}
 .dir-list::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
-.dir-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;font-size:11px;color:var(--txt)}
-.dir-item:hover{border-color:var(--gold);background:rgba(2,132,199,.08)}
+.dir-item{border:1px solid var(--line);border-radius:6px}
+.dir-item:hover{border-color:var(--gold)}
 .dir-item .mini{margin-left:auto}
 button.mini{padding:2px 8px;font-size:10px;border-radius:5px}
 .skill-import-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
@@ -709,8 +697,6 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 .sched-badge.off{color:var(--faint);background:rgba(15,30,50,.06);border:1px solid var(--line)}
 .sched-mode{font-size:9.5px;font-family:var(--mono);color:var(--dim);background:rgba(15,30,50,.07);border:1px solid var(--line);border-radius:5px;padding:2px 7px}
 /* 工作台最终覆盖：三列 + 执行角色一行弹性标签 + 输出聚合填充剩余列高 */
-.wb-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.12fr) minmax(0,.95fr);grid-template-rows:minmax(0,1fr);gap:14px;margin-top:10px;flex:1;min-height:0}
-.wb-cols .wb-col{min-height:0;overflow:hidden}
 .wb-col .act-panel{flex:none;max-height:none;overflow:visible;margin-bottom:8px}
 .wb-col .task-out{flex:1;max-height:none;min-height:0;overflow-y:auto;overscroll-behavior:contain}
 .act-roles{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0 4px}
@@ -718,16 +704,10 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 #btnEditRole{margin-left:auto;flex:none}
 
 /* 工作台高度链最终兜底（覆盖历史旧规则）：列高锁定容器、内部滚动 */
-.wb-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.12fr) minmax(0,.95fr);grid-template-rows:minmax(0,1fr);gap:14px;margin-top:10px;flex:1;min-height:0;max-height:100%;align-items:stretch}
-.wb-cols .wb-col{display:flex;flex-direction:column;gap:8px;min-height:0;overflow:hidden;height:100%}
-.wb-cols .wb-col-head{flex:none}
-.wb-cols .wb-left .dq-table{flex:1;min-height:0;max-height:none;overflow-y:auto}
-.wb-cols .wb-col .act-panel{flex:none;max-height:none;overflow:visible;margin-bottom:8px}
-.wb-cols .wb-col .task-out{flex:1;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain}
-.wb-cols .run-log{flex:1;min-height:0;max-height:none;overflow-y:auto}
+.wb-cols .wb-col .act-panel{overflow:visible}
 
 /* 铁规则（!important）：无论历史规则如何层叠，三列锁定容器高、列内各自滚动 */
-.wb-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.12fr) minmax(0,.95fr);grid-template-rows:minmax(0,1fr);gap:14px;margin-top:10px;flex:1;min-height:0;max-height:100%;align-items:stretch !important}
+.wb-cols{display:grid;grid-template-rows:minmax(0,1fr);gap:14px;margin-top:10px;flex:1;min-height:0;max-height:100%;align-items:stretch !important}
 .wb-cols .wb-col{display:flex;flex-direction:column;gap:8px;min-height:0 !important;overflow:hidden !important;height:100% !important}
 .wb-cols .wb-col-head{flex:none !important;max-height:none !important}
 .wb-cols .wb-col .act-panel{flex:none !important;max-height:180px !important;overflow-y:auto !important;margin-bottom:8px !important;overscroll-behavior:contain !important}
@@ -741,8 +721,7 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 .act-roles .act-role-tag em{font-style:normal;font-size:9.5px;color:var(--faint);border-left:1px solid var(--line2);padding-left:6px;margin-left:2px}
 
 /* 阻塞任务行：↻ 重试按钮（行尾，警示金） */
-.dq-row .dretry{margin-left:12px;flex:none;align-self:center;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.5);color:#ef4444;border-radius:6px;padding:2px 9px;font-size:10px;cursor:pointer;line-height:1.5;font-weight:600;transition:all .15s ease}
-.dq-row .dretry:hover{background:rgba(239,68,68,.25);color:#fca5a5;box-shadow:0 2px 8px rgba(239,68,68,.3)}
+.dq-row .dretry{margin-left:12px;flex:none;align-self:center;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.5);border-radius:6px;padding:2px 9px;font-size:10px;cursor:pointer;line-height:1.5;font-weight:600;transition:all .15s ease}
 .dq-row .dretry:disabled{opacity:.6;cursor:default}
 
 /* 阻塞行重试按钮：grid 第 6 列 auto（同排行尾，不换行） */
@@ -815,7 +794,7 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 
 .board{flex:1 1 0;min-height:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;overflow:hidden}
 .board .placeholder{grid-column:1/-1}
-.bd-col{display:flex;flex-direction:column;min-height:0;background:rgba(15,30,50,.05);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.bd-col{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);border-radius:9px;overflow:hidden}
 .bd-col::before{content:"";display:block;height:2px;flex:none;background:var(--faint)}
 .bd-col.wait::before{background:var(--gold)}
 .bd-col.run::before{background:var(--indigo)}
@@ -847,7 +826,7 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 
 /* 详情：执行历史（一次派发一条；重试追加新行，不覆盖上一次） */
 /* ===== 实时事件：全屏、执行心跳进度行、长输出折叠（限高不限文） ===== */
-.live-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.live-head{justify-content:space-between}
 .run-fs-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;background:none;border:1px solid var(--line2);border-radius:6px;color:var(--faint);cursor:pointer}
 .run-fs-btn:hover{color:var(--gold);border-color:var(--gold)}
 /* 满屏 + 顶部 52px 遮罩带（::before 固定定位、不随滚动，滚动内容从它下方经过被遮住，
@@ -1080,7 +1059,7 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .board-bar{display:flex;gap:8px;align-items:center;flex:none;margin-bottom:2px}
 :root[data-theme="dark"] .board-search{background:rgba(10,14,21,.8);color:var(--txt)}
 :root[data-theme="dark"] .board-search::placeholder{color:var(--faint)}
-:root[data-theme="dark"] .bd-col{display:flex;background:rgba(0,0,0,.18)}
+:root[data-theme="dark"] .bd-col{display:flex}
 :root[data-theme="dark"] .bd-col::before{display:block;background:var(--faint)}
 :root[data-theme="dark"] .bd-col.wait::before{background:var(--gold)}
 :root[data-theme="dark"] .bd-col.run::before{background:var(--indigo)}
@@ -1139,7 +1118,6 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .tl-strip,
 :root[data-theme="dark"] .wb-col,
 :root[data-theme="dark"] .daily-list,
-:root[data-theme="dark"] .daily-main{background:rgba(255,255,255,.02)}
 
 
 /* ===== 统一面板底：把「项目进度」的底色套到其余主区块 =====
@@ -1270,12 +1248,12 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 
 
 /* ===== 修正右列空隙与 runLog 内部排版：行轨道内元素填满轨道，去掉残留的 44% 上限空隙 ===== */
-.wb-cols .wb-right{display:grid!important;grid-template-rows:auto auto minmax(0,2fr) auto minmax(0,1fr);gap:4px;overflow:hidden;min-height:0;height:100%}
-.wb-cols .wb-right .wb-col-head{grid-row:1;min-height:0;height:auto}
-.wb-cols .wb-right .act-panel{grid-row:2;flex:none!important;max-height:130px!important;min-height:0!important;overflow:hidden!important;overflow-y:auto!important;margin:0!important;align-self:stretch}
-.wb-cols .wb-right .task-out{grid-row:3;height:100%;max-height:none!important;min-height:0!important;flex:none;overflow:hidden!important;overflow-y:auto!important;overflow-x:hidden;margin:0!important;align-self:stretch}
-.wb-cols .wb-right .live-head{grid-row:4;height:auto;margin:4px 0 0;padding-bottom:2px}
-.wb-cols .wb-right .run-log{grid-row:5;height:100%;max-height:none!important;min-height:0!important;flex:none;overflow:hidden!important;overflow-y:auto!important;overflow-x:hidden;margin:0!important;align-self:stretch}
+.wb-cols .wb-right{display:grid!important}
+.wb-cols .wb-right .wb-col-head{height:auto}
+.wb-cols .wb-right .act-panel{flex:none!important;max-height:130px!important;min-height:0!important;overflow:hidden!important;overflow-y:auto!important;margin:0!important;align-self:stretch}
+.wb-cols .wb-right .task-out{height:100%;max-height:none!important;min-height:0!important;flex:none;overflow:hidden!important;overflow-y:auto!important;margin:0!important;align-self:stretch}
+.wb-cols .wb-right .live-head{height:auto;padding-bottom:2px}
+.wb-cols .wb-right .run-log{height:100%;max-height:none!important;min-height:0!important;flex:none;overflow:hidden!important;overflow-y:auto!important;margin:0!important;align-self:stretch}
 /* run-sec 内部高度：头部与正文各自内容高度，不再被外部撑开/压缩 */
 .wb-cols .wb-right .run-log .run-sec{flex:none;height:auto;min-height:0}
 .wb-cols .wb-right .run-log .run-sec-head{height:auto;min-height:0;flex:none}
@@ -1422,11 +1400,11 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
    滚动落在各 pane 内部，所以比例固定、内容多了也不变形。 ===== */
 .role-panel{display:flex;flex-direction:column;min-height:0}
 .role-detail{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px}
-.role-pane.card{flex:6 1 0;min-height:0;display:flex;flex-direction:column}
+.role-pane.card{min-height:0;display:flex;flex-direction:column}
 .role-pane.skills,.role-pane.files{flex:2 1 0;min-height:0;display:flex;flex-direction:column}
 .role-pane.card .pane-body,
 .role-pane.skills .pane-body,
-.role-pane.files .pane-body{flex:1;min-height:0;max-height:none;overflow-y:auto}
+.role-pane.files .pane-body{min-height:0;overflow-y:auto}
 .role-pane .pane-title{flex:none}
 
 /* ===== 角色工作区高度分配（覆盖此前的 6:2:2 比例）=====
