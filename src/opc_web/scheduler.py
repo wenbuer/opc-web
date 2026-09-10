@@ -619,6 +619,8 @@ def kb_digest(task_no: str) -> dict:
         "知识库按主题分类，已有档案如下：\n%s\n\n"
         "只沉淀真正有价值、可复用的知识（结论 / 方法 / 数据 / 教训 / 决策）；"
         "流水账、一次性过程记录、只是把回报换个说法，都不要沉淀。\n"
+        "归类硬规则：type=lesson 的教训一律归「经验教训」分类，标题用「教训-<一句话结论>」格式；"
+        "type=decision 归「决策」，type=method 归「方法」，type=data 归「数据」。\n"
         "输出 JSON（不要多余文字，body 用简洁 markdown）：\n"
         '{"action":"none|create|merge","category":"<分类名，取自上面主题列表>",'
         '"title":"<档案标题(≤40字)>","type":"concept|decision|method|data|lesson|problem",'
