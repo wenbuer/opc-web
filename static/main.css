@@ -1574,5 +1574,18 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
    原来三列各有一层面板底（浅色 var(--panel)、深色 rgba(255,255,255,.02)），
    把页面底纹盖住了。这里只去底色，描边 / 圆角 / 内边距保留 —— 否则三列分栏看不出来。
    （同特异性 + 后定义，覆盖上面 .wb-col 的两处底色；其余面板不受影响。）*/
-.wb-col{background:transparent}
-:root[data-theme="dark"] .wb-col{background:transparent}
+.dispatch-panel,
+.wb-col,
+.act-panel,
+.task-out,
+.run-log,
+.bd-col{background:transparent}
+:root[data-theme="dark"] .dispatch-panel,
+:root[data-theme="dark"] .wb-col,
+:root[data-theme="dark"] .act-panel,
+:root[data-theme="dark"] .task-out,
+:root[data-theme="dark"] .run-log,
+:root[data-theme="dark"] .bd-col{background:transparent}
+/* 不进这条的：输入框（.launch-row input / .board-search）与列表项 / 卡片（.dq-row / .bd-card）
+   保留淡底 —— 它们靠底色和 hover 区分，全透明会糊成一片。全屏查看的 .run-log.fullscreen
+   规则特异性更高，不受这里影响，仍是实底。*/
