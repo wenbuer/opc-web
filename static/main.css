@@ -251,12 +251,14 @@ main{flex:1;overflow:hidden}
 .ov-item{flex:1;min-width:120px;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:11px;color:var(--dim)}
 .ov-item b{display:block;font-size:20px;font-weight:700;color:var(--gold);margin-top:3px}
 /* ===== 首页第三列：项目进度 + 公共项目区（文件树） ===== */
-.prog-panel{display:flex;flex-direction:column;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-y:auto}
-.prog-body{display:flex;flex-direction:column;gap:1px}
+.prog-panel{display:flex;flex-direction:column;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow:hidden}
+.prog-body{display:flex;flex-direction:column;gap:1px;flex:none}
+.prog-panel .panel-head{flex:none}
 .hp-sep{margin:12px 0 6px;font-size:10px;letter-spacing:.12em;color:var(--gold);border-bottom:1px dashed var(--line2);padding-bottom:3px}
 .hp-pg{margin:9px 0}
-/* 公共项目区挪进第三列后：去掉自带外框与固定高度，跟随面板滚动；缩进收窄以适配窄列 */
-.prog-panel .proj-shared-list{max-height:none;overflow:visible;margin-top:14px;padding:12px 0 0;border-top:1px dashed var(--line2);scrollbar-width:auto}
+/* 公共项目区挪进第三列后：去掉自带外框；由它独占滚动（上方进度区固定不动），
+   滚动条走主题色（浅色青蓝 / 深色金），并收窄缩进以适配窄列 */
+.prog-panel .proj-shared-list{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;margin-top:14px;padding:12px 0 0;border-top:1px dashed var(--line2);scrollbar-width:thin;scrollbar-color:rgba(2,132,199,.35) transparento}
 .prog-panel .proj-shared-list .proj-file-item,.prog-panel .pf-dir{padding-left:6px}
 .prog-panel .proj-shared-list .pf-dir .pf-name,.prog-panel .proj-shared-list .wsi-name{font-size:11px}
 .hp-pg-head{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim)}
@@ -271,6 +273,7 @@ main{flex:1;overflow:hidden}
 .hp-done b{color:var(--gold);font-family:var(--mono);font-size:10.5px;flex:none}
 .hp-done em{font-style:normal;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 :root[data-theme="dark"] .prog-panel{background:rgba(255,255,255,.02);border-color:var(--line2)}
+:root[data-theme="dark"] .prog-panel .proj-shared-list{scrollbar-color:rgba(232,183,61,.3) transparent}
 :root[data-theme="dark"] .hp-track{background:rgba(255,255,255,.08)}
 .home-grid{display:grid;grid-template-columns:1.02fr 1.1fr .9fr;gap:14px;flex:1 1 0;min-height:0;padding:14px 18px 8px;overflow:hidden}
 .panel-head{font-size:12px;letter-spacing:2px;color:var(--gold);margin-bottom:12px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
