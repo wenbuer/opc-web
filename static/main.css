@@ -1442,6 +1442,13 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .proj-shared-list .proj-file-item em{margin-left:auto;font-style:normal;font-size:9.5px;color:var(--faint)}
 /* 公共项目区文件树（首页第三列里由 .prog-panel .proj-shared-list 接管高度与滚动） */
 .proj-shared-list{overscroll-behavior:contain;padding-right:2px}
+/* 角色筛选：项目/ 置顶并用金色区分（工程产出，不属任何角色） */
+#wsRoleSel option[value="项目"]{color:var(--gold);font-weight:700}
+/* 项目文件列表的文件夹树：目录行与文件行共用一套缩进 */
+#wsList .pf-dir{padding:3px 6px;border-radius:6px}
+#wsList .pf-dir .pf-arrow{font-size:9px}
+#wsList .ws-item{min-width:0}
+
 .proj-shared-list::-webkit-scrollbar{width:6px}
 .proj-shared-list::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
 .proj-shared-list::-webkit-scrollbar-track{background:transparent}

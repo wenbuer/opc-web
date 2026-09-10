@@ -1722,8 +1722,12 @@
         else { hasNone = true; }
       });
       roles.sort();
+      var hasProj = roles.indexOf("项目") >= 0;
+      if (hasProj) roles = roles.filter(function(x){ return x !== "项目"; });
       tasks.sort(function(a, b){ return parseInt(a.slice(2), 10) - parseInt(b.slice(2), 10); });
-      rs.innerHTML = "<option value=''>全部角色</option>" + roles.map(function(x){ return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("");
+      rs.innerHTML = "<option value=''>全部角色</option>"
+        + (hasProj ? "<option value='项目'>项目/（工程产出）</option>" : "")
+        + roles.map(function(x){ return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("");
       ts.innerHTML = "<option value=''>全部任务</option>"
         + tasks.map(function(x){ return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("")
         + (hasNone ? "<option value='__none__'>（无任务编号文件）</option>" : "");
@@ -1745,49 +1749,82 @@
       return true;
     });
   }
+  /* 项目文件清单：按 rel 建文件夹树（工作区/<角色>/… 与 项目/…），目录可折叠 */
+  function wsTree(rows){
+    var root = { dirs: {}, files: [] };
+    rows.forEach(function(f){
+      var parts = String(f.rel || "").split("/").filter(function(x){ return x; });
+      var node = root, i;
+      for (i = 0; i < parts.length - 1; i++){
+        node.dirs[parts[i]] = node.dirs[parts[i]] || { dirs: {}, files: [] };
+        node = node.dirs[parts[i]];
+      }
+      if (parts.length) node.files.push({ f: f, name: parts[parts.length - 1] });
+    });
+    return root;
+  }
+  function wsTreeCount(node){
+    var n = node.files.length;
+    Object.keys(node.dirs).forEach(function(k){ n += wsTreeCount(node.dirs[k]); });
+    return n;
+  }
+  function wsItemEl(f){
+    var el = document.createElement("div");
+    el.className = "ws-item";
+    el.dataset.rel = f.rel;
+    var k2 = f.name.indexOf("-summary.md") >= 0 ? "sum"
+      : f.name.indexOf("-output.md") >= 0 ? "out"
+      : f.name.indexOf("-report.md") >= 0 ? "rep"
+      : (f.ext === ".md" ? "md" : "txt");
+    var meta = "<span class='wsi-kind k-" + k2 + "'>"
+      + (k2 === "sum" ? "汇总" : k2 === "out" ? "产出" : k2 === "rep" ? "回报" : k2 === "md" ? "md" : "文本")
+      + "</span>";
+    if (f.archived) meta += "<span class='wsi-meta arch'>已归档</span>";
+    if (f.task) meta += "<span class='wsi-meta'>" + esc(f.task) + "</span>";
+    meta += "<span class='wsi-meta'>" + esc(wsFmtSize(f.size)) + "</span>";
+    el.innerHTML = "<span class='wsi-name'>" + esc(f.name) + "</span>" + meta;
+    el.title = f.rel;
+    el.addEventListener("click", function(){ showWsFile(f.rel, el); });
+    return el;
+  }
+  function renderWsTree(node, box, depth, autoOpen){
+    Object.keys(node.dirs).sort().forEach(function(name){
+      var sub = node.dirs[name];
+      var row = document.createElement("div");
+      row.className = "pf-dir";
+      var closed = depth >= autoOpen;          // 有筛选时展开到角色层，无筛选只展开顶层
+      row.style.paddingLeft = (4 + depth * 12) + "px";
+      row.innerHTML = "<span class='pf-arrow'>" + (closed ? "▸" : "▾") + "</span>"
+        + "<span class='pf-name'>" + esc(name) + "</span><em>" + wsTreeCount(sub) + " 项</em>";
+      var kids = document.createElement("div");
+      if (closed) kids.style.display = "none";
+      renderWsTree(sub, kids, depth + 1, autoOpen);
+      row.addEventListener("click", function(){
+        var open = kids.style.display !== "none";
+        kids.style.display = open ? "none" : "";
+        var a = row.querySelector(".pf-arrow");
+        if (a) a.textContent = open ? "▸" : "▾";
+      });
+      box.appendChild(row);
+      box.appendChild(kids);
+    });
+    node.files.sort(function(a, b){ return a.name.localeCompare(b.name); }).forEach(function(it){
+      var el = wsItemEl(it.f);
+      el.style.paddingLeft = (4 + depth * 12) + "px";
+      box.appendChild(el);
+    });
+  }
   function renderWsList(){
     var box = $("wsList");
     if (!box) return;
-    // 默认只显示公共项目区；仅当筛选了角色/任务，才展示角色工作区文件
-    if (!wsRole && !wsTask){ box.innerHTML = "<div class='placeholder'>选择角色/任务后，此处显示角色工作区文件</div>"; return; }
+    if (!wsRole && !wsTask){ box.innerHTML = "<div class='placeholder'>选择 角色 / 项目 / 任务 后，此处按文件夹树显示文件</div>"; return; }
     var rows = filteredWsFiles();
     if (!rows.length){
-      box.innerHTML = "<div class='placeholder'>" + (wsFiles.length ? "没有匹配的文件（换个角色 / 任务筛选）" : "暂无文件 —— 任务执行后各角色产出会落到《工作区/<角色>/》") + "</div>";
+      box.innerHTML = "<div class='placeholder'>" + (wsFiles.length ? "没有匹配的文件（换个角色 / 项目 / 任务筛选）" : "暂无文件 —— 任务执行后各角色产出会落到《工作区/<角色>/》") + "</div>";
       return;
     }
-    rows.sort(function(a, b){
-      return (a.role < b.role ? -1 : a.role > b.role ? 1 : 0)
-        || (a.task < b.task ? -1 : a.task > b.task ? 1 : 0)
-        || (a.name < b.name ? -1 : 1);
-    });
     box.innerHTML = "";
-    var lastRole = null;
-    rows.forEach(function(f){
-      if (f.role !== lastRole){
-        var gh = document.createElement("div");
-        gh.className = "ws-group";
-        gh.textContent = f.role;
-        box.appendChild(gh);
-        lastRole = f.role;
-      }
-      var el = document.createElement("div");
-      el.className = "ws-item";
-      el.dataset.rel = f.rel;
-      var meta = "";
-      var k2 = f.name.indexOf("-summary.md") >= 0 ? "sum"
-        : f.name.indexOf("-output.md") >= 0 ? "out"
-        : f.name.indexOf("-report.md") >= 0 ? "rep"
-        : (f.ext === ".md" ? "md" : "txt");
-      meta += "<span class='wsi-kind k-" + k2 + "'>" + (k2 === "sum" ? "汇总" : k2 === "out" ? "产出" : k2 === "rep" ? "回报" : k2 === "md" ? "md" : "txt") + "</span>";
-      if (f.archived) meta += "<span class='wsi-meta arch'>已归档</span>";
-      if (f.task) meta += "<span class='wsi-meta'>" + esc(f.task) + "</span>";
-      meta += "<span class='wsi-meta'>" + esc(wsFmtSize(f.size)) + "</span>";
-      el.innerHTML = "<span class='wsi-role'>" + esc(f.role) + "</span>"
-        + "<span class='wsi-name'>" + esc(f.name) + "</span>" + meta;
-      el.title = f.rel;
-      el.addEventListener("click", function(){ showWsFile(f.rel, el); });
-      box.appendChild(el);
-    });
+    renderWsTree(wsTree(rows), box, 0, (wsRole || wsTask) ? 2 : 1);
   }
   function showWsFile(rel, el){
     document.querySelectorAll(".ws-item").forEach(function(x){ x.classList.remove("active"); });
