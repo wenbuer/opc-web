@@ -424,12 +424,22 @@
     });
     return total ? { done: done, total: total } : null;
   }
+  /* 任务号 → 数字（T-012 → 12）：排序用，取第一段数字，取不到给 0 */
+  function taskNoNum(no){
+    var m = /(\d+)/.exec(String(no || ""));
+    return m ? parseInt(m[1], 10) : 0;
+  }
   function loadQueue(){
     api("/api/queue").then(function(j){
       if (!j || !j.ok) return;
       var box = $("dqQueue");
       box.innerHTML = "";
-      (j.queue || []).forEach(function(t){
+      /* 最新任务排最上：这里显式排序，不依赖后端返回顺序 —— 控制台是旧进程时
+         后端可能还是升序，靠前端排才能保证「刷新一下就对了」。 */
+      var rows = (j.queue || []).slice().sort(function(a, b){
+        return taskNoNum(b.no) - taskNoNum(a.no);
+      });
+      rows.forEach(function(t){
         taskTexts[t.no] = t.task || "";
         var row = document.createElement("div");
         var stKey = boardColOf(t.status);
@@ -446,7 +456,7 @@
         row.addEventListener("click", function(){ showTaskOutput(t.no, row); });
         box.appendChild(row);
       });
-      if (!(j.queue || []).length){ box.innerHTML = "<div class='placeholder'>队列为空——在下方下达首个任务</div>"; }
+      if (!rows.length){ box.innerHTML = "<div class='placeholder'>队列为空——在下方下达首个任务</div>"; }
     }).catch(function(){});
   }
   /* ===== 任务输出聚合：点击任务行查看回报/派发/产物 ===== */
