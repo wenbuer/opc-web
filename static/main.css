@@ -369,7 +369,7 @@ main{flex:1;overflow:hidden}
 
 
 /* ===== 作战面板：角色工作区 ===== */
-.role-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow-y:auto;min-height:0}
+.role-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow:hidden;min-height:0}
 .role-detail{max-height:560px;overflow:auto;margin-top:10px;border:1px dashed var(--line2);border-radius:8px;background:rgba(15,30,50,.05);padding:12px 14px}
 .role-detail .placeholder{color:var(--faint);font-size:11px}
 .role-pane.skills .placeholder,.role-pane.files .placeholder{padding:2px 0;text-align:left;line-height:1.7}
@@ -1522,3 +1522,15 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .org-tree .role-card .rc-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .org-tree .role-card .rc-n{flex:none}
 .org-tree .role-card .rc-duty,.org-tree .role-card .rc-cur{overflow-wrap:anywhere}
+
+/* ===== 角色工作区：按比例分配高度（角色卡 : 技能 : 产物 = 6 : 2 : 2，即 60% / 20% / 20%）
+   用 flex 份数而不是 height:60%——份数会自动扣掉 pane 之间的间距，不会把总高撑破。
+   滚动落在各 pane 内部，所以比例固定、内容多了也不变形。 ===== */
+.role-panel{display:flex;flex-direction:column;min-height:0}
+.role-detail{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px}
+.role-pane.card{flex:6 1 0;min-height:0;display:flex;flex-direction:column}
+.role-pane.skills,.role-pane.files{flex:2 1 0;min-height:0;display:flex;flex-direction:column}
+.role-pane.card .pane-body,
+.role-pane.skills .pane-body,
+.role-pane.files .pane-body{flex:1;min-height:0;max-height:none;overflow-y:auto}
+.role-pane .pane-title{flex:none}
