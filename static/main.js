@@ -1333,22 +1333,40 @@
       ob.appendChild(t);
     });
   }
-  /* ===== 实时事件面板全屏：class 切换（节点不搬家，事件轮询不受影响），ESC 退出 ===== */
+  /* ===== 实时事件面板全屏：class 切换（节点不搬家，事件轮询不受影响） =====
+     退出三条路：面板右上角的「退出全屏」按钮、标题栏按钮、ESC 键。 */
   var RUN_FS_SVG = WS_FS_SVG, RUN_MIN_SVG = WS_MIN_SVG;
   var runFsBtn = $("runFsBtn");
-  if (runFsBtn) runFsBtn.addEventListener("click", function(){
-    var lg = $("runLog"); if (!lg) return;
-    var on = lg.classList.toggle("fullscreen");
+  function runFsPaint(on){
+    if (!runFsBtn) return;
     runFsBtn.innerHTML = on ? RUN_MIN_SVG : RUN_FS_SVG;
     runFsBtn.title = on ? "退出全屏" : "全屏显示";
     runFsBtn.setAttribute("aria-label", runFsBtn.title);
+  }
+  function runFsExit(){
+    var lg = $("runLog"); if (lg) lg.classList.remove("fullscreen");
+    var ex = $("runFsExit"); if (ex && ex.parentNode) ex.parentNode.removeChild(ex);
+    runFsPaint(false);
+  }
+  function runFsEnter(){
+    var lg = $("runLog"); if (!lg) return;
+    lg.classList.add("fullscreen");
+    runFsPaint(true);
+    if ($("runFsExit")) return;
+    var ex = document.createElement("button");
+    ex.id = "runFsExit"; ex.className = "run-fs-exit"; ex.type = "button";
+    ex.innerHTML = RUN_MIN_SVG + "<span>退出全屏</span>";
+    ex.addEventListener("click", runFsExit);
+    document.body.appendChild(ex);
+  }
+  if (runFsBtn) runFsBtn.addEventListener("click", function(){
+    var lg = $("runLog"); if (!lg) return;
+    if (lg.classList.contains("fullscreen")) runFsExit(); else runFsEnter();
   });
   document.addEventListener("keydown", function(e){
     if (e.key !== "Escape") return;
     var lg = $("runLog");
-    if (lg && lg.classList.contains("fullscreen")){
-      var b = $("runFsBtn"); if (b) b.click();
-    }
+    if (lg && lg.classList.contains("fullscreen")) runFsExit();
   });
   /* ================= 每日简报 ================= */
   /* ================= 角色管理 ================= */
