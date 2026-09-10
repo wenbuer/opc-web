@@ -21,6 +21,12 @@ from pathlib import Path
 BASE = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
         else Path(__file__).resolve().parent.parent.parent)
 
+# 随包资源目录：PyInstaller 6.x 的 onedir 布局把 datas（templates / static / agents-seed /
+# _seed / _dsh）放进 exe 同级的 _internal/，而 BASE 指的是 exe 同级 —— 那是用户放
+# opc-config.json 与 .env 的地方，不该混进程序资源。两者分开：配置与数据看 BASE，随包资源看 ASSET。
+# 开发运行时没有 _internal 目录，ASSET 就等于 BASE。
+ASSET = (BASE / "_internal") if (BASE / "_internal").is_dir() else BASE
+
 CONFIG_FILE = Path(os.environ.get("OPC_CONFIG") or (BASE / "opc-config.json"))
 
 
@@ -65,7 +71,7 @@ _CFG = _load_cfg()
 # BASE = 程序目录（代码 + opc-config.json + .env + agents-seed/）
 # ROOT = 当前激活项目的根（agents/ + 批阅台/ + 工作区/ + 知识库/），每个项目完全自包含。
 # 项目以 root 路径为唯一键 —— 项目就是一个目录，不再另造 slug/id 这层概念。
-AGENTS_SEED = BASE / "agents-seed"      # 角色卡模板库：新建项目时复制一份进项目自己的 agents/
+AGENTS_SEED = ASSET / "agents-seed"    # 角色卡模板库：新建项目时复制一份进项目自己的 agents/
 
 
 def projects() -> list:
@@ -121,8 +127,8 @@ TIMELINE_REL = "批阅台/时间轴.json"   # R1 模型提炼的时间轴缓存�
 HANDBOOK_REL = "知识库/OPC 规范/员工手册.md"   # 全员唯一行为准则（templates.handbook_text 写入，bootstrap 创建；归入「OPC 规范」分类）。
 # 注：OPC智能体角色架构.md / 知识库索引.md 已移除 —— 不作为知识档案入库（组织架构以首页 /api/org 实时为准，知识库看板由 kb_entries 实时聚合）
 
-TEMPLATES = BASE / "templates"
-STATIC = BASE / "static"
+TEMPLATES = ASSET / "templates"
+STATIC = ASSET / "static"
 # 角色阵容跟项目走；还没建项目时退回模板库，作战面板不至于空着（此时只读）
 AGENTS_DIR = (ROOT / "agents") if active_project() else AGENTS_SEED
 # 角色技能共享库（平铺共享）：agents/skills/<技能名>.md；角色卡「## 技能」段登记文件名即装配

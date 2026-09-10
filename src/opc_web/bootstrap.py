@@ -78,7 +78,7 @@ def bootstrap():
     from . import templates as _tpl
     # 员工手册默认入知识库：优先用随包分发的 _seed/员工手册.md（打包场景，内容可随包替换），
     # 否则回退内置权威文本 handbook_text()。
-    _seed_hb = config.BASE / "_seed" / "员工手册.md"
+    _seed_hb = config.ASSET / "_seed" / "员工手册.md"
     hb = (_seed_hb.read_text(encoding="utf-8") if _seed_hb.is_file() else _tpl.handbook_text())
     seeds = {
         config.LOG_REL: "## 决策日志" + h,

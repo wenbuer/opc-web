@@ -23,7 +23,8 @@ scratch_*.py
 运营-调度日志.md
 
 # ===== 打包产物（PyInstaller）=====
+# 产物不入库；构建配置（opc-web.spec / build.ps1）要入库 —— 别人拿到仓库才复现得出同样的包。
 build/
 dist/
-*.spec
-_post_build.py
+_seed/
+_已打包/      # 旧的发布暂存目录（如有）
