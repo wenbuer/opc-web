@@ -119,6 +119,13 @@ class Handler(BaseHTTPRequestHandler):
         rel = unquote(self._qs().get("rel", [""])[0])
         return {"ok": True, "rel": rel, "text": _strip_okf_frontmatter(knowledge.read_md(rel))}
 
+    def _queue_rows(self):
+        """任务队列（**最新在前**）：刚下达的任务排在最上面，不用翻到列表底部找。
+
+        台账仍按任务号升序存放（分配新号依赖这个顺序），这里只翻转展示顺序；
+        前端各处都是按 no 查找/计数，不依赖数组顺序。"""
+        return list(reversed(store.tasks()))
+
     def _get_pending(self):
         data = parsers.parse_piyuetai(knowledge.read_md(config.PIYUETAI_REL))
         return {"ok": True, "work": data["work"], "pending": data["pending"],
@@ -235,7 +242,7 @@ class Handler(BaseHTTPRequestHandler):
         elif url == "/api/timeline":
             self._ok(lambda: {"ok": True, **scheduler.get_timeline()})
         elif url == "/api/queue":
-            self._ok(lambda: {"ok": True, "queue": store.tasks()})
+            self._ok(lambda: {"ok": True, "queue": self._queue_rows()})
         elif url == "/api/rn-outputs":
             self._ok(lambda: {"ok": True,
                               "groups": scheduler.rn_outputs(self._qs().get("no", [""])[0])})
@@ -317,7 +324,7 @@ class Handler(BaseHTTPRequestHandler):
             retried = True
             scheduler.scan_once()  # 立即扫描：置待派后马上重启执行链（busy 时自然排队）
         return {"ok": True, "no": no, "retried": retried,
-                "queue": store.tasks(),
+                "queue": self._queue_rows(),
                 "msg": ("重试 " + no + "：已重置为待派并触发扫描（未完成子任务重新执行）") if retried
                        else (no + " 状态为「" + hit[0]["status"] + "」，无需重试")}
 
@@ -331,7 +338,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "任务内容不能为空")
         no = store.add_task(text, expect)
         scheduler.scan_once()  # 立即生成 R1 拆解指令，不等 8s 轮询
-        return {"ok": True, "no": no, "queue": store.tasks(), "state": scheduler.SCHED_STATE}
+        return {"ok": True, "no": no, "queue": self._queue_rows(), "state": scheduler.SCHED_STATE}
 
     def _post_task_delete(self):
         body = self._body()
@@ -352,7 +359,7 @@ class Handler(BaseHTTPRequestHandler):
         rep_n = len(store.reports(no))            # 删除将连带移除回报/批阅依据
         store.delete_task(no)
         removed = scheduler.clean_task_files(no)
-        return {"ok": True, "no": no, "removedFiles": removed, "queue": store.tasks(),
+        return {"ok": True, "no": no, "removedFiles": removed, "queue": self._queue_rows(),
                 "msg": ("已删除任务 " + no + (" · 连带移除 " + str(rep_n) + " 条回报/批阅记录" if rep_n else "")
                         + ((" · 清理工作区文件 " + str(removed) + " 个") if removed else ""))}
 
