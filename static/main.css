@@ -687,7 +687,8 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 /* ===== 新增角色弹窗（作战面板：未激活位 → 「＋ 新增角色」，v1.10.1） ===== */
 .org-node.add{opacity:1;filter:none;cursor:pointer;border-style:dashed;border-color:rgba(2,132,199,.5);background:rgba(2,132,199,.05);transition:all .18s ease}
 .org-node.add:hover{border-color:var(--gold);background:rgba(2,132,199,.12);box-shadow:0 0 12px rgba(2,132,199,.25);transform:translateY(-1px)}
-.org-node.add .oid{background:rgba(2,132,199,.14);color:var(--gold);border-color:rgba(2,132,199,.5)}
+/* 加号不做斜体：.oid 基样式是斜体编号字体，圆圈里的「＋」用它就显得歪 */
+.org-node.add .oid{background:rgba(2,132,199,.14);color:var(--gold);border-color:rgba(2,132,199,.5);font-style:normal;font-family:var(--sans,system-ui,sans-serif)}
 .org-node.add .obody b{color:var(--gold)}
 .modal-mask{position:fixed;inset:0;z-index:99;background:rgba(15,23,42,.48);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center}
 .modal-mask[hidden]{display:none}
