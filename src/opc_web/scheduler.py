@@ -460,12 +460,12 @@ def _digest_reps(reps, limit: int = 900) -> str:
         out.append("【%s｜%s】（%s）：%s" % (r.get("task_no") or "?", r.get("role") or "?", r.get("status") or "?", one))
     return "\n".join(out)
 
-_DAILY_TASK_SECTION = "## 按任务分组的进展与结论"
-_TASK_HEAD_RE = re.compile(r"^###\s+(T-[0-9A-Za-z-]+)")
+_DAILY_TASK_SECTION = "## 完成任务"
+_TASK_HEAD_RE = re.compile(r"^-\s+(T-[0-9A-Za-z-]+)\s*[｜|]")
 
 
 def _daily_task_blocks(text: str) -> dict:
-    """简报文本 → {任务号: 任务段落}（「按任务分组的进展与结论」节内按 ### T-xxx 切）。"""
+    """简报文本 -> {任务号: 清单行}（「## 完成任务」节里的「- T-xxx｜一句话」）。"""
     blocks = {}
     m = re.search(r"^" + re.escape(_DAILY_TASK_SECTION) + r"\s*$", text, re.M)
     if not m:
@@ -474,29 +474,25 @@ def _daily_task_blocks(text: str) -> dict:
     nxt = re.search(r"^## ", seg, re.M)
     if nxt:
         seg = seg[:nxt.start()]
-    for part in re.split(r"(?=^###\s+T-)", seg, flags=re.M):
-        hm = _TASK_HEAD_RE.match(part.strip())
+    for ln in seg.split(chr(10)):
+        hm = _TASK_HEAD_RE.match(ln.strip())
         if hm:
-            blocks[hm.group(1)] = part.strip("\n")
+            blocks[hm.group(1)] = ln.strip()
     return blocks
 
 
 def _merge_daily(old_text: str, new_text: str, task_no: str) -> str:
-    """模型合并稿的强制校验：除本次任务外，旧简报每个任务段落必须在新稿中原样存在。
+    """模型合并稿的校验：旧稿出现过的任务号，新稿必须一个不少。
 
-    逐字保留历史（防盲目追加 / 改写既有日报内容）；本次任务段落以新稿为准（同任务重跑 = 更新）。
-    新稿丢失任一历史任务段落 → 返回 ""（调用方回退代码级合并）。"""
+    不再要求逐字保留旧段落——那会让简报只增不减（历史简报曾膨胀到 51 KB，
+    每条任务都带着执行细节滚下去）。现在允许压缩改写，只守住「任务不丢」；
+    缺任务号 → 返回 ""，调用方走代码级合并。"""
     old_blocks = _daily_task_blocks(old_text)
     new_blocks = _daily_task_blocks(new_text)
-    out = new_text
-    for tno, blk in old_blocks.items():
-        if tno == task_no:
-            continue
-        if tno not in new_blocks:
-            return ""
-        if new_blocks[tno].strip() != blk.strip():
-            out = out.replace(new_blocks[tno], blk)
-    return out
+    missing = [tno for tno in old_blocks if tno not in new_blocks]
+    if missing:
+        return ""
+    return new_text
 
 
 def _insert_into_section(text: str, section: str, block: str) -> str:
@@ -513,37 +509,32 @@ def _insert_into_section(text: str, section: str, block: str) -> str:
 
 
 def _daily_fallback(old_text: str, reps: list, task_no: str, datestr: str) -> str:
-    """模型不可用时的代码级合并：本任务段落按回报直接拼，插入对应节；已有内容一律不动。"""
+    """模型不可用时的代码级合并：每个任务压成一行插进「完成任务」清单，其余内容不动。"""
     tnos = sorted({str(r.get("task_no") or "T-?") for r in reps})
-    tn_label = "、".join(tnos)
     roles = "、".join(sorted({str(r.get("role") or "?") for r in reps}))
-    parts = ["### %s｜自动合并" % tn_label,
-             "**结论**：%d 条角色回报已归档（模型收尾不可用，本段为降级合并）。" % len(reps)]
-    for r in reps:
-        one = _one_line_digest(str(r.get("body") or ""), limit=160) or "（无正文）"
-        parts.append("- %s（%s）：%s" % (r.get("role") or "?", r.get("status") or "?", one))
-    blk = "\n".join(parts)
+    lines = []
+    for tno in tnos:
+        rs = [r for r in reps if str(r.get("task_no") or "") == tno]
+        one = _one_line_digest(str(rs[0].get("body") or ""), limit=60) if rs else ""
+        lines.append("- %s｜%s（%s）" % (tno, one or "已完成并归档", roles))
     if not old_text.strip():
-        return "\n".join([
+        return chr(10).join([
             "# 每日简报 · " + datestr, "",
-            "## 当日概况",
-            "- 任务：今日 " + tn_label + "（" + roles + "）", "",
-            "## 按任务分组的进展与结论", blk, "",
-            "## 知识库沉淀",
-            "- 今日无新增沉淀", "",
-            "## 待办 / 风险提示",
-            "**风险**：无", "**待办**：无",
-        ])
-    text = old_text.rstrip() + "\n"
+            "## 今天干了什么",
+            "_模型收尾不可用，本节为代码级降级合并：今日完成 " + "、".join(tnos) + "。_", "",
+            _DAILY_TASK_SECTION] + lines + [
+            "", "## 待 R0 拍板", "无", "",
+            "## 风险与待办", "**风险**：无", "**待办**：无", ""])
+    text = old_text.rstrip() + chr(10)
     blocks = _daily_task_blocks(text)
-    hit = next((t for t in tnos if t in blocks), None)
-    if hit:
-        text = text.replace(blocks[hit], blk)          # 同任务重跑：更新该段，不另起一段
-    else:
-        text = _insert_into_section(text, _DAILY_TASK_SECTION, blk)
-    line = "- 任务：合并 %s（%d 条回报，%s）" % (tn_label, len(reps), roles)
-    if line not in text:
-        text = _insert_into_section(text, "## 当日概况", line)
+    rest = []
+    for tno, ln in zip(tnos, lines):
+        if tno in blocks:
+            text = text.replace(blocks[tno], ln)          # 同任务重跑：更新那一行
+        else:
+            rest.append(ln)
+    if rest:
+        text = _insert_into_section(text, _DAILY_TASK_SECTION, chr(10).join(rest))
     return text
 
 
@@ -570,16 +561,18 @@ def build_daily_report(task_no: str = None, datestr: str = None) -> dict:
     has_old = bool(old_text.strip())
     prompt = (
         "你是老板助理 R1。请按《模板-每日简报》把任务 %s 的回报%s每日简报：\n"
-        "- %s。只输出合并后的完整简报 markdown（# 每日简报 · %s 标题 + 当日概况 / "
-        "按任务分组的进展与结论 / 知识库沉淀 / 待办 / 风险提示 四节）。\n"
-        "纪律：除本次任务（%s）外，已有简报里的 ### T-xxx 任务段落必须逐字保留、不得改写删除；"
-        "「当日概况」「知识库沉淀」「待办 / 风险提示」在现有内容基础上合并补充本次任务信息，"
-        "不得删除已有条目、不得重复堆叠同一事项；结尾禁止对话性收尾。\n\n"
+        "- %s。输出合并后的完整简报 markdown（# 每日简报 · %s 标题 + 今天干了什么 / "
+        "完成任务 / 待 R0 拍板 / 风险与待办 四节）。\n"
+        "纪律——简洁优先：「今天干了什么」2~4 句讲清主线；「完成任务」每个任务只占一行（≤40 字）；\n"
+        "待拍板只列「决策点标题 + 对应待决编号」；风险与待办各不超过 3 条；全篇 ≤ 50 行。\n"
+        "禁止搬运回报原文、罗列文件路径 / 测试项数 / 自检项数 / git 快照号 / 沙箱限制；\n"
+        "已有任务的旧细节可以大幅压缩（只要任务号仍出现在「完成任务」节即可），本次任务也在同一行内收口。\n"
+        "结尾禁止对话性收尾。\n\n"
         "《模板-每日简报》：\n%s\n\n现有简报：\n%s\n\n本次任务回报：\n%s"
         % (task_no or "（当日全部）",
            ("增量合并进" if has_old else "生成当天首份"),
-           ("已有简报 → 在其基础上合并本次任务段落与各节增量" if has_old else "当天尚无简报 → 全新生成"),
-           datestr, task_no or "全部",
+           ("已有简报 → 按上面纪律重写为简洁版" if has_old else "当天尚无简报 → 全新生成"),
+           datestr,
            templates.doc_template("每日简报"),
            old_text.strip() or "（当天尚无简报）", digest))
     text = _headless_text(prompt, 600)
