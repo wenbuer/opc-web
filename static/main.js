@@ -49,52 +49,12 @@
     loadHomeStats();
     api("/api/daily").then(function(j){ if (j && j.ok){ var d=(j.daily||[])[0]; var o=$("ovDaily"); if(o) o.textContent = d ? d.date : "无"; } });
   }
-  /* ===== 首页：调度与用量（D）+ 项目进度（C）——一次请求拿全（/api/home-stats） ===== */
-  function fmtK(n){
-    n = Number(n) || 0;
-    if (n >= 1e6) return (n / 1e6).toFixed(2) + "M";
-    if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
-    return String(n);
-  }
-  function fmtDur(sec){
-    sec = Number(sec) || 0;
-    var m = Math.floor(sec / 60), s = sec % 60;
-    return m ? (m + " 分 " + (s < 10 ? "0" : "") + s + " 秒") : (s + " 秒");
-  }
+  /* ===== 首页右侧：项目进度（/api/home-stats 的 progress 段） ===== */
   function loadHomeStats(){
     api("/api/home-stats").then(function(j){
       if (!j || !j.ok) return;
-      renderOps(j.sched || {}, j.tokens || {});
       renderProg(j.progress || {});
     }).catch(function(){});
-  }
-  function renderOps(s, t){
-    var box = $("opsBody"); if (!box) return;
-    var st = s.paused ? "已暂停" : (s.busy ? "执行中" : "空闲");
-    var h = "<div class='hp-row'><span class='hp-k'>调度</span><b class='" + (s.busy ? "on" : "") + "'>" + st + "</b>"
-      + (s.tag ? "<em>" + esc(s.tag) + "</em>" : "") + "</div>";
-    if ((s.running || []).length){
-      h += "<div class='hp-run'>" + s.running.map(function(r){
-        return "<div class='hp-run-item'><b>" + esc(r.sub || "") + "</b><span>" + esc(r.role || "") + "</span>"
-          + "<span>已运行 " + fmtDur(r.elapsed) + "</span><i>操作 " + (r.tools || 0) + " 次</i></div>";
-      }).join("") + "</div>";
-    }
-    h += "<div class='hp-sep'>今日用量</div>";
-    h += "<div class='hp-row'><span class='hp-k'>输入</span><b>" + fmtK(t.todayIn) + "</b>"
-      + "<span class='hp-k'>输出</span><b>" + fmtK(t.todayOut) + "</b>"
-      + "<em>≈ ¥" + (Number(t.costToday) || 0).toFixed(2)
-      + "（¥" + (t.priceIn || 1) + "/M 入 · ¥" + (t.priceOut || 2) + "/M 出）</em></div>";
-    var week = t.week || [];
-    var mx = 1;
-    week.forEach(function(d){ mx = Math.max(mx, (d.in || 0) + (d.out || 0)); });
-    h += "<div class='hp-week'>" + (week.length ? week.map(function(d){
-      var ds = String(d.date || "");
-      var tot = (d.in || 0) + (d.out || 0);
-      var pct = Math.max(Math.round(tot / mx * 100), 3);
-      return "<div class='hp-bar' title='" + esc(ds) + " 输入 " + fmtK(d.in) + " · 输出 " + fmtK(d.out) + "'>"
-        + "<span style='height:" + pct + "%'></span><em>" + esc(ds.slice(3, 5)) + "</em></div>";
-    }).join("") : "<div class='hp-none'>暂无用量记录</div>") + "</div>";
-    box.innerHTML = h;
   }
   function renderProg(p){
     var box = $("progBody"); if (!box) return;
