@@ -1499,6 +1499,13 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .board-search{background:transparent}
 :root[data-theme="dark"] .launch-row input,
 :root[data-theme="dark"] .board-search{background:transparent}
+/* 组织架构里的角色卡片与节点：去底色，只留描边。
+   .org-node.root / .hub / .add 三种节点的淡色底**保留** —— 那是「谁是 R0 / R1 / 新增位」
+   的身份标识（特异性也高于这条：.org-node.root 优先），去掉就只剩文字，扫一眼分不出来。*/
+.role-card,
+.org-node{background:transparent}
+:root[data-theme="dark"] .role-card,
+:root[data-theme="dark"] .org-node{background:transparent}
 /* 不进上面淡底白名单的：列表项 / 卡片（.dq-row / .bd-card / .proj-item / .eng-item 等）
    靠底色和 hover 区分层级，全透明会糊成一片；模态框 .modal-box 要实底才看得清；
    全屏查看的 .run-log.fullscreen 规则特异性更高，不受影响。*/
