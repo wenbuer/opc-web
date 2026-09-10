@@ -1166,7 +1166,7 @@
   function runStepEl(turn, step, label){
     var el = document.createElement("div");
     el.className = "run-step";
-    el.textContent = "▶ 回合 " + turn + (step === "-" ? "" : " · 步骤 " + step) + (label ? " · " + label : "");
+    el.textContent = "回合 " + turn + (step === "-" ? "" : " · 步骤 " + step) + (label ? " · " + label : "");
     return el;
   }
   function runOutEl(turn, step){

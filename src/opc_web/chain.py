@@ -201,7 +201,7 @@ def execute(task_no, task_text):
         runner.emit({"type": "run/start", "task": "%s · 自动执行链" % task_no,
                      "provider": "opc-web", "model": "chain"})
         runner.emit({"type": "step/start", "data": {"turn": 1, "step": 1}})
-        runner.emit({"type": "assistant/chunk", "data": {"text": "▶ R1 拆解 %s：%s" % (task_no, task_text[:80])}})
+        runner.emit({"type": "assistant/chunk", "data": {"text": "R1 拆解 %s：%s" % (task_no, task_text)}})
         set_state(tag="R1 拆解中…")
         # 指定 R1（含「请 R1 / 让 R1 …」）= R1 牵头派发：同样走模型拆解选业务角色（decompose 内已引导模型忽略 R1）
         head = head_named(task_text)
@@ -229,10 +229,10 @@ def execute(task_no, task_text):
         for i, (sub_no, s) in enumerate(zip(sub_nos, subs)):
             if not _alive(task_no):          # 任务已被删除/终止 → 提前退出，不再执行剩余子任务
                 return
-            set_state(tag="执行 %d/%d：%s %s" % (i + 1, total, s["role"], s["sub"][:20]))
+            set_state(tag="执行 %d/%d：%s %s" % (i + 1, total, s["role"], s["sub"]))
             runner.emit({"type": "step/start", "data": {"turn": i + 2, "step": 1}})
             runner.emit({"type": "assistant/chunk",
-                         "data": {"text": "▶ 自动执行 %s（%s）：%s —— headless 直跑" % (sub_no, s["role"], s["sub"])}})
+                         "data": {"text": "自动执行 %s（%s）：%s —— headless 直跑" % (sub_no, s["role"], s["sub"])}})
             spec = agent.subtask_spec(s["role"], "执行子任务：%s。期望产出：%s。%s" % (s["sub"], s["expect"], _decision_block(task_text)),
                                       expect=s["expect"], sub_no=sub_no)
             prepare_files(sub_no, task_no, s, spec)
