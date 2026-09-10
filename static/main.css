@@ -291,7 +291,7 @@ main{flex:1;overflow:hidden}
 .org-node.root .oid{background:var(--red-bright);color:#fff;border-color:var(--red-bright)}
 .org-node.hub .oid{background:var(--gold);color:#fff;border-color:var(--gold)}
 .obody{flex:1;min-width:0}
-.obody b{display:block;font-size:13px}
+.obody b{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .obody i{display:block;font-style:normal;font-size:11px;color:var(--dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ostatus{padding:3px 10px;border-radius:20px;font-size:10px;letter-spacing:1px;border:1px solid;flex:none}
 .ostatus.red{color:var(--red-bright);border-color:rgba(239,68,68,.5)}
@@ -299,7 +299,7 @@ main{flex:1;overflow:hidden}
 .ostatus.off{color:var(--faint);border-color:var(--line)}
 .org-link{text-align:center;font-size:10px;color:var(--faint);letter-spacing:3px;padding:1px 0;line-height:1.6;position:relative}
 .org-link::after{content:"▼";display:inline-block;font-size:11px;color:var(--dim);margin-left:5px;letter-spacing:0;vertical-align:1px}
-.org-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:4px}
+.org-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:9px;margin-top:4px}
 .role-card{padding:9px 12px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;position:relative}
 .role-card .rc-top{display:flex;align-items:center;gap:8px}
 .role-card .rc-n{font-family:var(--serif);font-style:italic;font-weight:700;color:var(--gold);font-size:13px}
@@ -1500,3 +1500,18 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] ::-webkit-scrollbar-thumb{background:rgba(232,183,61,.32)}
 :root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover{background:rgba(232,183,61,.5)}
 :root[data-theme="dark"]{scrollbar-color:rgba(232,183,61,.32) transparent}
+
+/* ===== 面板内自适应：列变窄时内部元素收缩/换行，而不是被挤变形 ===== */
+.org-node{min-width:0}
+.org-node .oid{flex:none}
+.org-node .ostatus{flex:none;white-space:nowrap}
+.org-grid .role-card{min-width:0}
+.home-grid > *{min-width:0}                 /* 三列各自允许内容收缩，不撑破栅格 */
+
+.role-panel,.role-detail,.role-pane{min-width:0}
+.role-pane .pane-title{flex-wrap:wrap;row-gap:4px}
+.role-pane .pane-title em{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.role-pane .pane-body,.role-pane .pane-body *{overflow-wrap:anywhere}
+.role-pane.card .pane-body{min-width:0}
+.role-card-doc h1,.role-card-doc h2,.role-card-doc h3{overflow-wrap:anywhere}
+.prog-panel .proj-shared-list .wsi-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
