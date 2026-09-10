@@ -58,11 +58,12 @@
   }
   function renderProg(p){
     var box = $("progBody"); if (!box) return;
-    var tp = p.tasksTotal ? Math.round(p.tasksDone / p.tasksTotal * 100) : 0;
-    var sp = p.subsTotal ? Math.round(p.subsDone / p.subsTotal * 100) : 0;
-    var h = "<div class='hp-pg'><div class='hp-pg-head'><span>任务</span><b>" + p.tasksDone + "/" + p.tasksTotal + "</b></div>"
+    var td = p.tasksDone || 0, tt = p.tasksTotal || 0, sd = p.subsDone || 0, st = p.subsTotal || 0;
+    var tp = tt ? Math.round(td / tt * 100) : 0;
+    var sp = st ? Math.round(sd / st * 100) : 0;
+    var h = "<div class='hp-pg'><div class='hp-pg-head'><span>任务</span><b>" + td + "/" + tt + "</b></div>"
       + "<div class='hp-track'><i style='width:" + tp + "%'></i></div></div>"
-      + "<div class='hp-pg'><div class='hp-pg-head'><span>子任务</span><b>" + p.subsDone + "/" + p.subsTotal + "</b>"
+      + "<div class='hp-pg'><div class='hp-pg-head'><span>子任务</span><b>" + sd + "/" + st + "</b>"
       + (p.blocked ? "<em class='bad'>阻塞 " + p.blocked + "</em>" : "") + "</div>"
       + "<div class='hp-track'><i style='width:" + sp + "%'></i></div></div>"
       + "<div class='hp-facts'><span>项目文件 <b>" + (p.projFiles || 0) + "</b></span>"
