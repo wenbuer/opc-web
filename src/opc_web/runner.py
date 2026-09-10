@@ -22,11 +22,22 @@ _ACTIVE = {"events": [], "seq": 0}
 _EXEC_LOCK = threading.Lock()
 _EXEC_STATE = {}     # act -> {startedAt, tools, lastTool, lastText, beatMono, session}——执行实时状态值
 _ACT_ENGINE = {}     # act -> 正在执行它的引擎名（按用途路由后，kill 要精确找对引擎）
+_LAST_RUN = {}       # act -> 最近一次运行信息（引擎名 / 引擎侧会话标识 / 耗时），供事后追溯
 
 
 def _squeeze(s: str, limit: int = 90) -> str:
     """压成单行短文本：进度行只放一句话，多行长文本（表格等）不进 UI。"""
     return " ".join(str(s or "").split())[:limit]
+
+
+def run_info(act: str) -> dict:
+    """最近一次 act 运行的信息：{engine, session, elapsed}。
+
+    用途：把「这次子任务是谁跑的、落在哪个引擎会话上」记进 meta.json。
+    用量或进度对不上时能直接回溯到具体会话 —— T-008-S2 到 T-013-S1 那批就是缺了这一环，
+    事后只能按时间与任务文本去猜，猜不准（同一会话会被安到多个子任务头上）。"""
+    with _EXEC_LOCK:
+        return dict(_LAST_RUN.get(act) or {})
 
 
 def exec_state() -> dict:
@@ -135,16 +146,25 @@ def _run_engine(task_text: str, timeout: float, act: str = "", purpose: str = ""
 
 
 def _invoke(eng, name: str, task_text: str, timeout: float, act: str):
-    """调一次引擎，并登记 act → 引擎名（kill 时据此精确找对引擎）。"""
+    """调一次引擎：登记 act → 引擎名（kill 用），跑完留下运行信息（追溯用）。"""
     if act:
         with _EXEC_LOCK:
             _ACT_ENGINE[act] = name
     try:
-        return eng.run(task_text, timeout=timeout, act=act, on_progress=_progress_sink(act))
+        res = eng.run(task_text, timeout=timeout, act=act, on_progress=_progress_sink(act))
     finally:
         if act and _ACT_ENGINE.get(act) == name:
             with _EXEC_LOCK:
                 _ACT_ENGINE.pop(act, None)
+    if act:
+        with _EXEC_LOCK:
+            _LAST_RUN[act] = {"engine": name,
+                              "session": str(getattr(res, "session", "") or ""),
+                              "elapsed": round(float(getattr(res, "elapsed", 0.0) or 0.0), 1)}
+            if len(_LAST_RUN) > 200:            # 只留最近 200 条：够追溯，不涨内存
+                for k in list(_LAST_RUN)[:100]:
+                    _LAST_RUN.pop(k, None)
+    return res
 
 
 def run_headless_sync(task_text: str, timeout: float = 600, purpose: str = "") -> str:
