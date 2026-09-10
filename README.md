@@ -4,7 +4,7 @@
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue.svg)](https://www.python.org/)
 [![python deps](https://img.shields.io/badge/python%20deps-0%20pip%20packages-brightgreen.svg)](pyproject.toml)
-[![runtime](https://img.shields.io/badge/runtime-requires%20DSH-important.svg)](#快速开始)
+[![engine](https://img.shields.io/badge/engine-API%20%7C%20DSH-blueviolet.svg)](#执行引擎)
 [![network](https://img.shields.io/badge/network-127.0.0.1%20only-purple.svg)](#配置与数据)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![stars](https://img.shields.io/github/stars/wenbuer/opc-web-dsh?style=social)](https://github.com/wenbuer/opc-web-dsh)
@@ -48,7 +48,7 @@ opc-web 是一个本地运行的「AI 员工团队」管理控制台。你创建
 - **自动拆解与派发**：下达一句话，自动拆成子任务并派给对应角色执行；支持点名直派，拆解数量宁少勿多并设上限。
 - **批阅即驱动执行**：批准会立即创建「执行 R0 决策」任务继续往下跑，驳回则按批注重做——形成「下达 → 执行 → 批阅 → 归档」闭环。
 - **过程实时可见**：角色卡显示当前任务代号；工作台四列看板（待派 / 已派 / 完成 / 阻塞）配实时事件流，能看到执行到哪一步、调了什么工具。
-- **可替换执行引擎**：dsh 与「直连 API 自建 agent 循环」两套实现，改配置即切换，上层调用零改动。
+- **可替换执行引擎**：默认直连大模型 API 跑内置工具循环，也可切到 DSH；「设置 → 执行引擎」切换后立即生效，两套共用同一条进度与用量口径。
 - **OKF 知识库**：任务收尾由 R1 判定有无沉淀价值，有价值才按主题域归档入库、同主题合并进已有档案；每篇带 OKF 知识型标注（概念 / 决策 / 方法 / 数据 / 教训 / 问题），流水账一律不沉淀。
 - **本地零依赖**：Python 标准库 + SQLite + md 文件，仅监听本机；数据全在本地，可回溯、不上云。
 - **深浅双主题**：一键切换并记忆。
@@ -57,7 +57,7 @@ opc-web 是一个本地运行的「AI 员工团队」管理控制台。你创建
 
 ## 快速开始
 
-**环境要求**：Python 3.9+；默认执行引擎需要 **DSH**（DeepSeek Harness）。
+**环境要求**：Python 3.9+。默认执行引擎**直连大模型 API**，在「设置 → 模型接入」填一个 API Key 即可；想换成 **DSH**（DeepSeek Harness）引擎，在「设置 → 执行引擎」切换（本机需已安装 dsh）。
 
 ```bash
 python run.py                 # 命令行启动（推荐）
@@ -80,7 +80,7 @@ python run.py                 # 命令行启动（推荐）
 | **项目文件** | 按角色 / 项目 / 任务筛选产物；md 渲染、HTML 内嵌预览并可全屏 |
 | **知识库** | 按分类分组阅读档案，组头可展开收起 |
 | **每日简报** | R1 汇总当天任务生成的摘要简报 |
-| **设置** | 项目目录与端口、模型接入、定时任务、Token 统计、Skill 导入 |
+| **设置** | 项目目录与端口、执行引擎（api / dsh 一键切换）、模型接入、定时任务、Token 统计、Skill 导入 |
 
 ---
 
@@ -90,8 +90,10 @@ python run.py                 # 命令行启动（推荐）
 
 | 引擎 | 说明 |
 |---|---|
-| `dsh`（默认） | 调用 `dsh --profile headless` 执行；自带工具沙箱与技能生态，用量与进度从会话日志读取 |
-| `api` | 直连大模型 API 的 agent 循环：内置 4 个工具（列目录 / 读文件 / 写文件 / 跑命令），流式进度、用量取自 API 返回 |
+| `api`（默认） | 直连大模型 API 的 agent 循环：内置 4 个工具（列目录 / 读文件 / 写文件 / 跑命令），流式进度、用量取自 API 返回；沿用「设置 → 模型接入」的提供方与密钥 |
+| `dsh` | 调用 `dsh --profile headless` 执行；自带工具沙箱与技能生态，用量与进度从会话日志读取 |
+
+在「设置 → 执行引擎」里切换，**改完立即生效，无需重启**；也可手改 `opc-config.json` 的 `engine`，或设环境变量 `OPC_ENGINE`（后者优先，界面会提示）。
 
 ```jsonc
 {

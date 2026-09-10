@@ -42,6 +42,8 @@ class Engine:
     """执行引擎基类：新引擎只需实现 run()，并按需覆盖其余方法。"""
 
     name = "base"
+    label = "base"        # 设置页显示名
+    description = ""      # 一句话说明（设置页与自检提示用）
 
     def capabilities(self) -> dict:
         """能力声明：控制台据此决定 UI 与提示词策略。"""

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260829u">
+<link rel="stylesheet" href="/static/main.css?v=20260910a">
 </head>
 <body>
 <div class="shell">
@@ -208,10 +208,11 @@
         <aside class="settings-nav">
           <div class="settings-nav-head">设置</div>
           <button class="snav-item" data-snav="dir">① 项目选择</button>
-          <button class="snav-item" data-snav="model">② 模型接入</button>
-          <button class="snav-item" data-snav="schedule">③ 定时任务</button>
-          <button class="snav-item" data-snav="tokens">④ Token 统计</button>
-    <button class="snav-item" data-snav="skill">⑤ Skill 导入</button>
+          <button class="snav-item" data-snav="engine">② 执行引擎</button>
+          <button class="snav-item" data-snav="model">③ 模型接入</button>
+          <button class="snav-item" data-snav="schedule">④ 定时任务</button>
+          <button class="snav-item" data-snav="tokens">⑤ Token 统计</button>
+    <button class="snav-item" data-snav="skill">⑥ Skill 导入</button>
         </aside>
         <div class="settings-main">
           <div class="snav-pane active" data-pane="dir">
@@ -236,6 +237,20 @@
               <code>工作区/<角色名称>/</code>·
               <code>知识库/</code>。
               <br>角色定义在项目内，切换项目 = 换一套角色 + 换一本台账；定时任务也跟项目走。</div>
+          </div>
+          <div class="snav-pane" data-pane="engine">
+            <div class="set-head">执行引擎</div>
+            <div class="mapi-row">
+              <label>谁在执行角色任务（改完立即生效，无需重启）
+                <select id="engSel"><option value="">加载中…</option></select>
+              </label>
+            </div>
+            <div id="engList" class="eng-list"><div class="placeholder">加载中…</div></div>
+            <div class="mapi-row mapi-actions">
+              <button id="btnSaveEngine">切换引擎</button>
+              <span id="engMsg" class="set-msg"></span>
+            </div>
+            <div class="set-note" id="engNote"></div>
           </div>
           <div class="snav-pane" data-pane="model">
             <div class="set-head">大模型 API</div>
@@ -398,6 +413,6 @@
     </div>
   </div>
 </div>
-<script src="/static/main.js?v=20260831t"></script>
+<script src="/static/main.js?v=20260910a"></script>
 </body>
 </html>

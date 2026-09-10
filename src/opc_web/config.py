@@ -133,9 +133,10 @@ LOG_FILE = ROOT / SCHED_LOG_REL
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
 
-# 执行引擎：谁在执行角色任务（engines/ 包）。缺省 dsh；改这里或环境变量 OPC_ENGINE 即可换引擎。
+# 执行引擎：谁在执行角色任务（engines/ 包）。缺省 api（直连大模型 API，不依赖 dsh）；
+# 可在「设置 → 执行引擎」里切到 dsh，或手改 opc-config.json 的 engine / 环境变量 OPC_ENGINE。
 # 取值必须是 engines.registry 里已注册的名字——写错会抛 EngineError，不静默回退（防配置错误被吞）。
-ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or "dsh")
+ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or "api")
 # 首页「今日用量」的估算单价（元 / 百万 token）。默认值只是占位，按你实际模型价格改：
 # 环境变量 OPC_TOKEN_PRICE_IN / OPC_TOKEN_PRICE_OUT（或 opc-config.json 的 priceIn/priceOut）。
 TOKEN_PRICE_IN = float(os.environ.get("OPC_TOKEN_PRICE_IN") or _CFG.get("priceIn") or 1.0)
@@ -144,7 +145,8 @@ TOKEN_PRICE_OUT = float(os.environ.get("OPC_TOKEN_PRICE_OUT") or _CFG.get("price
 
 # ---------- 配置读写（「设置」视图 /api/settings 使用） ----------
 
-SETTING_KEYS = ("root", "port")          # 设置页可写的字段；其余键只允许手改 opc-config.json
+# engine 的取值合法性由 server 校验（必须是已注册的引擎名），此处只负责存盘。
+SETTING_KEYS = ("root", "port", "engine")   # 设置页可写的字段；其余键只允许手改 opc-config.json
 
 # 运行调参：手改 opc-config.json 即时生效（每次读盘，文件几百字节，代价可忽略）。
 # 刻意不进 SETTING_KEYS —— 这些是调优旋钮，不该占设置页的位置。
@@ -196,7 +198,7 @@ def save_cfg(kv: dict) -> dict:
 
 def reload() -> dict:
     """重新读取配置并刷新模块常量（保存后立即生效）。"""
-    global _CFG, ROOT, KB_ROOT, BATCH_ROOT, WORKSPACE_ROOT, PROJECT_ROOT, AGENTS_DIR, LOG_FILE, PORT
+    global _CFG, ROOT, KB_ROOT, BATCH_ROOT, WORKSPACE_ROOT, PROJECT_ROOT, AGENTS_DIR, LOG_FILE, PORT, ENGINE
     _CFG = _load_cfg()
     ROOT = _resolve_root()
     KB_ROOT = ROOT / "知识库"
@@ -206,6 +208,8 @@ def reload() -> dict:
     AGENTS_DIR = (ROOT / "agents") if active_project() else AGENTS_SEED
     LOG_FILE = ROOT / SCHED_LOG_REL
     PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
+    # 引擎也随配置热生效：设置页切换后下一次派发就用新引擎，无需重启控制台。
+    ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or "api")
     return settings_info()
 
 

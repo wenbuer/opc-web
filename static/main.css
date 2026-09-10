@@ -1552,3 +1552,18 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
    名称行已预留 58px 让位，所以两列也不会把标签压在文字上。 */
 .org-tree .role-card .rc-st{white-space:nowrap;pointer-events:none}
 .org-tree .role-card .rc-top{gap:6px}
+
+/* ===== 设置 · 执行引擎 ===== */
+.eng-list{display:flex;flex-direction:column;gap:9px}
+.eng-item{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;transition:border-color .15s ease}
+.eng-item.current{border-color:rgba(2,132,199,.55);background:rgba(2,132,199,.05)}
+.eng-head{display:flex;align-items:center;gap:8px}
+.eng-head b{font-size:12px;color:var(--txt)}
+.eng-cur{font-size:9.5px;letter-spacing:.08em;color:var(--gold);border:1px solid var(--line2);border-radius:5px;padding:1px 6px}
+.eng-st{margin-left:auto;font-size:9.5px;letter-spacing:.08em}
+.eng-st.ok{color:var(--green,#2f9e6f)}
+.eng-st.bad{color:var(--red-bright)}
+.eng-desc{font-size:10.5px;color:var(--dim);line-height:1.55}
+.eng-note{font-family:var(--mono);font-size:10px;color:var(--faint);line-height:1.5}
+.eng-caps{display:flex;gap:6px;flex-wrap:wrap}
+.eng-caps i{font-style:normal;font-size:9.5px;color:var(--dim);border:1px solid var(--line);border-radius:5px;padding:1px 6px}

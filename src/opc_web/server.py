@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
-from . import bootstrap, chain, config, knowledge, parsers, review, roles, runner, scheduler, store, templates
+from . import bootstrap, chain, config, engines, knowledge, parsers, review, roles, runner, scheduler, store, templates
 
 
 def _strip_okf_frontmatter(text: str) -> str:
@@ -297,6 +297,8 @@ class Handler(BaseHTTPRequestHandler):
                         "active": config.active_project(), "seedRoles": config.settings_info()["seedRoles"]})
         elif url == "/api/settings":
             self._json(config.settings_info())
+        elif url == "/api/engines":
+            self._json({"ok": True, **engines.describe()})
         elif url == "/api/schedule":
             self._json({"ok": True, "schedules": config.schedule_status()})
         elif url == "/api/dirs":
@@ -449,12 +451,19 @@ class Handler(BaseHTTPRequestHandler):
                     kv["port"] = int(str(kv["port"]).strip())
                 except Exception:
                     kv.pop("port", None)
+            eng = str(kv.get("engine") or "").strip().lower()
+            if eng:                                  # 引擎名必须是已注册的，写错当场报错而不是留到派发
+                if eng not in engines.available():
+                    raise ApiError(400, "未知执行引擎：%s（可用：%s）"
+                                   % (eng, "、".join(engines.available()) or "无"))
+                kv["engine"] = eng
             out = {"ok": True}
             if kv and not dry:
                 config.save_cfg(kv)
                 config.reload()
                 bootstrap.bootstrap()      # 新根目录下的三目录幂等重建
                 out.update(config.settings_info())
+                out["engines"] = engines.describe()      # 切换后立即回带新状态，前端不用再拉一次
                 out["boot"] = bootstrap.BOOT_LOG
             mbody = body.get("model")
             if isinstance(mbody, dict):
@@ -465,10 +474,13 @@ class Handler(BaseHTTPRequestHandler):
                 out["model"] = res         # 放在 settings_info 之后，否则被其 model 字段盖掉
             out["msg"] = "；".join(x for x in (
                 "模型 API 配置已保存" if isinstance(mbody, dict) else "",
+                ("执行引擎已切换到 " + eng) if eng else "",
                 "opc-config.json 已更新并生效" if kv else "",
                 "端口修改需重启控制台" if "port" in kv else "",
             ) if x) or "无改动"
             return out
+        except ApiError:
+            raise                    # 校验类错误原样抛出（400），别包成「保存设置失败」
         except Exception as e:
             raise ApiError(500, "保存设置失败: " + str(e)[:200])
 

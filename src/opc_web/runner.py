@@ -52,6 +52,29 @@ def _exec_beat(act: str, tools: int, last_tool: str, last_text: str, t0: float):
                       "lastTool": _squeeze(last_tool, 130), "lastText": _squeeze(last_text, 120)}})
 
 
+def _progress_sink(act: str):
+    """引擎进度回调：把引擎报来的 Progress 落到执行状态与事件流。
+
+    两套引擎共用这一条路：dsh 的进度原先由 _watch_session 直接写 _EXEC_STATE，而
+    api 引擎的 on_progress 根本没人接管——同一个「进度」两套写法、且只通一条。
+    现在 dsh 与 api 都回调到这里，_EXEC_STATE 是唯一出口，工作台与首页读法不变。
+    act 为空（没有子任务号的同步直跑）时不记录状态。"""
+    if not act:
+        return None
+    t0 = time.monotonic()
+
+    def _on_progress(p):
+        _exec_beat(act, int(getattr(p, "tools", 0) or 0),
+                   str(getattr(p, "lastTool", "") or ""),
+                   str(getattr(p, "lastText", "") or ""), t0)
+        sess = str(getattr(p, "session", "") or "")
+        if sess:
+            with _EXEC_LOCK:
+                _EXEC_STATE.setdefault(act, {})["session"] = sess
+
+    return _on_progress
+
+
 _SESS_HEAD = 24          # 会话认领用的任务文本前缀长度
 _BEAT_IDLE = 20.0        # 无新事件时的心跳间隔（秒）
 
@@ -80,7 +103,7 @@ def _squeeze(s: str, limit: int = 90) -> str:
 
 
 def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float,
-                   pre: set = None, prompt_head: str = ""):
+                   pre: set = None, prompt_head: str = "", on_progress=None):
     """跟踪本次 headless 的 dsh 会话事件日志（数据源 ~/.dsh/sessions/<cwd>/session-*.jsonl.zstd）。
 
     借鉴 dsh-better-sidebar 的 lastActivity：只取 tool/call 与 assistant/message 两类事件，
@@ -103,6 +126,15 @@ def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float,
     last_text = ""
     head = _squeeze(prompt_head, _SESS_HEAD)
     last_emit = 0.0
+
+    def _report(tools_n: int, last_tool: str, last_text: str, sess_name: str = ""):
+        """报一次进度：接了引擎回调就走回调，否则退回本地写状态。"""
+        if on_progress is None:
+            _exec_beat(act, tools_n, last_tool, last_text, t0)
+            return
+        from .engines.base import Progress
+        on_progress(Progress(alive=True, elapsed=int(time.monotonic() - t0), tools=tools_n,
+                             lastTool=last_tool, lastText=last_text, session=sess_name))
     while p.poll() is None:
         time.sleep(2)
         try:
@@ -151,11 +183,11 @@ def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float,
                 with _EXEC_LOCK:
                     _EXEC_STATE.setdefault(act, {})["session"] = d.name[-12:]
                     _LAST_SESSION[act] = d          # 抽 usage 时直接用这个会话，不再按 mtime 猜
-                _exec_beat(act, tools, last_tool, last_text, t0)
+                _report(tools, last_tool, last_text, d.name[-12:])
                 last_emit = time.monotonic()
             elif time.monotonic() - last_emit > _BEAT_IDLE:
                 # 周期心跳：暂无新事件也刷新一次，界面能看出「还在跑」而不是卡住
-                _exec_beat(act, tools, last_tool, last_text, t0)
+                _report(tools, last_tool, last_text)
                 last_emit = time.monotonic()
         except Exception:
             continue
@@ -208,7 +240,7 @@ def _dsh_command() -> list:
     return ["dsh"]
 
 
-def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
+def _spawn_headless(argv: list, timeout: float, act: str = "", on_progress=None) -> bytes:
     """启动 dsh headless 子进程并收尾，返回其原始 stdout（stderr 合并）字节。
 
     存活语义（v1.17）：headless 只在 turn 结束后一次性打印 final 文本，stdout 全程静默，
@@ -244,7 +276,7 @@ def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
     if act:
         threading.Thread(target=_watch_session,
                          args=(act, p, time.time(), time.monotonic(), pre_sessions,
-                               argv[-1] if argv else ""),
+                               argv[-1] if argv else "", on_progress),
                          daemon=True).start()
     t0 = time.monotonic()
     t_first = None        # stdout 首帧时刻（headless 期末才打印，平时靠会话事件心跳）
@@ -295,9 +327,9 @@ def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
 
 
 def run_headless_sync(task_text: str, timeout: float = 600) -> str:
-    """同步直跑一次（最终文本模式），返回文本。走配置的执行引擎（默认 dsh）。"""
+    """同步直跑一次（最终文本模式），返回文本。走配置的执行引擎。"""
     from .engines import get_engine
-    return get_engine().run(task_text, timeout=timeout).text
+    return get_engine().run(task_text, timeout=timeout, on_progress=_progress_sink("")).text
 
 
 def _decode_stdout(data: bytes) -> str:
@@ -399,14 +431,14 @@ def read_session_usage(since: float = 0.0, session_dir=None) -> dict:
     return _usage_from_session(latest)
 
 
-def _run_prompt_dsh(task_text: str, timeout: float, act: str = ""):
+def _run_prompt_dsh(task_text: str, timeout: float, act: str = "", on_progress=None):
     """dsh 引擎的底层实现（阶段 1 暂寄本模块，阶段 2 搬入 engines/dsh.py）。
 
     返回 (最终文本, 用量 dict|None, 会话标识)。headless 只在结束时打印 final 文本；
     用量从 DSH 会话日志（~/.dsh/sessions/<cwd>/session-<uuid>/session.jsonl.zstd）抽取，
     会话由 _watch_session 三重校验认领，避免并发下认领到别的会话。"""
     base = time.time()
-    text = _decode_stdout(_spawn_headless([task_text], timeout, act)).strip()
+    text = _decode_stdout(_spawn_headless([task_text], timeout, act, on_progress)).strip()
     with _EXEC_LOCK:
         claimed = _LAST_SESSION.pop(act, None) if act else None
     sess = Path(claimed).name[-12:] if claimed else ""
@@ -419,7 +451,8 @@ def run_headless_task(task_text: str, timeout: float = 600, act: str = ""):
     解耦后本函数不再直接碰 dsh：由 engines.get_engine() 选实现（默认 DshEngine）。
     签名与语义保持不变，chain / scheduler / server 无需改动。"""
     from .engines import get_engine
-    res = get_engine().run(task_text, timeout=timeout, act=act)
+    res = get_engine().run(task_text, timeout=timeout, act=act,
+                           on_progress=_progress_sink(act))
     return res.text, res.usage
 
 

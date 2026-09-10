@@ -12,7 +12,8 @@ from .base import Engine, EngineError, Progress, RunResult
 
 class DshEngine(Engine):
     name = "dsh"
-
+    label = "DSH（DeepSeek Harness）"
+    description = "调用 dsh headless 执行，自带工具沙箱与技能生态；进度取自会话日志"
     def capabilities(self) -> dict:
         return {"tools": True, "streaming": True, "usage": True, "skills": True, "sandbox": True}
 
@@ -29,7 +30,7 @@ class DshEngine(Engine):
         import time
         t0 = time.monotonic()
         try:
-            text, usage, session = runner._run_prompt_dsh(prompt, timeout, act)
+            text, usage, session = runner._run_prompt_dsh(prompt, timeout, act, on_progress)
         except Exception as e:                      # 启动失败/编码异常等
             return RunResult(error="dsh 执行异常：%s" % e, elapsed=time.monotonic() - t0)
         return RunResult(text=text or "", usage=usage, session=session or "",

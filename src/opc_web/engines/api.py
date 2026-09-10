@@ -72,14 +72,24 @@ TOOLS = [
 
 
 def _cfg() -> dict:
-    """引擎配置：opc-config.json 的 engines.api 段 + 环境变量覆盖。"""
+    """引擎配置：沿用「设置 → 模型接入」，再用 opc-config.json 的 engines.api 段覆盖。
+
+    模型接入页写的 provider / apiKeyEnv / baseURL / model 就是「用哪个模型」，
+    api 引擎必须读同一份 —— 否则界面选了自定义提供方，引擎还去打默认端点。
+    engines.api 段（可选）只用于按引擎单独覆盖，如给执行单独配更便宜的模型。"""
     from .. import config
-    raw = {}
+    cfg = dict(_DEFAULTS)
+    try:                                        # 先取模型接入的配置打底
+        mi = config.model_info()
+        for src, dst in (("baseURL", "baseUrl"), ("model", "model"), ("apiKeyEnv", "apiKeyEnv")):
+            if mi.get(src):
+                cfg[dst] = mi[src]
+    except Exception:
+        pass
     try:
         raw = (config._CFG.get("engines") or {}).get("api") or {}
     except Exception:
         raw = {}
-    cfg = dict(_DEFAULTS)
     cfg.update({k: v for k, v in raw.items() if v not in (None, "")})
     cfg["baseUrl"] = str(cfg["baseUrl"]).rstrip("/")
     return cfg
@@ -219,7 +229,8 @@ def _stream_chat(cfg: dict, messages: list, on_delta=None, cancel=None) -> dict:
 
 class ApiEngine(Engine):
     name = "api"
-
+    label = "直连大模型 API"
+    description = "内置 4 个工具的 agent 循环，直连 API 流式执行；不依赖 dsh"
     def capabilities(self) -> dict:
         return {"tools": True, "streaming": True, "usage": True, "skills": False, "sandbox": True}
 

@@ -1995,6 +1995,60 @@
       else { alert((j && j.msg) || "导入失败"); }
     }).catch(function(e){ alert("导入失败：" + (e.message || "")); });
   }
+  var ENG_CAPS = [["tools", "工具"], ["streaming", "实时进度"], ["usage", "用量"], ["skills", "技能"], ["sandbox", "沙箱"]];
+  function loadEngines(){
+    api("/api/engines").then(function(j){
+      if (!j || !j.ok) return;
+      var sel = $("engSel");
+      if (sel){
+        sel.innerHTML = "";
+        (j.engines || []).forEach(function(e){
+          var o = document.createElement("option");
+          o.value = e.name;
+          o.textContent = e.label + (e.ok ? "" : "（不可用）");
+          sel.appendChild(o);
+        });
+        sel.value = j.current;
+      }
+      var box = $("engList");
+      if (box){
+        box.innerHTML = "";
+        (j.engines || []).forEach(function(e){
+          var el = document.createElement("div");
+          el.className = "eng-item" + (e.current ? " current" : "");
+          var caps = e.capabilities || {};
+          var tags = ENG_CAPS.filter(function(t){ return caps[t[0]]; })
+            .map(function(t){ return "<i>" + t[1] + "</i>"; }).join("");
+          el.innerHTML = "<div class='eng-head'><b>" + esc(e.label) + "</b>"
+            + (e.current ? "<span class='eng-cur'>当前</span>" : "")
+            + "<span class='eng-st " + (e.ok ? "ok" : "bad") + "'>" + (e.ok ? "可用" : "不可用") + "</span></div>"
+            + "<div class='eng-desc'>" + esc(e.description || "") + "</div>"
+            + "<div class='eng-note'>" + esc(e.note || "") + "</div>"
+            + "<div class='eng-caps'>" + tags + "</div>";
+          box.appendChild(el);
+        });
+      }
+      var note = $("engNote");
+      if (note){
+        var t = "<b>选哪个</b> 直连 API 用一个内置工具的 agent 循环跑任务，进度是流式增量，但<b>不支持装配技能</b>（Skill 导入只对 DSH 有意义）；"
+          + "DSH 自带工具沙箱与技能生态，进度取自会话日志。切换后立即生效，正在跑的任务不受影响。";
+        if (j.envOverride) t += "<br><b>注意</b> 环境变量 <code>OPC_ENGINE=" + esc(j.envOverride) + "</code> 优先于这里的选择，改这里不会生效。";
+        var errs = j.errors || {};
+        var ek = Object.keys(errs);
+        if (ek.length) t += "<br><b>加载失败的引擎</b>：" + ek.map(function(k){ return esc(k) + "（" + esc(errs[k]) + "）"; }).join("；");
+        note.innerHTML = t;
+      }
+    }).catch(function(){});
+  }
+  function saveEngine(){
+    var sel = $("engSel");
+    if (!sel || !sel.value) return;
+    post("/api/settings", { engine: sel.value }).then(function(j){
+      var m = $("engMsg");
+      if (m) m.textContent = (j && j.msg) || ((j && j.ok) ? "已保存" : "保存失败");
+      loadEngines();
+    }).catch(function(e){ var m = $("engMsg"); if (m) m.textContent = "异常：" + esc(e.message || ""); });
+  }
   function loadSettings(){
     api("/api/settings").then(function(j){
       if (!j || !j.ok){ var m = $("setMsg"); if (m) m.textContent = "读取设置失败：" + esc(j && j.msg || "未知"); return; }
@@ -2009,6 +2063,7 @@
       loadSchedules();
       loadRoles();
       loadProjects();
+      loadEngines();
     }).catch(function(e){ var m = $("setMsg"); if (m) m.textContent = "异常：" + esc(e.message); });
   }
   function loadProjects(){
@@ -2240,6 +2295,7 @@
         if (pane) pane.classList.add("active");
         if (k === "tokens") loadTokenStats();
         if (k === "skill") loadDshSkills();
+        if (k === "engine") loadEngines();
       });
     });
     var sss = $("skillSearch"); if (sss && !sss.dataset.bound){ sss.dataset.bound = "1"; sss.addEventListener("input", renderDshSkills); }
@@ -2258,6 +2314,7 @@
     var bm = $("btnSaveModelApi"); if (bm) bm.addEventListener("click", saveModelApi);
     var bt = $("btnTestModelApi"); if (bt) bt.addEventListener("click", testModelApi);
     var mpv = $("mApiProvider"); if (mpv) mpv.addEventListener("change", modelProviderChanged);
+    var beng = $("btnSaveEngine"); if (beng) beng.addEventListener("click", saveEngine);
     var sa = $("btnSchedAdd"); if (sa) sa.addEventListener("click", addSched);
     var bb = $("btnBrowseDir"); if (bb) bb.addEventListener("click", dirOpen);
     var dcl = $("btnDirClose"); if (dcl) dcl.addEventListener("click", dirClose);

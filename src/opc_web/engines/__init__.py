@@ -12,4 +12,4 @@
 切引擎改配置即可（opc-config.json 的 "engine"，或环境变量 OPC_ENGINE）。
 """
 from .base import Engine, EngineError, Progress, RunResult  # noqa: F401
-from .registry import get_engine, register, available  # noqa: F401
+from .registry import available, describe, get_engine, load_errors, register  # noqa: F401
