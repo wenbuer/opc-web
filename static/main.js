@@ -75,23 +75,25 @@
       + (s.tag ? "<em>" + esc(s.tag) + "</em>" : "") + "</div>";
     if ((s.running || []).length){
       h += "<div class='hp-run'>" + s.running.map(function(r){
-        return "<div class='hp-run-item'><b>" + esc(r.sub) + "</b><span>" + esc(r.role) + "</span>"
+        return "<div class='hp-run-item'><b>" + esc(r.sub || "") + "</b><span>" + esc(r.role || "") + "</span>"
           + "<span>已运行 " + fmtDur(r.elapsed) + "</span><i>操作 " + (r.tools || 0) + " 次</i></div>";
       }).join("") + "</div>";
     }
     h += "<div class='hp-sep'>今日用量</div>";
     h += "<div class='hp-row'><span class='hp-k'>输入</span><b>" + fmtK(t.todayIn) + "</b>"
       + "<span class='hp-k'>输出</span><b>" + fmtK(t.todayOut) + "</b>"
-      + "<em>≈ ¥" + (Number(t.costToday) || 0).toFixed(2) + "（¥" + t.priceIn + "/M 入 · ¥" + t.priceOut + "/M 出）</em></div>";
+      + "<em>≈ ¥" + (Number(t.costToday) || 0).toFixed(2)
+      + "（¥" + (t.priceIn || 1) + "/M 入 · ¥" + (t.priceOut || 2) + "/M 出）</em></div>";
     var week = t.week || [];
     var mx = 1;
     week.forEach(function(d){ mx = Math.max(mx, (d.in || 0) + (d.out || 0)); });
-    h += "<div class='hp-week'>" + week.map(function(d){
+    h += "<div class='hp-week'>" + (week.length ? week.map(function(d){
+      var ds = String(d.date || "");
       var tot = (d.in || 0) + (d.out || 0);
       var pct = Math.max(Math.round(tot / mx * 100), 3);
-      return "<div class='hp-bar' title='" + esc(d.date) + " 输入 " + fmtK(d.in) + " · 输出 " + fmtK(d.out) + "'>"
-        + "<span style='height:" + pct + "%'></span><em>" + esc(String(d.date).slice(3, 5)) + "</em></div>";
-    }).join("") + "</div>";
+      return "<div class='hp-bar' title='" + esc(ds) + " 输入 " + fmtK(d.in) + " · 输出 " + fmtK(d.out) + "'>"
+        + "<span style='height:" + pct + "%'></span><em>" + esc(ds.slice(3, 5)) + "</em></div>";
+    }).join("") : "<div class='hp-none'>暂无用量记录</div>") + "</div>";
     box.innerHTML = h;
   }
   function renderProg(p){
@@ -103,12 +105,12 @@
       + "<div class='hp-pg'><div class='hp-pg-head'><span>子任务</span><b>" + p.subsDone + "/" + p.subsTotal + "</b>"
       + (p.blocked ? "<em class='bad'>阻塞 " + p.blocked + "</em>" : "") + "</div>"
       + "<div class='hp-track'><i style='width:" + sp + "%'></i></div></div>"
-      + "<div class='hp-facts'><span>项目文件 <b>" + p.projFiles + "</b></span>"
-      + "<span>知识库 <b>" + p.kbEntries + "</b></span>"
-      + "<span>每日简报 <b>" + p.dailyReports + "</b></span></div>";
+      + "<div class='hp-facts'><span>项目文件 <b>" + (p.projFiles || 0) + "</b></span>"
+      + "<span>知识库 <b>" + (p.kbEntries || 0) + "</b></span>"
+      + "<span>每日简报 <b>" + (p.dailyReports || 0) + "</b></span></div>";
     if ((p.recent || []).length){
       h += "<div class='hp-sep'>最近完成</div>" + p.recent.map(function(r){
-        return "<div class='hp-done'><b>" + esc(r.no) + "</b><em title='" + esc(r.title) + "'>" + esc(r.title) + "</em></div>";
+        return "<div class='hp-done'><b>" + esc(r.no || "") + "</b><em title='" + esc(r.title || "") + "'>" + esc(r.title || "") + "</em></div>";
       }).join("");
     }
     box.innerHTML = h;
