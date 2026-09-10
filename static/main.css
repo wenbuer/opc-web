@@ -1491,6 +1491,14 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .tl-h-item,
 :root[data-theme="dark"] .mdt-wrap,
 :root[data-theme="dark"] .ov-item{background:transparent}
-/* 不进这条的：输入框（.launch-row input / .board-search）与列表项 / 卡片（.dq-row / .bd-card）
-   保留淡底 —— 它们靠底色和 hover 区分，全透明会糊成一片。全屏查看的 .run-log.fullscreen
-   规则特异性更高，不受这里影响，仍是实底。*/
+/* 工作台里的两个输入框（下达任务 / 看板搜索）同样去底色，只留描边与占位符 —— 否则面板都透了、
+   就这两个框还顶着一块实色底，很突兀。不给所有输入框做全局透明：设置页表单与模型接入那些框
+   需要有底色才看得出「这儿能填」。
+   focus 时只变描边色（.board-search:focus），不会突然冒出一块底色。*/
+.launch-row input,
+.board-search{background:transparent}
+:root[data-theme="dark"] .launch-row input,
+:root[data-theme="dark"] .board-search{background:transparent}
+/* 不进上面淡底白名单的：列表项 / 卡片（.dq-row / .bd-card / .proj-item / .eng-item 等）
+   靠底色和 hover 区分层级，全透明会糊成一片；模态框 .modal-box 要实底才看得清；
+   全屏查看的 .run-log.fullscreen 规则特异性更高，不受影响。*/
