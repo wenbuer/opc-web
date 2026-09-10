@@ -25,7 +25,7 @@ class FakeEngine(ebase.Engine):
 
     def run(self, prompt, *, timeout=600, act="", cwd=None, on_progress=None):
         if on_progress:
-            on_progress(ebase.Progress(alive=True, elapsed=3, tools=2, lastTool="pwsh ls"))
+            on_progress(ebase.Progress(elapsed=3, tools=2, lastTool="pwsh ls"))
         return ebase.RunResult(text="假引擎文本", usage={"inputTokens": 10, "outputTokens": 2,
                                                        "cacheReadTokens": 0, "reasoningTokens": 0},
                                session="fake-1", elapsed=1.5)
@@ -134,7 +134,7 @@ class TestProgressSink(unittest.TestCase):
 
     def test_sink_writes_state(self):
         sink = runner._progress_sink("T-77-S1")
-        sink(ebase.Progress(alive=True, elapsed=4, tools=3, lastTool="read_file a.md",
+        sink(ebase.Progress(elapsed=4, tools=3, lastTool="read_file a.md",
                             lastText="正在读", session="sess-123456789012"))
         try:
             st = runner.exec_state()["T-77-S1"]
@@ -150,9 +150,9 @@ class TestProgressSink(unittest.TestCase):
     def test_finished_signal_clears_state(self):
         """引擎结束信号：不报 finished 的话状态会一直停在「执行中」。"""
         sink = runner._progress_sink("T-9-S1")
-        sink(ebase.Progress(alive=True, tools=2, lastTool="list_dir", lastText="看目录"))
+        sink(ebase.Progress(tools=2, lastTool="list_dir", lastText="看目录"))
         self.assertIn("T-9-S1", runner.exec_state())
-        sink(ebase.Progress(alive=False, finished=True))
+        sink(ebase.Progress(finished=True))
         self.assertNotIn("T-9-S1", runner.exec_state())
 
     def test_engine_progress_reaches_state(self):
@@ -172,8 +172,8 @@ class TestProgressSink(unittest.TestCase):
 
             def run(self, prompt, *, timeout=600, act="", cwd=None, on_progress=None):
                 if on_progress:
-                    on_progress(ebase.Progress(alive=True, tools=1, lastTool="list_dir"))
-                    on_progress(ebase.Progress(alive=False, finished=True))
+                    on_progress(ebase.Progress(tools=1, lastTool="list_dir"))
+                    on_progress(ebase.Progress(finished=True))
                 return ebase.RunResult(text="完")
 
         with mock.patch("opc_web.engines.registry._ENGINES", {"fin": Fin}):

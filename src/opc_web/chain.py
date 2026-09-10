@@ -29,10 +29,6 @@ def mark_stopped(task_no):
     _STOPPED.add(task_no)
 
 
-def clear_stopped(task_no):
-    _STOPPED.discard(task_no)
-
-
 def _alive(task_no):
     """任务是否仍应继续执行：既不在终止集合中，也仍存在于台账。"""
     if task_no in _STOPPED:

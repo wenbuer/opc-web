@@ -11,8 +11,7 @@ from dataclasses import dataclass
 
 @dataclass
 class Progress:
-    """一次运行的活动快照：有活动即视为存活（heartbeat 语义）。"""
-    alive: bool = True
+    """一次运行的活动快照：报一次即视为"还在动"（heartbeat 语义）。"""
     elapsed: int = 0          # 已运行秒数
     tools: int = 0            # 工具调用次数
     lastTool: str = ""        # 最近一次工具（名称 + 参数摘要）

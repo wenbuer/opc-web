@@ -112,7 +112,6 @@ PROJECT_ROOT = ROOT / "项目"        # 公共项目区（源码/工程性产出
 
 # 数据文件位置（相对根目录）
 WORKSPACE_REL = "工作区"
-PROJECT_REL = "项目"
 PIYUETAI_REL = "批阅台/批阅台.md"
 DB_REL = "批阅台/opc.db"               # 状态台账（任务/子任务/回报）—— 唯一真相，见 store.py
 LOG_REL = "批阅台/决策日志.md"          # R0 决策记录 + 派发单（parsers 读取）

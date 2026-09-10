@@ -288,7 +288,7 @@ class ApiEngine(Engine):
                 return
             last_beat = now
             if on_progress:
-                on_progress(Progress(alive=True, elapsed=int(now - t0), tools=n_tools,
+                on_progress(Progress(elapsed=int(now - t0), tools=n_tools,
                                      lastTool=last_tool, lastText=last_text[:120]))
 
         try:
@@ -351,5 +351,4 @@ class ApiEngine(Engine):
                 _CANCEL.pop(act, None)
                 _RUNNING.discard(act)
             if on_progress:      # 结束信号：不报的话上层状态会一直停在「执行中」
-                on_progress(Progress(alive=False, finished=True,
-                                     elapsed=int(time.monotonic() - t0)))
+                on_progress(Progress(finished=True, elapsed=int(time.monotonic() - t0)))

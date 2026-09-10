@@ -15,9 +15,8 @@ _LOAD_ERRORS = {}        # 名字 -> 导入失败原因（内置引擎）
 
 
 def register(cls):
-    """注册一个引擎实现（类级装饰器）。"""
+    """注册一个引擎实现（_load_builtins 内部调用）。"""
     _ENGINES[cls.name] = cls
-    return cls
 
 
 def _load_builtins():

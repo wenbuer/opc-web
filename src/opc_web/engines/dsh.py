@@ -214,7 +214,7 @@ def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float,
             _BEAT[act] = now
         if on_progress is None:
             return
-        on_progress(Progress(alive=True, elapsed=int(now - t0), tools=tools_n,
+        on_progress(Progress(elapsed=int(now - t0), tools=tools_n,
                              lastTool=last_tool, lastText=last_text, session=sess_name))
 
     while p.poll() is None:
@@ -360,8 +360,7 @@ def _spawn_headless(argv: list, timeout: float, act: str = "", on_progress=None)
             _ACTIVE_SPAWN.pop(act, None)
             _BEAT.pop(act, None)
         if on_progress:                 # 跑完报一次，让上层清掉「执行中」状态
-            on_progress(Progress(alive=False, finished=True,
-                                 elapsed=int(time.monotonic() - t0)))
+            on_progress(Progress(finished=True, elapsed=int(time.monotonic() - t0)))
     return b"".join(chunks)
 
 

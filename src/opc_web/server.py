@@ -266,8 +266,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._get_role_card)
         elif url == "/api/skills":
             self._ok(self._get_skill_lib)
-        elif url in ("/api/skill-sources", "/api/engine-skills", "/api/dsh-skills"):
-            self._ok(self._get_skill_sources)      # 后两个是旧名，保留兼容
+        elif url == "/api/skill-sources":
+            self._ok(self._get_skill_sources)
         elif url == "/api/templates":
             self._json({"ok": True, "templates": templates.templates()})
         elif url == "/api/handbook":
@@ -581,8 +581,6 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._post_dispatch)
         elif url == "/api/task-delete":
             self._ok(self._post_task_delete)
-        elif url == "/api/r1-archive":
-            self._ok(lambda: {"ok": True, "result": scheduler.r1_archive()})
         elif url == "/api/plan-execute":
             self._ok(lambda: {"ok": True, "result": scheduler.plan_execute()})
         elif url == "/api/plan-pause":
