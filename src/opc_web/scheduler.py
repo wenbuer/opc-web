@@ -213,9 +213,11 @@ def _piyue_next_no(text: str) -> int:
     return (max(nums) + 1) if nums else 1
 
 
-_DECIDE_WORDS = ("拍板", "决策", "决定", "取舍", "是否", "要不要", "可不可以", "选哪个", "方案选择",
-                "定价", "预算", "批准", "驳回", "上线", "启动", "方向", "首包", "双包", "放大", "止损",
-                "请 R0", "需要 R0", "请R0", "需要R0")
+# 「该不该进决策裁决」的唯一判据：角色在回报里按模板的「准入清单」自己声明。
+# 早先用宽关键词（「是否 / 决定 / 方向 / 启动」）判——回报里到处都有这些词，
+# 例行汇报被整片推成待决；改扫「需要拍板」字样又会把角色正文的泛指句子抓成声明
+# （T-007 把 UI 描述当成待拍板内容）。所以只认这个小节，别的都不算。
+_PENDING_HEAD = re.compile(r"(?m)^#{2,3}\s*需要\s*R0\s*拍板")
 
 
 def _field_lines(key: str, value: str) -> list:
@@ -230,10 +232,26 @@ def _field_lines(key: str, value: str) -> list:
     return out
 
 
-def _needs_decision(task_text: str, brief: str) -> bool:
-    """启发式：任务/回报含明确决策信号（拍板/定价/是否…/请 R0 等）→ 进「决策裁决」，否则进「工作内容」。"""
-    hay = "%s %s" % ((task_text or ""), (brief or "")[:2000])
-    return any(w in hay for w in _DECIDE_WORDS)
+def _pending_items(reps) -> str:
+    """回报里「## 需要 R0 拍板」小节的实质内容（多角色拼接）。
+
+    这是**唯一**的「该进决策裁决」判据：角色按《模板-回报产出》的准入清单（方向取舍 /
+    花钱对外 / 例外授权 / 验收定稿，每任务最多 2 条）自行声明；没写这节或写「无」即例行汇报。
+    返回空串表示无待拍板事项。"""
+    out = []
+    for r in reps or []:
+        body = str((r or {}).get("body") or "")
+        m = _PENDING_HEAD.search(body)
+        if not m:
+            continue
+        seg = body[m.end():]
+        nxt = re.search(r"(?m)^##\s", seg)
+        if nxt:
+            seg = seg[:nxt.start()]
+        seg = seg.strip()
+        if len(seg) > 8 and seg.replace("。", "").strip() not in ("无", "没有", "暂无"):
+            out.append("【%s】\n%s" % ((r or {}).get("role") or "?", seg))
+    return "\n\n".join(out)
 
 
 def _tree_text(root, max_depth=3):
@@ -668,10 +686,9 @@ def kb_digest(task_no: str) -> dict:
                    else ("已沉淀到知识库「%s/%s」" % (cat, target.name))}
 
 def _advice_summary(reps, task_text: str) -> str:
-    """R1 按《模板-决策建议》提炼待决条目「决策建议」栏：决策点 / 现状背景 / 建议 / 拍板后动作 / 附注。
+    """R1 按《模板-决策建议》把角色声明的待拍板事项提炼成「决策建议」栏正文。
 
-    各角色回报里「需要 R0 拍板」的原文作为重点素材附给模型，要求如实提炼、不得声称缺少上下文。
-    失败返回 ""（由调用方回退）。"""
+    只在 _pending_items 非空（确有需 R0 定的事项）时才被调用；模型不可用返回 "" 由调用方回退。"""
     if not reps and not task_text:
         return ""
     digest = _digest_reps(reps, limit=2400) if reps else str(task_text or "")[:1600]
@@ -682,13 +699,13 @@ def _advice_summary(reps, task_text: str) -> str:
         "你是老板助理 R1。请按《模板-决策建议》为批阅台待决条目写「决策建议」栏："
         "依次含小节 决策点（一句话问句）/ 现状背景（2~4 句）/ 建议（明确选哪个 + 一两句理由；"
         "无可拍板事项就给下一步动作建议）/ 拍板后动作（批准/驳回/修改后 R1 分别怎么转）/ 附注（可省略）。\n"
-        "要求：完整、像人话，不搬运回报原文的零碎句，不写机制套话；"
-        "角色回报里已写明的「需要 R0 拍板」内容是重点素材（附后），如实提炼，不得声称缺少上下文。\n"
+        "要求：完整、像人话，不搬运回报原文的零碎句，不写机制套话；**只围绕角色在"
+        "「需要 R0 拍板」小节里声明的事项提炼**，不要扩散到任务的其他部分。\n"
         "只输出「决策建议」栏正文（各小节），不要多余解释。\n\n"
         "《模板-决策建议》：\n%s\n\n任务原文：%s\n\n各角色回报：\n%s\n\n各角色「需要 R0 拍板」原文：\n%s"
         % (templates.doc_template("决策建议"), str(task_text or "")[:900], digest, ask or "（无）"))
-    text = _headless_text(prompt, 480)
-    return (text or "").strip() if text else ""
+    text = _headless_text(prompt, 600)
+    return (text or "").strip()
 
 
 def decision_context(task_text: str, limit: int = 2400) -> str:
@@ -763,8 +780,6 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
         text = config.read_text(p) if p.exists() else ""
         n = _piyue_next_no(text)          # 现有条目最大编号 +1（无则从 1 起）
         brief = "无回报正文"
-        brief_hay = ""          # 决策信号检测用全文
-        decisions = ""         # 回报里抽出的「需要 R0 拍板」原文（决策项）
         reps = []
         try:
             reps = store.reports(task_no)
@@ -772,8 +787,6 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
             reps = []
         try:
             if reps:
-                raw_last = str(reps[-1].get("body") or "")
-                brief_hay = _digest_body(raw_last, limit=3000)
                 # R 建议：逐角色给一段摘要（每人一行续行），不再是只取最后一份的 130 字压缩
                 parts = []
                 for rp in reps:
@@ -781,7 +794,6 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
                     one = _one_line_digest(rb, limit=170) or "无正文内容"
                     parts.append("%s（%s）：%s" % (rp.get("role") or "?", rp.get("status") or "?", one))
                 brief = "\n".join(parts)
-                decisions = _decision_items([(rp.get("role"), rp.get("body")) for rp in reps])
         except Exception:
             pass
         task_s = (task_text or "").replace(chr(10), " ").replace("|", "／")
@@ -793,17 +805,21 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
             sum_rel = work_summary(task_no)      # R1 汇总全部 subagent 产出（代码类附变更与目录树）
         except Exception:
             sum_rel = ""
-        # 决策建议：R1 按《模板-决策建议》提炼（决策点/现状背景/建议/拍板后动作/附注）；失败回退逐角色摘要
+        # 分界线（结构化判定）：只有角色在回报「## 需要 R0 拍板」小节里声明的事项才进决策裁决，
+        # 其余一律「工作内容」；角色已有建议、R1 能直接派发的按模板写在「## 后续动作」。
+        pending = _pending_items(reps)
+        need = bool(pending)
         advice = ""
-        try:
-            advice = _advice_summary(reps, task_text)
-        except Exception:
-            advice = ""
-        if not advice:
-            # R1 按模板提炼失败时的回退：摘要必须自报身份，不能冒充「决策建议」正文
+        if need:
+            try:
+                advice = _advice_summary(reps, task_text)
+            except Exception:
+                advice = ""
+        if need and not advice:
+            # 判定要拍板但正文没写出来：摘要必须自报身份，不能冒充「决策建议」正文
             # （否则界面上看到的是各角色产出原文，读者以为就是模板化的建议）。
-            advice = "（R1 按《模板-决策建议》提炼未完成，以下为各角色回报摘要，仅供 R0 参考）\n" + (decisions or brief)
-        if _needs_decision(task_text, brief_hay or brief):
+            advice = "（R1 按《模板-决策建议》提炼未完成，以下为角色声明原文，仅供 R0 参考）\n" + pending
+        if need:
             lines_b = ["### 待决 %d｜任务 %s" % (n, task_no)]
             lines_b += _field_lines("任务", task_s[:160])
             lines_b += _field_lines("进展", prog)

@@ -6,8 +6,9 @@
 [![python deps](https://img.shields.io/badge/python%20deps-0%20pip%20packages-brightgreen.svg)](pyproject.toml)
 [![runtime](https://img.shields.io/badge/runtime-requires%20DSH-important.svg)](#快速开始)
 [![network](https://img.shields.io/badge/network-127.0.0.1%20only-purple.svg)](#配置与数据)
-[![stars](https://img.shields.io/github/stars/wenbuer/opc-web-dsh?style=social)](https://github.com/wenbuer/opc-web-dsh/stargazers)
+[![stars](https://img.shields.io/github/stars/wenbuer/opc-web-dsh?style=social](https://github.com/wenbuer/opc-web-dsh/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![stars](https://img.shields.io/github/stars/wenbuer/opc-web-dsh?style=social)](https://github.com/wenbuer/opc-web-dsh/stargazers)
 
 ---
 
