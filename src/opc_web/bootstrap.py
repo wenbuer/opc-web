@@ -46,6 +46,17 @@ def bootstrap():
             (config.AGENTS_DIR / config.SKILLS_REL).mkdir(parents=True, exist_ok=True)
     except Exception:
         pass
+    # R1 角色卡同步进知识库《OPC 规范》——角色卡（agents/）是权威源，这份副本随启动刷新，
+    # 避免有人在知识库里改了一份就与权威源分叉。
+    try:
+        _r1 = config.AGENTS_DIR / "R1.role.md"
+        if _r1.is_file():
+            _spec = config.KB_ROOT / "OPC 规范"
+            _spec.mkdir(parents=True, exist_ok=True)
+            (_spec / "角色卡-R1 老板助理.md").write_text(_r1.read_text(encoding="utf-8"), encoding="utf-8")
+            BOOT_LOG.append("R1 角色卡已同步至《知识库/OPC 规范/角色卡-R1 老板助理.md》")
+    except Exception:
+        pass
     h = chr(10)
     # 知识库分类目录（含「OPC 规范」——员工手册归宿）：建目录便于沉淀与手册落盘
     for cat in config.KB_CATEGORIES:
