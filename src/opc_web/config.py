@@ -318,12 +318,11 @@ def sanitize_dir(name: str) -> str:
 
 
 def role_dir(no: str) -> str:
-    """角色工作区目录名：R<n>（<角色名>）——编号在前可按 R 递增排序，名称在后便于人读。
+    """角色工作区目录名 = 角色名（如《工作区/全栈开发/》）。
 
-    历史上只用角色名做目录名，多角色时既不好按编号排序、也看不出编号，故统一成这个格式。"""
-    nm = role_name(str(no or ""))
-    s = "%s（%s）" % (no, nm) if nm and nm != no else str(no or "")
-    return sanitize_dir(s)
+    编号只用于界面标识（项目文件筛选里显示「R3（全栈开发）」），不进目录名——
+    目录名带编号会产生嵌套括号、也会让历史引用全部失效。"""
+    return sanitize_dir(role_name(str(no or "")) or str(no or ""))
 
 
 def role_name(no: str) -> str:

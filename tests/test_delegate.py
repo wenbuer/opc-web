@@ -80,9 +80,8 @@ class TestSubtaskSpec(unittest.TestCase):
         self.assertEqual(spec["role"], "R2")
         self.assertEqual(spec["roleName"], "需求研究员")
         self.assertNotIn("preset", spec)
-        # 工作区目录自 2026-09-10 起统一为「R<n>（角色名）」，便于按编号排序与辨识
-        self.assertEqual(spec["output"], "工作区/R2（需求研究员）/T-007-S1-report.md")
-        self.assertEqual(spec["meta"], "工作区/R2（需求研究员）/T-007-S1.meta.json")
+        self.assertEqual(spec["output"], "工作区/需求研究员/T-007-S1-report.md")
+        self.assertEqual(spec["meta"], "工作区/需求研究员/T-007-S1.meta.json")
         self.assertIn("挖掘 5 条新用户原声", spec["prompt"])
 
 

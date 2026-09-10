@@ -1721,8 +1721,10 @@
         if (f.task){ if (!seenT[f.task]){ seenT[f.task] = 1; tasks.push(f.task); } }
         else { hasNone = true; }
       });
+      var roleNo = {};                            // 角色名 → 编号（仅用于展示）
+      wsFiles.forEach(function(f){ if (f.role && f.roleNo) roleNo[f.role] = f.roleNo; });
       roles.sort(function(a, b){                 // 按 R 编号递增（R2 排 R10 前）
-        var ma = /^R(\d+)/.exec(a), mb = /^R(\d+)/.exec(b);
+        var ma = /^R(\d+)/.exec(roleNo[a] || ""), mb = /^R(\d+)/.exec(roleNo[b] || "");
         if (ma && mb) return parseInt(ma[1], 10) - parseInt(mb[1], 10);
         if (ma) return -1;
         if (mb) return 1;
@@ -1733,7 +1735,7 @@
       tasks.sort(function(a, b){ return parseInt(a.slice(2), 10) - parseInt(b.slice(2), 10); });
       rs.innerHTML = "<option value=''>全部角色</option>"
         + (hasProj ? "<option value='项目'>项目/（工程产出）</option>" : "")
-        + roles.map(function(x){ return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("");
+        + roles.map(function(x){ return "<option value='" + esc(x) + "'>" + esc(roleNo[x] ? roleNo[x] + "（" + x + "）" : x) + "</option>"; }).join("");
       ts.innerHTML = "<option value=''>全部任务</option>"
         + tasks.map(function(x){ return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("")
         + (hasNone ? "<option value='__none__'>（无任务编号文件）</option>" : "");

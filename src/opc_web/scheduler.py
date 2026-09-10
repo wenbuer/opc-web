@@ -926,6 +926,11 @@ def ws_files() -> list:
     只收人读产物：md 交付物（-report / -output / -summary / 其它 .md）与普通文本；
     .meta.json 是机器状态文件不进产物列表。同角色同名文件同时存在于当前与 已归档/ 时只留当前副本。"""
     raw = []
+    try:
+        from . import roles as _roles
+        _no_of = {config.sanitize_dir(n): no for no, n in _roles.role_files()}
+    except Exception:
+        _no_of = {}
     ws = config.WORKSPACE_ROOT
     if not ws.is_dir():
         return []
@@ -943,7 +948,7 @@ def ws_files() -> list:
                 continue
             m = re.search(r"T-\d+", p.name)
             rel = p.relative_to(config.ROOT).as_posix()
-            raw.append({"role": d.name, "name": p.name, "rel": rel,
+            raw.append({"role": d.name, "roleNo": _no_of.get(d.name, ""), "name": p.name, "rel": rel,
                         "ext": p.suffix.lower(), "task": m.group(0) if m else "",
                         "archived": "已归档" in p.relative_to(d).parts,
                         "size": st.st_size, "mtime": int(st.st_mtime)})
