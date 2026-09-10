@@ -956,6 +956,82 @@ def ws_files() -> list:
     return sorted(seen.values(), key=lambda f: (f["role"], f["name"], f["rel"]))
 
 
+def home_stats() -> dict:
+    """首页两块新面板的数据聚合：调度与用量（D）+ 项目进度（C）。
+
+    一次请求拿全，避免首页开多个接口。全部从现有落盘数据推导，不引入新模型：
+    调度状态与运行中执行取自 SCHED_STATE / _EXEC_STATE，用量取自各 meta.json，
+    进度取自任务台账 + 项目/知识库/简报的文件统计。"""
+    # —— 调度与用量 ——
+    st = dict(SCHED_STATE)
+    running = []
+    try:
+        role_of = {}
+        for t in store.tasks():
+            for s in store.subtasks(t["no"]):
+                role_of[s["no"]] = s.get("role") or ""
+        for act, s in (runner.exec_state() or {}).items():
+            running.append({"sub": act, "role": role_of.get(act, ""),
+                            "elapsed": int(s.get("elapsed") or 0),
+                            "tools": int(s.get("tools") or 0)})
+        running.sort(key=lambda x: x["sub"])
+    except Exception:
+        running = []
+    rows = token_rows()
+    by_day = {}
+    for r in rows:
+        b = by_day.setdefault(str(r.get("date") or "")[:10], {"in": 0, "out": 0})
+        b["in"] += int(r.get("tokensIn") or 0)
+        b["out"] += int(r.get("tokensOut") or 0)
+    today = datetime.date.today().isoformat()
+    week = []
+    for i in range(6, -1, -1):
+        d = (datetime.date.today() - datetime.timedelta(days=i)).isoformat()
+        b = by_day.get(d) or {"in": 0, "out": 0}
+        week.append({"date": d[5:], "in": b["in"], "out": b["out"]})
+    tin = by_day.get(today, {}).get("in", 0)
+    tout = by_day.get(today, {}).get("out", 0)
+    cost_today = tin / 1e6 * config.TOKEN_PRICE_IN + tout / 1e6 * config.TOKEN_PRICE_OUT
+    tot_in = sum(b["in"] for b in by_day.values())
+    tot_out = sum(b["out"] for b in by_day.values())
+    # —— 项目进度 ——
+    tasks = store.tasks()
+    done = [t for t in tasks if "完成" in str(t.get("status") or "")]
+    subs_total = subs_done = blocked = 0
+    for t in tasks:
+        for s in store.subtasks(t["no"]):
+            subs_total += 1
+            stt = str(s.get("st") or "")
+            if "完成" in stt or "部分" in stt:
+                subs_done += 1
+            if "阻塞" in stt:
+                blocked += 1
+    proj = config.ROOT / "项目"
+    proj_files = 0
+    if proj.is_dir():
+        proj_files = sum(1 for p in proj.rglob("*") if p.is_file()
+                         and ".git" not in p.parts and "__pycache__" not in p.parts)
+    kb = 0
+    kbd = config.ROOT / "知识库"
+    if kbd.is_dir():
+        kb = sum(1 for p in kbd.rglob("*.md") if p.is_file())
+    daily = len(list((config.ROOT / "批阅台").glob("每日简报-*.md")))
+    recent = [{"no": t.get("no"), "title": str(t.get("task") or "")[:46]}
+              for t in done[-3:]]
+    return {
+        "ok": True,
+        "sched": {"busy": bool(st.get("busy")), "paused": bool(st.get("paused")),
+                  "tag": str(st.get("tag") or ""), "running": running},
+        "tokens": {"todayIn": tin, "todayOut": tout, "costToday": round(cost_today, 4),
+                   "totalIn": tot_in, "totalOut": tot_out, "week": week,
+                   "priceIn": config.TOKEN_PRICE_IN, "priceOut": config.TOKEN_PRICE_OUT},
+        "progress": {"tasksTotal": len(tasks), "tasksDone": len(done),
+                     "subsTotal": subs_total, "subsDone": subs_done, "blocked": blocked,
+                     "projFiles": proj_files, "kbEntries": kb, "dailyReports": daily,
+                     "recent": recent},
+    }
+
+
 def insert_block(text: str, section: str, blk: str) -> str:
     """把条目块插到 section 区段末尾（下一个「真正的」二级标题之前）。
 

@@ -132,6 +132,10 @@ LOG_FILE = ROOT / SCHED_LOG_REL
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
+# 首页「今日用量」的估算单价（元 / 百万 token）。默认值只是占位，按你实际模型价格改：
+# 环境变量 OPC_TOKEN_PRICE_IN / OPC_TOKEN_PRICE_OUT（或 opc-config.json 的 priceIn/priceOut）。
+TOKEN_PRICE_IN = float(os.environ.get("OPC_TOKEN_PRICE_IN") or _CFG.get("priceIn") or 1.0)
+TOKEN_PRICE_OUT = float(os.environ.get("OPC_TOKEN_PRICE_OUT") or _CFG.get("priceOut") or 2.0)
 
 
 # ---------- 配置读写（「设置」视图 /api/settings 使用） ----------

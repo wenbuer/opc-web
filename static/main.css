@@ -250,6 +250,39 @@ main{flex:1;overflow:hidden}
 .overview-bar{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch;padding:12px 20px 0;flex:none}
 .ov-item{flex:1;min-width:120px;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:11px;color:var(--dim)}
 .ov-item b{display:block;font-size:20px;font-weight:700;color:var(--gold);margin-top:3px}
+/* ===== 首页左列：组织架构 + 调度与用量 + 项目进度 ===== */
+.home-left{display:flex;flex-direction:column;gap:12px;min-height:0;overflow-y:auto;overflow-x:hidden}
+.ops-panel,.prog-panel{flex:none;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.ops-body,.prog-body{display:flex;flex-direction:column;gap:1px}
+.hp-row{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim);flex-wrap:wrap}
+.hp-k{color:var(--faint);font-size:10.5px}
+.hp-row b{color:var(--txt);font-size:12px}
+.hp-row b.on{color:var(--ok)}
+.hp-row em{font-style:normal;color:var(--faint);font-size:10px;margin-left:auto}
+.hp-sep{margin:9px 0 5px;font-size:10px;letter-spacing:.12em;color:var(--gold);border-bottom:1px dashed var(--line2);padding-bottom:3px}
+.hp-run{display:flex;flex-direction:column;gap:4px;margin-top:6px}
+.hp-run-item{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--dim);background:rgba(76,110,245,.08);border-left:2px solid var(--indigo);border-radius:5px;padding:4px 9px}
+.hp-run-item b{color:var(--txt);font-family:var(--mono);font-size:10.5px}
+.hp-run-item i{font-style:normal;color:var(--faint);font-size:10px;margin-left:auto}
+.hp-week{display:flex;align-items:flex-end;gap:6px;height:56px;margin-top:10px}
+.hp-bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;gap:3px}
+.hp-bar span{width:100%;max-width:20px;background:linear-gradient(180deg,var(--indigo),rgba(76,110,245,.45));border-radius:3px 3px 0 0;min-height:2px}
+.hp-bar em{font-style:normal;font-size:9px;color:var(--faint)}
+.hp-pg{margin:7px 0}
+.hp-pg-head{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim)}
+.hp-pg-head b{color:var(--txt);font-size:12px}
+.hp-pg-head em{font-style:normal;font-size:10px;color:var(--faint)}
+.hp-pg-head em.bad{color:var(--red-bright)}
+.hp-track{height:6px;border-radius:99px;background:rgba(15,30,50,.09);overflow:hidden;margin-top:5px}
+.hp-track i{display:block;height:100%;background:linear-gradient(90deg,var(--ok),var(--indigo));border-radius:99px}
+.hp-facts{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px;font-size:11px;color:var(--faint)}
+.hp-facts b{color:var(--txt)}
+.hp-done{display:flex;gap:8px;align-items:baseline;font-size:11px;color:var(--dim);padding:3px 0;min-width:0}
+.hp-done b{color:var(--gold);font-family:var(--mono);font-size:10.5px;flex:none}
+.hp-done em{font-style:normal;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+:root[data-theme="dark"] .ops-panel,:root[data-theme="dark"] .prog-panel{background:rgba(255,255,255,.02);border-color:var(--line2)}
+:root[data-theme="dark"] .hp-track{background:rgba(255,255,255,.08)}
+:root[data-theme="dark"] .hp-run-item{background:rgba(76,110,245,.12)}
 .home-grid{display:grid;grid-template-columns:1.12fr .88fr;gap:14px;flex:1 1 0;min-height:0;padding:14px 18px 8px;overflow:hidden}
 .panel-head{font-size:12px;letter-spacing:2px;color:var(--gold);margin-bottom:12px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .panel-head em{font-style:normal;color:var(--faint);font-size:10.5px;letter-spacing:.5px}

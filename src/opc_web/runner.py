@@ -45,6 +45,7 @@ def _exec_beat(act: str, tools: int, last_tool: str, last_text: str, t0: float):
         if last_text:
             st["lastText"] = last_text
         st["beatMono"] = now
+        st["elapsed"] = int(now - t0)      # 已运行秒数（首页「调度与用量」直接读）
         snap = dict(st)
     _append({"type": "exec/progress",
              "data": {"sub": act, "elapsed": int(now - t0), "tools": tools,

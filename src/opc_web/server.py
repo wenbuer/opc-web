@@ -264,6 +264,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(lambda: {"ok": True, "files": scheduler.ws_files()})
         elif url == "/api/project-files":
             self._ok(lambda: {"ok": True, **scheduler.project_files()})
+        elif url == "/api/home-stats":
+            self._ok(scheduler.home_stats)
         elif url == "/api/tokens":
             self._ok(lambda: {"ok": True, "rows": scheduler.token_rows()})
         elif url == "/api/ws-file":
