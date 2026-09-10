@@ -362,8 +362,6 @@ main{flex:1;overflow:hidden}
 .dq-row .dstatus{font-size:9.5px}
 .dq-row.open .dstatus{color:var(--red-bright)}
 .dq-row .dreport{grid-column:1/-1;color:var(--faint);font-style:normal;font-size:9.5px}
-.r1-out{margin-top:10px;max-height:260px;overflow:auto;border:1px dashed var(--line2);border-radius:8px;background:rgba(15,30,50,.05)}
-.r1-out pre{white-space:pre-wrap;font-family:var(--mono);font-size:10.5px;color:var(--dim);padding:10px;margin:0}
 .rn-out{margin-top:10px;display:flex;flex-direction:column;gap:8px}
 .rno-group{border:1px solid var(--line);border-radius:8px;background:rgba(15,30,50,.035);padding:8px 10px}
 .rno-group>b{font-size:11px;letter-spacing:1px;color:var(--gold)}
@@ -1074,7 +1072,6 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .dq-state{color:var(--faint)}
 :root[data-theme="dark"] .dq-row{background:rgba(255,255,255,.02)}
 :root[data-theme="dark"] .dq-row.open{border-color:rgba(231,76,60,.45)}
-:root[data-theme="dark"] .r1-out{background:rgba(0,0,0,.25)}
 :root[data-theme="dark"] .rno-group{background:rgba(255,255,255,.02)}
 :root[data-theme="dark"] .role-card-doc code{background:rgba(232,183,61,.12)}
 :root[data-theme="dark"] .org-tree .role-card:hover{box-shadow:0 0 10px rgba(232,183,61,.25)}
