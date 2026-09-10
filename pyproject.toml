@@ -9,6 +9,9 @@ description = "OPC 控制台（opc-web）——所有 OPC 指令的指挥入口�
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
+# 运行时依赖只有一个：dsh 会话日志是 zstd 压缩的（读用量与进度心跳要解开它）。
+# 其余全部标准库 —— 不装 zstandard 时，dsh 引擎仍能跑，只是拿不到用量与心跳追踪。
+dependencies = ["zstandard>=0.21"]
 authors = [{ name = "R1 枢纽", role = "opc-web 维护" }]
 keywords = ["opc", "agents", "console", "knowledge-base"]
 

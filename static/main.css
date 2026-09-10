@@ -1439,22 +1439,58 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .eng-item{background:rgba(255,255,255,.02)}
 :root[data-theme="dark"] .eng-item.current{border-color:rgba(232,183,61,.5);background:rgba(232,183,61,.06)}
 
-/* ===== 工作台三列：底色透明 =====
-   原来三列各有一层面板底（浅色 var(--panel)、深色 rgba(255,255,255,.02)），
-   把页面底纹盖住了。这里只去底色，描边 / 圆角 / 内边距保留 —— 否则三列分栏看不出来。
-   （同特异性 + 后定义，覆盖上面 .wb-col 的两处底色；其余面板不受影响。）*/
+/* ===== 面板底色统一透明 =====
+   原来各个面板都有一层底（浅色 var(--panel)、深色 rgba(255,255,255,.02)），把页面底纹盖住了。
+   这里统一去掉底色，描边 / 圆角 / 内边距保留 —— 否则分栏与分区看不出来。
+   （同特异性 + 后定义，覆盖上面各面板自己的底色规则。）
+   不进这条的：模态框（.modal-box 要实底才看得清）、卡片与列表项（.bd-card / .dq-row /
+   .proj-item / .eng-item / .snav-item / .a-item / .p-card 等，靠底色区分层级）、输入框与按钮。*/
 .dispatch-panel,
 .wb-col,
 .act-panel,
 .task-out,
 .run-log,
-.bd-col{background:transparent}
+.bd-col,
+.prog-panel,
+.org-panel,
+.tl-panel,
+.role-panel,
+.tl-strip,
+.daily-list,
+.daily-main,
+.settings-nav,
+.settings-main,
+.ws-side,
+.ws-main,
+.role-pane,
+.kb-card,
+.kb-doc .markdown-body,
+.tl-h-item,
+.mdt-wrap,
+.ov-item{background:transparent}
 :root[data-theme="dark"] .dispatch-panel,
 :root[data-theme="dark"] .wb-col,
 :root[data-theme="dark"] .act-panel,
 :root[data-theme="dark"] .task-out,
 :root[data-theme="dark"] .run-log,
-:root[data-theme="dark"] .bd-col{background:transparent}
+:root[data-theme="dark"] .bd-col,
+:root[data-theme="dark"] .prog-panel,
+:root[data-theme="dark"] .org-panel,
+:root[data-theme="dark"] .tl-panel,
+:root[data-theme="dark"] .role-panel,
+:root[data-theme="dark"] .tl-strip,
+:root[data-theme="dark"] .daily-list,
+:root[data-theme="dark"] .daily-main,
+:root[data-theme="dark"] .settings-nav,
+:root[data-theme="dark"] .settings-main,
+:root[data-theme="dark"] .ws-side,
+:root[data-theme="dark"] .ws-main,
+:root[data-theme="dark"] .role-pane,
+:root[data-theme="dark"] .kb-card,
+:root[data-theme="dark"] .kb-doc .markdown-body,
+:root[data-theme="dark"] .tl-h-item,
+:root[data-theme="dark"] .mdt-wrap,
+:root[data-theme="dark"] .ov-item{background:transparent}
 /* 不进这条的：输入框（.launch-row input / .board-search）与列表项 / 卡片（.dq-row / .bd-card）
    保留淡底 —— 它们靠底色和 hover 区分，全透明会糊成一片。全屏查看的 .run-log.fullscreen
    规则特异性更高，不受这里影响，仍是实底。*/

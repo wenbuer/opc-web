@@ -279,7 +279,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(config.settings_info())
         elif url == "/api/engines":
             self._json({"ok": True, **engines.describe(),
-                        "fallback": config.engine_fallback(config.ENGINE)})
+                        "fallback": config.engine_fallback(config.ENGINE),
+                        "configPath": str(config.CONFIG_FILE)})
         elif url == "/api/schedule":
             self._json({"ok": True, "schedules": config.schedule_status()})
         elif url == "/api/dirs":
