@@ -311,7 +311,7 @@
         more.type = "button";
         more.className = "rno-more";
         more.textContent = "查看全部产物（共 " + allFiles.length + " 个）";
-        more.addEventListener("click", function(){ gotoRoleFiles(code); });
+        more.addEventListener("click", function(){ gotoRoleFiles(roleName(code)); });
         fb.appendChild(more);
       }
       allFiles.slice(0, 3).forEach(function(f){
@@ -1727,7 +1727,14 @@
       ts.innerHTML = "<option value=''>全部任务</option>"
         + tasks.map(function(x){ return "<option value='" + esc(x) + "'>" + esc(x) + "</option>"; }).join("")
         + (hasNone ? "<option value='__none__'>（无任务编号文件）</option>" : "");
-      if (pendingWsRole){ var want = pendingWsRole; pendingWsRole = ""; if (rs && Array.prototype.some.call(rs.options, function(o){ return o.value === want; })){ rs.value = want; wsRole = want; } } renderWsList();
+      if (pendingWsRole){
+        /* 预置筛选：调用方可能给角色编号也可能给角色名（筛选项的值＝工作区目录名＝角色名），两种都认 */
+        var want = pendingWsRole, alt = roleName(want), hit = null;
+        pendingWsRole = "";
+        if (rs) Array.prototype.forEach.call(rs.options, function(o){ if (!hit && (o.value === want || o.value === alt)) hit = o.value; });
+        if (hit){ rs.value = hit; wsRole = hit; }
+      }
+      renderWsList();
     }).catch(function(e){ if (box) box.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
   }
   function filteredWsFiles(){
