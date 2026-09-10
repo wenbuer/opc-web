@@ -1335,11 +1335,11 @@
   }
   /* ===== 实时事件面板全屏：class 切换（节点不搬家，事件轮询不受影响） =====
      退出三条路：面板右上角的「退出全屏」按钮、标题栏按钮、ESC 键。 */
-  var RUN_FS_SVG = WS_FS_SVG, RUN_MIN_SVG = WS_MIN_SVG;
+  /* 图标直接引用 WS_*：它们在文件后半段才赋值，此处不能提前取别名（var 提升会拿到 undefined） */
   var runFsBtn = $("runFsBtn");
   function runFsPaint(on){
     if (!runFsBtn) return;
-    runFsBtn.innerHTML = on ? RUN_MIN_SVG : RUN_FS_SVG;
+    runFsBtn.innerHTML = on ? WS_MIN_SVG : WS_FS_SVG;
     runFsBtn.title = on ? "退出全屏" : "全屏显示";
     runFsBtn.setAttribute("aria-label", runFsBtn.title);
   }
@@ -1355,7 +1355,7 @@
     if ($("runFsExit")) return;
     var ex = document.createElement("button");
     ex.id = "runFsExit"; ex.className = "run-fs-exit"; ex.type = "button";
-    ex.innerHTML = RUN_MIN_SVG + "<span>退出全屏</span>";
+    ex.innerHTML = WS_MIN_SVG + "<span>退出全屏</span>";
     ex.addEventListener("click", runFsExit);
     document.body.appendChild(ex);
   }
