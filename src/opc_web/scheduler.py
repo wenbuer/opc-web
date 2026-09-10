@@ -675,7 +675,9 @@ def _advice_summary(reps, task_text: str) -> str:
     if not reps and not task_text:
         return ""
     digest = _digest_reps(reps, limit=2400) if reps else str(task_text or "")[:1600]
-    ask = _decision_items(reps) if reps else ""
+    # _decision_items 收的是 (role, body) 元组列表；直接传整条记录会当场 ValueError
+    # （too many values to unpack），被上层 except 吞掉后永远走回退摘要 —— 「决策建议没按模板走」即此因。
+    ask = _decision_items([(r.get("role"), r.get("body")) for r in reps]) if reps else ""
     prompt = (
         "你是老板助理 R1。请按《模板-决策建议》为批阅台待决条目写「决策建议」栏："
         "依次含小节 决策点（一句话问句）/ 现状背景（2~4 句）/ 建议（明确选哪个 + 一两句理由；"
@@ -798,7 +800,9 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
         except Exception:
             advice = ""
         if not advice:
-            advice = decisions or brief
+            # R1 按模板提炼失败时的回退：摘要必须自报身份，不能冒充「决策建议」正文
+            # （否则界面上看到的是各角色产出原文，读者以为就是模板化的建议）。
+            advice = "（R1 按《模板-决策建议》提炼未完成，以下为各角色回报摘要，仅供 R0 参考）\n" + (decisions or brief)
         if _needs_decision(task_text, brief_hay or brief):
             lines_b = ["### 待决 %d｜任务 %s" % (n, task_no)]
             lines_b += _field_lines("任务", task_s[:160])
@@ -819,15 +823,7 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
                 lines_b += ["- **汇总文件**：" + sum_rel]
             blk = chr(10) + chr(10).join(lines_b) + chr(10)
             section = "## 工作内容"
-        idx = text.find(section)
-        if idx >= 0:
-            nxt = text.find("## ", idx + len(section))     # 插到该区段末尾（下一个 ## 之前）
-            if nxt < 0:
-                text = text.rstrip() + "\n" + blk
-            else:
-                text = text[:nxt] + blk + "\n" + text[nxt:]
-        else:
-            text = text.rstrip() + "\n\n" + section + "\n" + blk if text.strip() else section + "\n" + blk
+        text = insert_block(text, section, blk)
         p.write_text(text, encoding="utf-8")
         return n
     except Exception:
@@ -942,6 +938,25 @@ def ws_files() -> list:
         if cur is None or (cur["archived"] and not f["archived"]):
             seen[key] = f
     return sorted(seen.values(), key=lambda f: (f["role"], f["name"], f["rel"]))
+
+
+def insert_block(text: str, section: str, blk: str) -> str:
+    """把条目块插到 section 区段末尾（下一个「真正的」二级标题之前）。
+
+    不能用 text.find("## ") 找区段末尾：字符串 "### 待决 8" 的后三位恰好是 "## "
+    （## + 空格），会命中三级标题的第 1 个字符位置、把标题从中间劈开——原行被切成
+    "#" 与 "## 待决 8"，条目降级成二级标题，解析器（三级标题 + 待决）再也认不出，界面上
+    直接消失（T-007 待决插入时把 T-006 那条劈坏，就是这么丢的）。"""
+    idx = text.find(section)
+    if idx < 0:
+        if not text.strip():
+            return section + "\n" + blk
+        return text.rstrip() + "\n\n" + section + "\n" + blk
+    m2 = re.search(r"(?m)^## (?!#)", text[idx + len(section):])
+    if not m2:
+        return text.rstrip() + "\n" + blk
+    cut = idx + len(section) + m2.start()
+    return text[:cut] + blk + "\n" + text[cut:]
 
 
 def token_rows() -> list:
