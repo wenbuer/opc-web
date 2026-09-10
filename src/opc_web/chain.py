@@ -17,7 +17,9 @@ import re
 
 from . import agent, config, runner, scheduler as sch, store
 
-EXEC_TIMEOUT = 900          # 单个子任务的 headless 执行超时（秒）
+EXEC_TIMEOUT = 2400         # 单个子任务的 headless 执行超时（秒）——headless 只在结束时输出
+                            # final 文本，执行期间 stdout 静默；900 秒曾把正常干活 15+ 分钟的
+                            # R3/R4 强杀（T-006 两次误判阻塞：R3 24 次工具调用、R4 19 次都做到一半）
 
 _STOPPED = set()            # 已被删除/终止的任务号集合；执行链各阶段检查到即提前退出（防删除后重建产出）
 
