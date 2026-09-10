@@ -146,7 +146,7 @@ TOKEN_PRICE_OUT = float(os.environ.get("OPC_TOKEN_PRICE_OUT") or _CFG.get("price
 # ---------- 配置读写（「设置」视图 /api/settings 使用） ----------
 
 # engine 的取值合法性由 server 校验（必须是已注册的引擎名），此处只负责存盘。
-SETTING_KEYS = ("root", "port", "engine")   # 设置页可写的字段；其余键只允许手改 opc-config.json
+SETTING_KEYS = ("root", "port", "engine", "engineFallback")   # 设置页可写的字段；其余键只允许手改 opc-config.json
 
 
 # 按用途路由：同一个控制台里，不同用途可以走不同引擎（opc-config.json 的 engineFor 段）。
@@ -163,12 +163,32 @@ def engine_for(purpose: str = "") -> str:
             return want
     return ENGINE
 
+
+def engine_fallback(main: str = "") -> str:
+    """备用引擎：主引擎失败时改用谁跑。默认 api —— DSH 是主力（工具沙箱 + 技能生态），
+    它没跑起来时用直连 API 兜底，避免整个执行链卡死在一个引擎上。
+
+    - 显式写空（opc-config.json 里 "engineFallback": ""）或设 OPC_ENGINE_FALLBACK="" = 关闭回退；
+    - 与主引擎相同 = 视为不启用（自己回退自己没有意义）；
+    - 环境变量 OPC_ENGINE_FALLBACK 优先于配置。"""
+    env = os.environ.get("OPC_ENGINE_FALLBACK")
+    if env is not None and env.strip():
+        want = env.strip()
+    elif "engineFallback" in _CFG:
+        want = str(_CFG.get("engineFallback") or "").strip()
+    else:
+        want = "api"
+    if not want or want == str(main or ENGINE).strip().lower():
+        return ""
+    return want
+
 # 运行调参：手改 opc-config.json 即时生效（每次读盘，文件几百字节，代价可忽略）。
 # 刻意不进 SETTING_KEYS —— 这些是调优旋钮，不该占设置页的位置。
 _TUNABLES = {
     "pollSeconds": 8,           # 调度守护轮询间隔（秒）
     "decomposeTimeout": 480,    # 拆解任务时 headless 的无输出超时（秒）
     "maxSubtasks": 2,           # 单个任务最多拆成几个并行子任务
+    "fallbackMaxElapsed": 60,   # 主引擎「秒退无产出」的判定秒数：超过就当任务本身没做完，不回退重跑
 }
 
 

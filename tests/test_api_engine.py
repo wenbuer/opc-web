@@ -92,7 +92,8 @@ class TestAgentLoop(unittest.TestCase):
         second = calls[1]
         self.assertTrue(any(m.get("role") == "tool" and "已写入" in str(m.get("content")) for m in second))
         self.assertTrue(seen, "应回调进度")
-        self.assertGreaterEqual(seen[-1].tools, 1)
+        self.assertTrue(any(p.tools >= 1 for p in seen), "工具调用要出现在进度里")
+        self.assertTrue(seen[-1].finished, "结束时必须报 finished，否则状态会停在「执行中」")
 
     def test_max_steps_stops(self):
         def always_tool(cfg, messages, on_delta=None, cancel=None):

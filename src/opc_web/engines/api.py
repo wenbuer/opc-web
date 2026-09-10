@@ -350,3 +350,6 @@ class ApiEngine(Engine):
             with _CANCEL_LOCK:
                 _CANCEL.pop(act, None)
                 _RUNNING.discard(act)
+            if on_progress:      # 结束信号：不报的话上层状态会一直停在「执行中」
+                on_progress(Progress(alive=False, finished=True,
+                                     elapsed=int(time.monotonic() - t0)))

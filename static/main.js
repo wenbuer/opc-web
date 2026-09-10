@@ -2012,6 +2012,17 @@
         });
         sel.value = j.current;
       }
+      var fb = $("engFb");
+      if (fb){
+        fb.innerHTML = "";
+        (j.engines || []).forEach(function(e){
+          var o = document.createElement("option");
+          o.value = e.name;
+          o.textContent = e.label + (e.ok ? "" : "（不可用）");
+          fb.appendChild(o);
+        });
+        fb.value = j.fallback || j.current;
+      }
       var box = $("engList");
       if (box){
         box.innerHTML = "";
@@ -2034,6 +2045,7 @@
       if (note){
         var t = "<b>选哪个</b> 直连 API 用一个内置工具的 agent 循环跑任务，进度是流式增量，但<b>不支持装配技能</b>（Skill 导入只对 DSH 有意义）；"
           + "DSH 自带工具沙箱与技能生态，进度取自会话日志。切换后立即生效，正在跑的任务不受影响。";
+        t += "<br><b>回退</b> 主引擎「报错」或「秒退无产出」时自动改用备用引擎重跑一次，默认 <code>api</code> 兜底 <code>dsh</code>；已经跑了很久却没产出属于任务本身的问题，不会重跑（避免重复劳动与重复烧钱）。与主引擎相同时不生效。";
         t += "<br><b>按用途路由</b> 可在 <code>opc-config.json</code> 的 <code>engineFor</code> 段里给 <code>prompt</code>（拆解/汇总）与 <code>execute</code>（角色任务）分别指定引擎，留空即用这里选的主引擎。";
         if (j.envOverride) t += "<br><b>注意</b> 环境变量 <code>OPC_ENGINE=" + esc(j.envOverride) + "</code> 优先于这里的选择，改这里不会生效。";
         var errs = j.errors || {};
@@ -2046,7 +2058,10 @@
   function saveEngine(){
     var sel = $("engSel");
     if (!sel || !sel.value) return;
-    post("/api/settings", { engine: sel.value }).then(function(j){
+    var fb = $("engFb");
+    var payload = { engine: sel.value };
+    if (fb && fb.value) payload.engineFallback = fb.value;
+    post("/api/settings", payload).then(function(j){
       var m = $("engMsg");
       if (m) m.textContent = (j && j.msg) || ((j && j.ok) ? "已保存" : "保存失败");
       loadEngines();
@@ -2055,6 +2070,8 @@
   function loadSettings(){
     api("/api/settings").then(function(j){
       if (!j || !j.ok){ var m = $("setMsg"); if (m) m.textContent = "读取设置失败：" + esc(j && j.msg || "未知"); return; }
+      var efv = $("engFb");                                   // 备用引擎：回显已保存的选择
+      if (efv && j.config && j.config.engineFallback) efv.value = j.config.engineFallback;
       var mi = j.model || {};
       var mp = $("mApiProvider"); if (mp) mp.value = mi.provider || "deepseek";
       var ak = $("mApiKey"); if (ak) ak.value = "";

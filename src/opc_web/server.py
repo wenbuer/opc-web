@@ -277,7 +277,8 @@ class Handler(BaseHTTPRequestHandler):
         elif url == "/api/settings":
             self._json(config.settings_info())
         elif url == "/api/engines":
-            self._json({"ok": True, **engines.describe()})
+            self._json({"ok": True, **engines.describe(),
+                        "fallback": config.engine_fallback(config.ENGINE)})
         elif url == "/api/schedule":
             self._json({"ok": True, "schedules": config.schedule_status()})
         elif url == "/api/dirs":
@@ -436,6 +437,13 @@ class Handler(BaseHTTPRequestHandler):
                     raise ApiError(400, "未知执行引擎：%s（可用：%s）"
                                    % (eng, "、".join(engines.available()) or "无"))
                 kv["engine"] = eng
+            fb = kv.get("engineFallback")
+            if fb is not None:                       # 备用引擎（主引擎失败时兜底），空 = 关闭
+                fb = str(fb).strip().lower()
+                if fb and fb not in engines.available():
+                    raise ApiError(400, "未知备用引擎：%s（可用：%s）"
+                                   % (fb, "、".join(engines.available()) or "无"))
+                kv["engineFallback"] = fb
             out = {"ok": True}
             if kv and not dry:
                 config.save_cfg(kv)
@@ -443,6 +451,7 @@ class Handler(BaseHTTPRequestHandler):
                 bootstrap.bootstrap()      # 新根目录下的三目录幂等重建
                 out.update(config.settings_info())
                 out["engines"] = engines.describe()      # 切换后立即回带新状态，前端不用再拉一次
+                out["engines"]["fallback"] = config.engine_fallback(config.ENGINE)
                 out["boot"] = bootstrap.BOOT_LOG
             mbody = body.get("model")
             if isinstance(mbody, dict):

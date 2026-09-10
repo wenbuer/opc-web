@@ -144,6 +144,14 @@ class TestProgressSink(unittest.TestCase):
     def test_sink_without_act_is_none(self):
         self.assertIsNone(runner._progress_sink(""))      # 无子任务号的同步直跑不记状态
 
+    def test_finished_signal_clears_state(self):
+        """引擎结束信号：不报 finished 的话状态会一直停在「执行中」。"""
+        sink = runner._progress_sink("T-9-S1")
+        sink(ebase.Progress(alive=True, tools=2, lastTool="list_dir", lastText="看目录"))
+        self.assertIn("T-9-S1", runner.exec_state())
+        sink(ebase.Progress(alive=False, finished=True))
+        self.assertNotIn("T-9-S1", runner.exec_state())
+
     def test_engine_progress_reaches_state(self):
         """真实路径：run_headless_task 把回调接上，引擎报的进度进得了 exec_state。"""
         with mock.patch("opc_web.engines.registry._ENGINES", {"fake": FakeEngine}):
@@ -153,6 +161,22 @@ class TestProgressSink(unittest.TestCase):
             self.assertEqual(runner.exec_state()["T-78-S1"]["tools"], 2)   # FakeEngine 报 tools=2
         finally:
             runner._EXEC_STATE.pop("T-78-S1", None)
+
+    def test_run_leaves_no_residual_state(self):
+        """跑完不留「执行中」残影（实测发现：api 引擎曾不报结束信号）。"""
+        class Fin(ebase.Engine):
+            name = "fin"
+
+            def run(self, prompt, *, timeout=600, act="", cwd=None, on_progress=None):
+                if on_progress:
+                    on_progress(ebase.Progress(alive=True, tools=1, lastTool="list_dir"))
+                    on_progress(ebase.Progress(alive=False, finished=True))
+                return ebase.RunResult(text="完")
+
+        with mock.patch("opc_web.engines.registry._ENGINES", {"fin": Fin}):
+            with mock.patch.object(config, "ENGINE", "fin"):
+                runner.run_headless_task("任意 prompt", timeout=5, act="T-79-S1")
+        self.assertNotIn("T-79-S1", runner.exec_state())
 
 
 class TestApiEngineConfig(unittest.TestCase):
@@ -214,6 +238,88 @@ class TestPurposeRouting(unittest.TestCase):
                 runner.run_headless_sync("拆解用", timeout=1, purpose="prompt")
                 runner.run_headless_task("执行用", timeout=1, act="T-9-S1", purpose="execute")
         self.assertEqual(calls, ["pa", "pb"])
+
+
+class TestEngineFallback(unittest.TestCase):
+    """回退策略：主引擎「没跑起来」时改用备用引擎（默认 api 兜底 dsh）。
+
+    回退的边界是「引擎侧失败」而不是「任务没做完」——跑了很久仍无产出属于任务问题，
+    两个引擎都会跑同样久，重跑只会重复劳动与重复烧钱。"""
+
+    def _engines(self, calls, main_result, alt_result):
+        def make(name, result):
+            class _E(ebase.Engine):
+                pass
+            _E.name = name
+
+            def run(self, prompt, *, timeout=600, act="", cwd=None, on_progress=None):
+                calls.append(name)
+                return result
+
+            _E.run = run
+            return _E
+        return {"m": make("m", main_result), "alt": make("alt", alt_result)}
+
+    def test_default_direction_is_api_for_dsh(self):
+        cfg = dict(config._CFG)
+        cfg.pop("engineFallback", None)                      # 未配置 = 用默认方向
+        with mock.patch.dict(config._CFG, cfg, clear=True):
+            with mock.patch.object(config, "ENGINE", "api"):
+                self.assertEqual(config.engine_fallback("dsh"), "api")   # dsh 没起来 → api 兜底
+                self.assertEqual(config.engine_fallback("api"), "")      # 自己兜自己无意义
+
+    def test_explicit_empty_disables_fallback(self):
+        with mock.patch.dict(config._CFG, {"engineFallback": ""}, clear=False):
+            self.assertEqual(config.engine_fallback("dsh"), "")
+
+    def test_error_falls_back_and_leaves_a_trace(self):
+        calls = []
+        engs = self._engines(calls, ebase.RunResult(error="未找到 dsh 命令"),
+                             ebase.RunResult(text="备用引擎的产出"))
+        with mock.patch("opc_web.engines.registry._ENGINES", engs):
+            with mock.patch.object(config, "ENGINE", "m"):
+                with mock.patch.dict(config._CFG, {"engineFallback": "alt"}, clear=False):
+                    text, _ = runner.run_headless_task("干活", timeout=5, act="T-F-S1")
+        self.assertEqual(calls, ["m", "alt"])
+        self.assertEqual(text, "备用引擎的产出")
+        evs = [e for e in runner.events(0)["events"] if e["type"] == "engine/fallback"]
+        self.assertTrue(evs, "回退必须留痕，工作台要能看出谁失败了、换了谁")
+        self.assertEqual(evs[-1]["data"]["from"], "m")
+        self.assertEqual(evs[-1]["data"]["to"], "alt")
+
+    def test_fast_empty_result_falls_back(self):
+        """秒退无产出（dsh 那种起不来）算引擎侧失败，要回退。"""
+        calls = []
+        engs = self._engines(calls, ebase.RunResult(text="", elapsed=2.0),
+                             ebase.RunResult(text="备"))
+        with mock.patch("opc_web.engines.registry._ENGINES", engs):
+            with mock.patch.object(config, "ENGINE", "m"):
+                with mock.patch.dict(config._CFG, {"engineFallback": "alt"}, clear=False):
+                    text, _ = runner.run_headless_task("干活", timeout=5, act="T-F-S2")
+        self.assertEqual(calls, ["m", "alt"])
+        self.assertEqual(text, "备")
+
+    def test_slow_empty_result_does_not_fall_back(self):
+        """跑了很久还是没产出属于任务问题，不重跑。"""
+        calls = []
+        engs = self._engines(calls, ebase.RunResult(text="", elapsed=300.0),
+                             ebase.RunResult(text="备"))
+        with mock.patch("opc_web.engines.registry._ENGINES", engs):
+            with mock.patch.object(config, "ENGINE", "m"):
+                with mock.patch.dict(config._CFG, {"engineFallback": "alt"}, clear=False):
+                    runner.run_headless_task("干活", timeout=5, act="T-F-S3")
+        self.assertEqual(calls, ["m"])
+
+    def test_killed_does_not_fall_back(self):
+        """被取消/超时主动停掉的不回退——重跑等于把它又拉起来。"""
+        calls = []
+        engs = self._engines(calls, ebase.RunResult(text="", killed=True),
+                             ebase.RunResult(text="备"))
+        with mock.patch("opc_web.engines.registry._ENGINES", engs):
+            with mock.patch.object(config, "ENGINE", "m"):
+                with mock.patch.dict(config._CFG, {"engineFallback": "alt"}, clear=False):
+                    runner.run_headless_task("干活", timeout=5, act="T-F-S4")
+        self.assertEqual(calls, ["m"])
 
 
 if __name__ == "__main__":

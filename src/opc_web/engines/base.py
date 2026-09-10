@@ -58,8 +58,10 @@ class Engine:
             cwd=None, on_progress=None) -> RunResult:
         """跑一次任务。
 
-        - act：子任务号，用于注册/终止运行（删除任务、超时强杀）
-        - on_progress(Progress)：有活动时回调，控制台据此推进度行与心跳
+        - act：子任务号，用于注册/终止运行（删除任务/超时强杀）
+        - on_progress(Progress)：有活动时回调，控制台据此推进度行与心跳；
+          **返回前必须再报一次 Progress(finished=True)**，否则上层会把这次运行
+          一直当成「执行中」（状态残留）。
         """
         raise NotImplementedError("引擎未实现 run(): %s" % self.name)
 

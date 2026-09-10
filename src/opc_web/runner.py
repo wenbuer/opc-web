@@ -101,13 +101,57 @@ def events(since: int = 0) -> dict:
                 "events": [e for e in _ACTIVE["events"] if e["seq"] > since]}
 
 
+def _engine_failed(res) -> bool:
+    """这次是「引擎没跑起来」还是「任务本身没做完」——只有前者值得回退重跑。
+
+    - 取消（killed）不回退：用户/超时主动停的，重跑等于把它又拉起来；
+    - 报错回退：没装 dsh、鉴权失败、启动异常，换引擎确实能救；
+    - 秒退无产出回退：dsh 秒退（T-006 那种）属于引擎侧问题；
+    - 跑了很久还是没产出**不回退**：那是任务的问题，两个引擎都会跑同样久，
+      重跑只会重复劳动 + 重复烧钱，交回上层按「无产出」处理。"""
+    if getattr(res, "killed", False):
+        return False
+    if getattr(res, "error", ""):
+        return True
+    if not str(getattr(res, "text", "") or "").strip():
+        return float(getattr(res, "elapsed", 0.0) or 0.0) < float(config.tune("fallbackMaxElapsed"))
+    return False
+
+
+def _run_engine(task_text: str, timeout: float, act: str = "", purpose: str = ""):
+    """跑一次任务：主引擎失败时按配置回退到备用引擎（默认 api 兜底 dsh）。
+
+    回退会留痕（engine/fallback 事件），工作台详情能看到「谁失败了、换了谁、为什么」。"""
+    from .engines import get_engine
+    name = config.engine_for(purpose)
+    res = _invoke(get_engine(name), name, task_text, timeout, act)
+    alt = config.engine_fallback(name)
+    if not alt or not _engine_failed(res):
+        return res
+    emit({"type": "engine/fallback",
+          "data": {"purpose": purpose or "main", "from": name, "to": alt,
+                   "reason": res.error or ("%s 秒退无产出" % int(res.elapsed or 0))}})
+    return _invoke(get_engine(alt), alt, task_text, timeout, act)
+
+
+def _invoke(eng, name: str, task_text: str, timeout: float, act: str):
+    """调一次引擎，并登记 act → 引擎名（kill 时据此精确找对引擎）。"""
+    if act:
+        with _EXEC_LOCK:
+            _ACT_ENGINE[act] = name
+    try:
+        return eng.run(task_text, timeout=timeout, act=act, on_progress=_progress_sink(act))
+    finally:
+        if act and _ACT_ENGINE.get(act) == name:
+            with _EXEC_LOCK:
+                _ACT_ENGINE.pop(act, None)
+
+
 def run_headless_sync(task_text: str, timeout: float = 600, purpose: str = "") -> str:
     """同步直跑一次（最终文本模式），返回文本。
 
     走配置的执行引擎；purpose 非空时按用途路由（config.engine_for），如 "prompt"。"""
-    from .engines import get_engine
-    return get_engine(config.engine_for(purpose)).run(
-        task_text, timeout=timeout, on_progress=_progress_sink("")).text
+    return _run_engine(task_text, timeout, act="", purpose=purpose).text
 
 
 def run_headless_task(task_text: str, timeout: float = 600, act: str = "", purpose: str = ""):
@@ -115,17 +159,7 @@ def run_headless_task(task_text: str, timeout: float = 600, act: str = "", purpo
 
     走配置的执行引擎（purpose 非空时按用途路由，如 "execute"）。签名与语义与解耦前一致，
     chain / scheduler / server 无需改动；同时登记 act → 引擎名，供 kill_spawn 精确找对引擎。"""
-    from .engines import get_engine
-    eng = get_engine(config.engine_for(purpose))
-    if act:
-        with _EXEC_LOCK:
-            _ACT_ENGINE[act] = eng.name
-    try:
-        res = eng.run(task_text, timeout=timeout, act=act, on_progress=_progress_sink(act))
-    finally:
-        if act:
-            with _EXEC_LOCK:
-                _ACT_ENGINE.pop(act, None)
+    res = _run_engine(task_text, timeout, act=act, purpose=purpose)
     return res.text, res.usage
 
 
