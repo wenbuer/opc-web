@@ -1034,19 +1034,28 @@
     c.className = "kb-card";
     var mt = "";
     try { mt = new Date((e.mtime || 0) * 1000).toLocaleDateString(); } catch (err) {}
+    // OKF 元数据行：型别 + 建档 / 更新 + 来源任务（没有来源任务的档案不显示这一段）
+    var okf = "<div class='kb-card-okf'>"
+      + "<span class='kb-okf-tag' title='" + esc(e.okfSource || "") + "'>" + esc(e.okfLabel || "知识") + "</span>"
+      + "<span>建档 " + esc(e.created || mt) + "</span>"
+      + "<span>更新 " + esc(e.updated || mt) + "</span>"
+      + (e.task ? "<span>来源 <b>" + esc(e.task) + "</b></span>" : "")
+      + "</div>";
     c.innerHTML = "<div class='kb-card-head'><span class='kb-ico'>▪</span><b>" + esc(e.name) + "</b><em>" + mt + "</em></div>" +
       "<div class='kb-card-sum'>" + esc(e.head) + "</div>" +
-      "<div class='kb-card-meta'>维护：R1（老板助理）归档 · " + esc(e.rel) + "</div>";
-    c.addEventListener("click", function(){ showKbDoc(e.rel, e.name, mt); });
+      "<div class='kb-card-meta'>维护：R1（老板助理）归档 · " + esc(e.rel) + "</div>" + okf;
+    c.addEventListener("click", function(){ showKbDoc(e.rel, e.name, e.updated || mt, e); });
     return c;
   }
 
-  function showKbDoc(rel, name, dt){
+  function showKbDoc(rel, name, dt, meta){
     var g = $("kbGrid"), d = $("kbDoc");
     if (!g || !d) return;
     g.style.display = "none"; d.style.display = "";
+    var okfTxt = (meta && meta.okfLabel) ? (" · " + esc(meta.okfLabel) + "型知识") : "";
+    var src = (meta && meta.task) ? (" · 来源 " + esc(meta.task)) : "";
     d.innerHTML = "<div class='back-bar'><a href='javascript:void(0)' id='kbBack'>← 返回档案列表</a></div>" +
-      "<div class='file-title'>" + esc(name) + " ｜ 知识库档案 · 管理员 老板助理R1 · 更新 " + esc(dt || "") + "</div>" +
+      "<div class='file-title'>" + esc(name) + " ｜ 知识库档案" + okfTxt + " · 管理员 老板助理R1 · 建档 " + esc(meta && meta.created || "") + " · 更新 " + esc(dt || "") + src + "</div>" +
       "<div class='markdown-body'><div class='placeholder'>加载中…</div></div>";
     api("/api/md?rel=" + encodeURIComponent(rel)).then(function(j){
       var b = d.querySelector(".markdown-body");

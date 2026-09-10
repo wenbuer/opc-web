@@ -984,6 +984,11 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .role-pane .pane-body::-webkit-scrollbar-track{background:rgba(0,0,0,.25)}
 :root[data-theme="dark"] .kb-card{background:rgba(0,0,0,.22)}
 :root[data-theme="dark"] .kb-card:hover{box-shadow:0 0 12px rgba(232,183,61,.28)}
+/* 知识卡片的 OKF 元数据行：型别标签 + 建档 / 更新 / 来源任务 */
+.kb-card-okf{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:5px;font-size:9.5px;color:var(--faint);letter-spacing:.3px}
+.kb-card-okf b{color:var(--gold);font-family:var(--mono);font-weight:700}
+.kb-okf-tag{font-size:9px;padding:1px 7px;border-radius:99px;border:1px solid var(--line2);color:var(--gold);background:rgba(2,132,199,.06)}
+:root[data-theme="dark"] .kb-okf-tag{background:rgba(232,183,61,.08);border-color:rgba(232,183,61,.35)}
 :root[data-theme="dark"] .kb-doc .markdown-body{background:rgba(0,0,0,.22)}
 :root[data-theme="dark"] .run-log{background:rgba(0,0,0,.25)}
 :root[data-theme="dark"] .run-log::-webkit-scrollbar-thumb{background:rgba(232,183,61,.4)}

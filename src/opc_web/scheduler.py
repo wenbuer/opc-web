@@ -16,7 +16,7 @@ import subprocess
 import threading
 import time
 
-from . import agent, config, runner, store, templates
+from . import agent, config, knowledge, runner, store, templates
 
 
 def _wb_role_dirs():
@@ -671,7 +671,16 @@ def kb_digest(task_no: str) -> dict:
     _tp = str(d.get("type") or "concept").strip().lower()
     if _tp not in _kb_types:
         _tp = "concept"
-    front = "---\ntype: %s\ncreated: %s\n---\n" % (_tp, datetime.date.today().isoformat())
+    # merge 到已有档案时沿用它的建档时间，只把 updated 与来源任务刷成本次的
+    today = datetime.date.today().isoformat()
+    old = {}
+    if action == "merge" and target.is_file():
+        try:
+            old = knowledge.front_meta(target.read_text(encoding="utf-8"))
+        except Exception:
+            old = {}
+    front = ("---\ntype: %s\ncreated: %s\nupdated: %s\ntask: %s\n---\n"
+             % (_tp, old.get("created") or today, today, task_no))
     target.write_text(front + body.strip() + "\n", encoding="utf-8")
     rel = target.relative_to(config.ROOT).as_posix()
     return {"ok": True, "created": True, "action": action, "rel": rel,

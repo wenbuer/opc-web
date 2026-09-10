@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """知识库只读层：md 文件树与单文件读取（路径白名单约束；只读纪律在此强制）。"""
+import datetime
 import re
 
 from . import config
@@ -21,6 +22,37 @@ def _strip_front(text: str) -> str:
             if end > 0:
                 return text[end + len(sep):]
     return text
+
+
+# OKF 知识型：每篇档案在 front-matter 里标注 type，卡片与检索按它分类。
+OKF_LABELS = {"concept": "概念", "decision": "决策", "method": "方法",
+              "data": "数据", "lesson": "教训", "problem": "问题"}
+# 分类目录 → 默认知识型：老档案（规范文件、早期归档产物）没有 front-matter，
+# 按所在分类推断一个，保证卡片上每篇都有型别可看。
+CATEGORY_TYPE = {"OPC 规范": "concept", "产品": "concept", "技术": "concept",
+                 "运营与增长": "concept", "用户与市场": "data", "方法": "method",
+                 "数据": "data", "决策": "decision", "经验教训": "lesson"}
+
+
+def front_meta(text: str) -> dict:
+    """取最外层 front-matter 里的 OKF 元数据：type / created / updated / task / source。
+
+    没有 front-matter 就返回空 dict（调用方按分类推断兜底）。"""
+    if not text.startswith("---"):
+        return {}
+    nl = text.find(chr(10))
+    if nl < 0:
+        return {}
+    end = text.find(chr(10) + "---", nl)
+    if end < 0:
+        return {}
+    fm = text[nl + 1:end]
+    out = {}
+    for k in ("type", "created", "updated", "task", "source"):
+        m = re.search(r"(?m)^%s:\s*(.+?)\s*$" % k, fm)
+        if m:
+            out[k] = m.group(1).strip().strip('"').strip("'")
+    return out
 
 
 def latest_daily() -> list:
@@ -49,10 +81,11 @@ def kb_entries() -> list:
         if "legacy" in p.parts or "归档" in p.parts or "archive" in p.parts:
             continue
         try:
-            t = config.read_text(p)
+            raw = config.read_text(p)
         except Exception:
             continue
-        t = _strip_front(t)   # 摘要取正文，跳过 front-matter（okf 等档案的元数据不泄漏进卡片）
+        fm = front_meta(raw)   # 元数据从原文取（正文随后要剥掉 front-matter）
+        t = _strip_front(raw)   # 摘要取正文，跳过 front-matter（okf 等档案的元数据不泄漏进卡片）
         body_lines = [ln.strip() for ln in t.split("\n") if ln.strip() and not ln.strip().startswith("#")]
         table_rows = [ln for ln in body_lines if ln.startswith("|")]
         head = []
@@ -74,6 +107,12 @@ def kb_entries() -> list:
         # 只有真正的子目录（如 知识库/档案/）才作为分组名。
         top = krel.split("/")[0] if "/" in krel else ""
         st = p.stat()
+        # OKF 元数据：front-matter 优先，缺的按分类与文件时间兜底 —— 卡片上每篇都能看出
+        # 「什么型的知识 / 什么时候建的 / 最近什么时候改的 / 从哪个任务沉淀来的」。
+        day = datetime.date.fromtimestamp(st.st_mtime).isoformat()
+        tp = str(fm.get("type") or "").strip().lower()
+        if tp not in OKF_LABELS:
+            tp = CATEGORY_TYPE.get(top, "concept")
         out.append({
             "rel": rel,
             "name": p.stem,
@@ -81,5 +120,11 @@ def kb_entries() -> list:
             "size": st.st_size,
             "top": top,
             "head": htxt,
+            "okf": tp,
+            "okfLabel": OKF_LABELS[tp],
+            "created": str(fm.get("created") or day)[:10],
+            "updated": str(fm.get("updated") or day)[:10],
+            "task": str(fm.get("task") or ""),
+            "okfSource": "front-matter" if fm.get("type") else "按分类推断",
         })
     return out

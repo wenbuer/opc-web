@@ -2,9 +2,10 @@
 """部署自举 v1.10：单根目录模型 —— 自动产生 批阅台/、工作区/、知识库/ 三个文件夹，
 工作区按「角色名称」建子文件夹（旧结构一次性迁移后不再保留 决策/运营/营销 等静态分类）。
 幂等：已存在的目录/种子文件不重建，可重复运行。"""
+import datetime
 import shutil
 
-from . import config
+from . import config, knowledge
 
 BOOT_LOG = []
 
@@ -53,7 +54,20 @@ def bootstrap():
         if _r1.is_file():
             _spec = config.KB_ROOT / "OPC 规范"
             _spec.mkdir(parents=True, exist_ok=True)
-            (_spec / "角色卡-R1 老板助理.md").write_text(_r1.read_text(encoding="utf-8"), encoding="utf-8")
+            _dst = _spec / "角色卡-R1 老板助理.md"
+            _card = _r1.read_text(encoding="utf-8")
+            # 角色卡正文来自 agents/（权威源），但知识库副本要保住 OKF 元数据：
+            # 每次启动都整篇覆盖，不在这里补的话，补好的 front-matter 会被刷掉。
+            _old = {}
+            if _dst.is_file():
+                try:
+                    _old = knowledge.front_meta(config.read_text(_dst))
+                except Exception:
+                    _old = {}
+            if not _card.lstrip().startswith("---"):
+                _card = ("---\ntype: concept\ncreated: %s\n---\n%s"
+                         % (_old.get("created") or datetime.date.today().isoformat(), _card))
+            _dst.write_text(_card, encoding="utf-8")
             BOOT_LOG.append("R1 角色卡已同步至《知识库/OPC 规范/角色卡-R1 老板助理.md》")
     except Exception:
         pass
@@ -76,7 +90,27 @@ def bootstrap():
     # OPC 规范文书模板（回报产出 / 决策建议 / 每日简报）：随项目落知识库，与 scheduler 注入同源（doc_template）
     for kind in ("回报产出", "决策建议", "每日简报"):
         seeds["知识库/OPC 规范/模板-%s.md" % kind] = _tpl.doc_template(kind)
+
+    # OKF：规范类档案也带元数据（type + created），知识库里每篇都有型别可看。
+    # 刻意不写 updated —— 否则每天启动内容都会变，而《OPC 规范》的规则是「与代码不同就覆盖」，
+    # 那会变成每天把知识库那份重写一遍；created 沿用文件里已有的，保持稳定。
+    _today = datetime.date.today().isoformat()
+
+    def _okf(rel: str, text: str, tp: str = "concept") -> str:
+        if text.lstrip().startswith("---"):
+            return text
+        old = {}
+        prev = config.ROOT / rel
+        if prev.is_file():
+            try:
+                old = knowledge.front_meta(config.read_text(prev))
+            except Exception:
+                old = {}
+        return "---\ntype: %s\ncreated: %s\n---\n%s" % (tp, old.get("created") or _today, text)
+
     for rel, text in seeds.items():
+        if rel.startswith("知识库/OPC 规范/"):
+            text = _okf(rel, text)
         p = config.ROOT / rel
         # 规范类种子（《OPC 规范》下的模板与员工手册）与代码同源：内容变了就覆盖，
         # 否则知识库那份会停在首次生成的样子、与 doc_template 分叉。其余种子（运行数据骨架）
