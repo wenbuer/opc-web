@@ -367,9 +367,6 @@ main{flex:1;overflow:hidden}
 .rn-out{margin-top:10px;display:flex;flex-direction:column;gap:8px}
 .rno-group{border:1px solid var(--line);border-radius:8px;background:rgba(15,30,50,.035);padding:8px 10px}
 .rno-group>b{font-size:11px;letter-spacing:1px;color:var(--gold)}
-.rno-file{margin-top:6px;padding:6px 8px;border-left:2px solid var(--line2);font-size:10.5px}
-.rno-file span{color:var(--txt);font-family:var(--mono)}
-.rno-file em{display:block;margin-top:3px;color:var(--faint);font-style:normal;line-height:1.35}
 .rn-out .placeholder{color:var(--faint);font-size:10.5px}
 
 
@@ -435,7 +432,14 @@ main{flex:1;overflow:hidden}
 .skill-cap{display:inline-flex;align-items:center;background:rgba(2,132,199,.10);color:var(--gold);border:1px solid rgba(2,132,199,.45);border-radius:999px;padding:2px 10px;font-size:10.5px;line-height:1.6;white-space:nowrap;cursor:default}
 .skill-cap.add{background:transparent;border:1px dashed var(--gold);color:var(--gold);cursor:pointer}
 .skill-cap.add:hover{background:rgba(2,132,199,.10);border-style:solid}
-.rno-file{display:flex;flex-direction:column;gap:2px;padding:6px 8px;margin:4px 0;border:1px solid var(--line2);border-radius:6px;cursor:pointer;background:rgba(2,132,199,.05)}
+/* 工作区产物：胶囊 chip（文件名一行一个，摘要走 tooltip）——深色下用亮字与描边保证可读 */
+.rno-cap{display:inline-flex;align-items:center;max-width:100%;margin:3px 6px 3px 0;padding:3px 11px;border:1px solid var(--line2);border-radius:99px;background:rgba(2,132,199,.08);cursor:pointer;transition:all .12s ease}
+.rno-cap:hover{border-color:var(--gold);background:rgba(2,132,199,.18)}
+.rno-cap .rc-name{font-family:var(--mono);font-size:10.5px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rno-cap:hover .rc-name{color:var(--gold)}
+:root[data-theme="dark"] .rno-cap{background:rgba(232,183,61,.08);border-color:rgba(232,183,61,.28)}
+:root[data-theme="dark"] .rno-cap:hover{background:rgba(232,183,61,.16);border-color:var(--gold)}
+:root[data-theme="dark"] .rno-cap .rc-name{color:#e6ecf7}
 /* ===== 知识库：档案卡片（R1 管理 · 全体共同维护） ===== */
 #view-kb.active{display:flex;flex-direction:column}
 .kb-section{margin-bottom:14px;border:1px solid var(--line2);border-radius:12px;background:rgba(15,30,50,.03);overflow:hidden}
@@ -471,9 +475,6 @@ main{flex:1;overflow:hidden}
 .run-log::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
 
 
-.rno-file:hover{border-color:var(--gold);background:rgba(2,132,199,.12)}
-.rno-file span{color:var(--ink);font-size:11.5px}
-.rno-file em{color:var(--faint);font-size:10.5px;font-style:normal;line-height:1.5}
 .back-bar{margin:0 0 8px}
 .back-bar a{color:var(--gold);font-size:11px;cursor:pointer}
 
@@ -1014,7 +1015,7 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 :root[data-theme="dark"]{--bg0:#0a0e15; --bg1:#0e1420; --bg2:#131b2b; --panel:#17203a; --panel2:#1d2847;
   --line:rgba(210,222,255,.10); --line2:rgba(232,183,61,.35);
   --txt:#e6ecf7; --dim:#93a5c4; --faint:#5d6f92;
-  --gold:#e8b73d; --red:#c0392b; --red-bright:#e74c3c; --ink:#111; --indigo:#4c6ef5;
+  --gold:#e8b73d; --red:#c0392b; --red-bright:#e74c3c; --ink:#e6ecf7; --indigo:#4c6ef5;
   --ok:#35b97c;
   --rad:10px;
   --serif:"Georgia","Songti SC","SimSun","Noto Serif SC",serif;
@@ -1084,13 +1085,11 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .role-pane{background:rgba(0,0,0,.22)}
 :root[data-theme="dark"] .role-pane .pane-body::-webkit-scrollbar-thumb{background:rgba(232,183,61,.4)}
 :root[data-theme="dark"] .role-pane .pane-body::-webkit-scrollbar-track{background:rgba(0,0,0,.25)}
-:root[data-theme="dark"] .rno-file{background:rgba(232,183,61,.05)}
 :root[data-theme="dark"] .kb-card{background:rgba(0,0,0,.22)}
 :root[data-theme="dark"] .kb-card:hover{box-shadow:0 0 12px rgba(232,183,61,.28)}
 :root[data-theme="dark"] .kb-doc .markdown-body{background:rgba(0,0,0,.22)}
 :root[data-theme="dark"] .run-log{background:rgba(0,0,0,.25)}
 :root[data-theme="dark"] .run-log::-webkit-scrollbar-thumb{background:rgba(232,183,61,.4)}
-:root[data-theme="dark"] .rno-file:hover{background:rgba(232,183,61,.12)}
 :root[data-theme="dark"] .task-out{background:rgba(232,183,61,.04)}
 :root[data-theme="dark"] .task-out .to-file{background:rgba(232,183,61,.07)}
 :root[data-theme="dark"] .task-out .to-file:hover{background:rgba(232,183,61,.14)}

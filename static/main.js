@@ -304,9 +304,11 @@
       if (!g){ if (fb) fb.innerHTML = "<div class='placeholder'>该角色暂无已落盘的 headless 产出（执行中或为空）</div>"; return; }
       fb.innerHTML = "";
       (g.files || []).forEach(function(f){
+        /* 胶囊样式：文件名做成 chip，摘要放 tooltip（悬停可见），避免长摘要挤成一坨 */
         var fd = document.createElement("div");
-        fd.className = "rno-file";
-        fd.innerHTML = "<span>" + esc(f.name) + "</span><em>" + esc(f.head.slice(0,160)) + "</em>";
+        fd.className = "rno-cap";
+        fd.innerHTML = "<span class='rc-name'>" + esc(f.name) + "</span>";
+        fd.title = String(f.head || "").replace(/\s+/g, " ").trim();
         fd.addEventListener("click", function(){ showRoleFile(f.rel, code); });
         fb.appendChild(fd);
       });
