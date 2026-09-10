@@ -303,7 +303,17 @@
       });
       if (!g){ if (fb) fb.innerHTML = "<div class='placeholder'>该角色暂无已落盘的 headless 产出（执行中或为空）</div>"; return; }
       fb.innerHTML = "";
-      (g.files || []).forEach(function(f){
+      var allFiles = g.files || [];
+      if (allFiles.length > 3){
+        /* 面板内只留最近 3 个，其余去「项目文件」按角色看 */
+        var more = document.createElement("button");
+        more.type = "button";
+        more.className = "rno-more";
+        more.textContent = "查看全部产物（共 " + allFiles.length + " 个）";
+        more.addEventListener("click", function(){ gotoRoleFiles(code); });
+        fb.appendChild(more);
+      }
+      allFiles.slice(0, 3).forEach(function(f){
         /* 胶囊样式：文件名做成 chip，摘要放 tooltip（悬停可见），避免长摘要挤成一坨 */
         var fd = document.createElement("div");
         fd.className = "rno-cap";
@@ -1681,7 +1691,6 @@
       el.style.paddingLeft = (6 + depth * 13) + "px";
       el.innerHTML = "<span class='wsi-name'>" + esc(it.name) + "</span><em>" + esc(wsFmtSize(f.size)) + "</em>";
       el.title = f.rel;
-      el.addEventListener("click", function(){ showWsFile(f.rel, el); });
       box.appendChild(el);
     });
   }
@@ -1692,9 +1701,19 @@
     if (ts) ts.innerHTML = "<option value=''>全部任务</option>";
     var box = $("wsList");
     if (box) box.innerHTML = "<div class='placeholder'>加载文件清单…</div>";
-    api("/api/ws-files").then(function(j){
+    // 工作区文件 + 项目/（工程产出）一起取：项目/ 的以 role="项目" 并入，自动出现在角色筛选里
+    Promise.all([
+      api("/api/ws-files"),
+      api("/api/project-files").catch(function(){ return { ok: false }; })
+    ]).then(function(rs2){
+      var j = rs2[0], pj = rs2[1];
       if (!j || !j.ok){ if (box) box.innerHTML = "<div class='placeholder'>清单加载失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
-      wsFiles = j.files || [];
+      wsFiles = (j.files || []).slice();
+      if (pj && pj.ok){
+        (pj.files || []).forEach(function(f){
+          if (f.rel) wsFiles.push({ name: f.name, rel: f.rel, size: f.size, role: "项目", task: "" });
+        });
+      }
       var roles = [], seenR = {}, tasks = [], seenT = {}, hasNone = false;
       wsFiles.forEach(function(f){
         if (!seenR[f.role]){ seenR[f.role] = 1; roles.push(f.role); }

@@ -369,7 +369,7 @@ main{flex:1;overflow:hidden}
 
 
 /* ===== 作战面板：角色工作区 ===== */
-.role-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow-y:auto;min-height:0}
+.role-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow:hidden;min-height:0}
 .role-detail{max-height:560px;overflow:auto;margin-top:10px;border:1px dashed var(--line2);border-radius:8px;background:rgba(15,30,50,.05);padding:12px 14px}
 .role-detail .placeholder{color:var(--faint);font-size:11px}
 .role-pane.skills .placeholder,.role-pane.files .placeholder{padding:2px 0;text-align:left;line-height:1.7}
@@ -413,7 +413,7 @@ main{flex:1;overflow:hidden}
 .role-pane .pane-body::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
 .role-pane .pane-body::-webkit-scrollbar-track{background:rgba(15,30,50,.06)}
 /* 角色卡：完整显示全文、随内容增高、最低为默认高度、不出现内部滚动条 */
-.role-pane.card .pane-body{max-height:340px;min-height:0;overflow-y:auto;padding-right:0}
+.role-pane.card .pane-body{max-height:230px;min-height:0;overflow-y:auto;padding-right:0}
 /* 就地编辑角色：角色卡面板内联表单（复用弹窗表单观感，字体 inherit） */
 .role-edit-form label{display:block;font-size:10px;color:var(--dim);letter-spacing:.3px;margin-bottom:3px;font-family:inherit}
 .role-edit-form input,.role-edit-form textarea{width:100%;box-sizing:border-box;background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:7px 10px;font-size:11.5px;outline:none;margin-bottom:8px;font-family:inherit;transition:border-color .15s ease, box-shadow .15s ease}
@@ -431,6 +431,10 @@ main{flex:1;overflow:hidden}
 .skill-cap.add{background:transparent;border:1px dashed var(--gold);color:var(--gold);cursor:pointer}
 .skill-cap.add:hover{background:rgba(2,132,199,.10);border-style:solid}
 /* 工作区产物：胶囊 chip（文件名一行一个，摘要走 tooltip）——深色下用亮字与描边保证可读 */
+/* 「查看全部产物」：虚线胶囊按钮，点击跳「项目文件」按该角色看全量 */
+.rno-more{display:inline-flex;align-items:center;margin:2px 0 7px;padding:3px 11px;border:1px dashed var(--line2);border-radius:99px;background:none;color:var(--gold);font-size:10.5px;cursor:pointer;transition:all .12s ease}
+.rno-more:hover{border-style:solid;border-color:var(--gold);background:rgba(2,132,199,.12)}
+:root[data-theme="dark"] .rno-more:hover{background:rgba(232,183,61,.14)}
 .rno-cap{display:inline-flex;align-items:center;max-width:100%;margin:3px 6px 3px 0;padding:3px 11px;border:1px solid var(--line2);border-radius:99px;background:rgba(2,132,199,.08);cursor:pointer;transition:all .12s ease}
 .rno-cap:hover{border-color:var(--gold);background:rgba(2,132,199,.18)}
 .rno-cap .rc-name{font-family:var(--mono);font-size:10.5px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
