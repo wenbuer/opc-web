@@ -164,15 +164,18 @@ class Handler(BaseHTTPRequestHandler):
         return {"ok": True, "skills": names, "dir": str(d)}
 
     def _dsh_skill_dirs(self):
+        """候选技能目录（同名去重，先到先得）：dsh 用户级 → agents 平台 → npm 插件包。"""
         home = Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh"))
         dirs, seen = [], set()
         def add(p):
             if p.is_dir() and (p / "SKILL.md").exists() and p.name not in seen:
                 seen.add(p.name); dirs.append(p)
-        usr = home / "skills"
-        if usr.is_dir():
-            for p in sorted(usr.iterdir()):
-                add(p)
+        def add_root(root):
+            if root.is_dir():
+                for p in sorted(root.iterdir()):
+                    add(p)
+        add_root(home / "skills")                        # ~/.dsh/skills
+        add_root(Path.home() / ".agents" / "skills")     # ~/.agents/skills（python-src-project 等）
         prof = home / "profiles"
         if prof.is_dir():
             for pd in sorted(prof.iterdir()):
