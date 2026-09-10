@@ -79,8 +79,11 @@ class TestWatchSession(unittest.TestCase):
         os.environ["DSH_HOME"] = str(self._home)
         sess_dir = runner._dsh_sessions_dir() / "keeptalk" / "session-w1"
         cwd = str(config.ROOT)
+        task = "执行子任务：梳理现有项目内容并迁移代码"
         _zst_write(sess_dir / "session.jsonl.zstd", [
             {"type": "session", "cwd": cwd},
+            {"type": "user/message", "data": {"message": {"content": [
+                {"type": "text", "text": task}]}}},
             {"type": "tool/call", "data": {"name": "pwsh", "arguments": "git status"}},
             {"type": "assistant/message", "data": {"message": {"content": [
                 {"type": "text", "text": "正在执行子任务"}]}}},
@@ -92,7 +95,8 @@ class TestWatchSession(unittest.TestCase):
             def poll(self_inner):
                 calls["n"] += 1
                 return None if calls["n"] == 1 else 0
-        runner._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30)
+        runner._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30,
+                              set(), task)
         st = runner.exec_state()[self._act]
         self.assertEqual(st["tools"], 1)
         self.assertIn("pwsh", st["lastTool"])
@@ -102,6 +106,45 @@ class TestWatchSession(unittest.TestCase):
         evs = runner.events(0)["events"]
         self.assertTrue(any(e["type"] == "exec/progress" and e["data"]["sub"] == self._act
                             for e in evs))
+
+    def test_watch_skips_session_present_before_spawn(self):
+        """pre 快照里的会话不是本次任务的，不得认领（否则会显示别的会话的文本）。"""
+        os.environ["DSH_HOME"] = str(self._home)
+        sess_dir = runner._dsh_sessions_dir() / "keeptalk" / "session-old"
+        task = "执行子任务：梳理现有项目内容并迁移代码"
+        _zst_write(sess_dir / "session.jsonl.zstd", [
+            {"type": "session", "cwd": str(config.ROOT)},
+            {"type": "user/message", "data": {"message": {"content": [
+                {"type": "text", "text": task}]}}},
+            {"type": "assistant/message", "data": {"message": {"content": [
+                {"type": "text", "text": "别的会话的文本"}]}}},
+        ])
+
+        class _P:
+            def poll(self_inner):
+                return 0
+        runner._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30,
+                              {"session-old"}, task)
+        self.assertNotIn(self._act, runner.exec_state())
+
+    def test_watch_requires_prompt_match(self):
+        """cwd 相同但任务文本对不上的会话不得认领（T-007-S1 认领错会话的根因）。"""
+        os.environ["DSH_HOME"] = str(self._home)
+        sess_dir = runner._dsh_sessions_dir() / "keeptalk" / "session-other"
+        _zst_write(sess_dir / "session.jsonl.zstd", [
+            {"type": "session", "cwd": str(config.ROOT)},
+            {"type": "user/message", "data": {"message": {"content": [
+                {"type": "text", "text": "你是别的角色的会话，和本次任务无关"}]}}},
+            {"type": "assistant/message", "data": {"message": {"content": [
+                {"type": "text", "text": "| T-001 | 别的表格 | R3 | 产出 | 待派 |"}]}}},
+        ])
+
+        class _P:
+            def poll(self_inner):
+                return 0
+        runner._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30,
+                              set(), "执行子任务：梳理现有项目内容并迁移代码")
+        self.assertNotIn(self._act, runner.exec_state())
 
     def test_watch_session_skips_foreign_cwd(self):
         os.environ["DSH_HOME"] = str(self._home)

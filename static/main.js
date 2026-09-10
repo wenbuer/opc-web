@@ -1306,14 +1306,21 @@
       e5.textContent = "进程退出码：" + (d.code != null ? d.code : "?");
       body.appendChild(e5);
     } else if (type === "exec/progress"){
-      /* 执行心跳（会话事件日志折叠出的「最近工具 + 最近文本」）：进度行 */
+      /* 执行心跳：同一子任务复用同一行原地更新（周期心跳否则会把面板堆满） */
       var el = (d.elapsed || 0), mm = Math.floor(el / 60), ss = ("0" + (el % 60)).slice(-2);
-      var pr = document.createElement("div");
-      pr.className = "run-prog";
-      pr.innerHTML = "<em>[" + mm + ":" + ss + "]</em> " + esc(d.sub || "") + " · 操作 " + (d.tools || 0) + " 次"
+      var sub = String(d.sub || "");
+      var inner = "<em>[" + mm + ":" + ss + "]</em> " + esc(sub) + " · 操作 " + (d.tools || 0) + " 次"
         + (d.lastTool ? " · 最近：" + esc(d.lastTool) : "")
         + (d.lastText ? "<div class='rp-text'>" + esc(d.lastText) + "</div>" : "");
-      body.appendChild(pr);
+      var pr = sub ? body.querySelector(".run-prog[data-sub='" + sub + "']") : null;
+      if (pr){ pr.innerHTML = inner; }
+      else {
+        pr = document.createElement("div");
+        pr.className = "run-prog";
+        if (sub) pr.setAttribute("data-sub", sub);
+        pr.innerHTML = inner;
+        body.appendChild(pr);
+      }
     }
     runFoldCheck();
     lg.scrollTop = lg.scrollHeight;

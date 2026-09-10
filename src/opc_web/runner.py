@@ -47,65 +47,113 @@ def _exec_beat(act: str, tools: int, last_tool: str, last_text: str, t0: float):
         snap = dict(st)
     _append({"type": "exec/progress",
              "data": {"sub": act, "elapsed": int(now - t0), "tools": tools,
-                      "lastTool": last_tool, "lastText": (last_text or "")[:160]}})
+                      "lastTool": _squeeze(last_tool, 130), "lastText": _squeeze(last_text, 120)}})
 
 
-def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float):
+_SESS_HEAD = 24          # 会话认领用的任务文本前缀长度
+_BEAT_IDLE = 20.0        # 无新事件时的心跳间隔（秒）
+
+
+def _session_names() -> set:
+    """当前已存在的会话目录名快照：spawn 前调用，线程只认之后新出现的会话。"""
+    root = _dsh_sessions_dir()
+    if not root.is_dir():
+        return set()
+    return {d.name for d in root.glob("*/session-*")}
+
+
+def _ev_text(ev: dict) -> str:
+    """事件的可见文本（user/assistant message 的 content 文本块）。"""
+    d = ev.get("data") or {}
+    blocks = ((d.get("message") or {}).get("content") if isinstance(d, dict) else None) or d.get("content") or []
+    if isinstance(blocks, str):
+        return blocks
+    return " ".join(str(b.get("text") or "") for b in blocks
+                    if isinstance(b, dict) and b.get("type") == "text")
+
+
+def _squeeze(s: str, limit: int = 90) -> str:
+    """压成单行短文本：进度行只放一句话，多行长文本（表格等）不进 UI。"""
+    return " ".join(str(s or "").split())[:limit]
+
+
+def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float,
+                   pre: set = None, prompt_head: str = ""):
     """跟踪本次 headless 的 dsh 会话事件日志（数据源 ~/.dsh/sessions/<cwd>/session-*.jsonl.zstd）。
 
     借鉴 dsh-better-sidebar 的 lastActivity：只取 tool/call 与 assistant/message 两类事件，
-    反向折叠出「最近工具调用 + 最近文本」，忽略生命周期与 chunk 碎片。每次解析到新事件
-    刷新 _EXEC_STATE 心跳 —— 供存活判定（事件在增长 = 活着），并 emit exec/progress
-    到工作台实时事件。"""
+    反向折叠出「最近工具调用 + 最近文本」，忽略生命周期与 chunk 碎片；文本一律压成单行短句
+    （多行内容进 UI 会被误读成截断）。
+
+    会话认领三重校验，缺一就换下一个候选：① 目录名不在 spawn 前快照里（本次新出现）；
+    ② 事件里的 cwd 等于项目根；③ 会话内存在与本次任务文本前缀一致的 user/message。
+    只按 mtime 取最近会话会认领到别的会话——T-007-S1 曾把别的会话的表格文本当成自己的
+    「最近文本」显示在工作台上。
+
+    每次解析到新事件刷新 _EXEC_STATE 心跳（存活判定即「事件在增长」），并 emit
+    exec/progress；无新事件时每 _BEAT_IDLE 秒补一次心跳，避免界面看起来卡住。"""
     root = _dsh_sessions_dir()
+    pre = pre or set()
     sess = None
     seen = 0
     tools = 0
     last_tool = ""
     last_text = ""
+    head = _squeeze(prompt_head, _SESS_HEAD)
+    last_emit = 0.0
     while p.poll() is None:
         time.sleep(2)
         try:
             if sess is None:
-                # 找会话：spawn 之后有落盘动作、且 cwd 与本次项目根一致的会话
+                # 候选 = spawn 前快照里没有的会话目录，最新的先试（认领规则见函数说明）
+                cands = []
                 for d in root.glob("*/session-*"):
                     zf = d / "session.jsonl.zstd"
-                    if not zf.is_file() or zf.stat().st_mtime < spawn_epoch - 5:
+                    if d.name in pre or not zf.is_file():
                         continue
+                    cands.append((zf.stat().st_mtime, d))
+                for _, d in sorted(cands, reverse=True):
+                    zf = d / "session.jsonl.zstd"
                     with open(zf, "rb") as fh:
                         raw = zstd.ZstdDecompressor().stream_reader(fh).read()
                     evs = [json.loads(x) for x in raw.decode("utf-8", "replace").splitlines() if x.strip()]
                     cwd = next((ev.get("cwd", "") for ev in evs if ev.get("type") == "session"), "")
                     if str(cwd).rstrip("\\").lower() != str(config.ROOT).rstrip("\\").lower():
                         continue
+                    if head and not any(head[:12] in _ev_text(ev)
+                                        for ev in evs if ev.get("type") == "user/message"):
+                        continue                # 不是本次任务的会话，换下一个候选
                     sess = (d, evs)
                     break
                 if sess is None:
                     continue
-                # seen 保持 0：spawn 之后新建的会话（按 mtime 过滤）里的事件全属本次任务
+                # seen 保持 0：认领到的会话里的事件全属本次任务
             d, _ = sess
             zf = d / "session.jsonl.zstd"
             with open(zf, "rb") as fh:
                 raw = zstd.ZstdDecompressor().stream_reader(fh).read()
             evs = [json.loads(x) for x in raw.decode("utf-8", "replace").splitlines() if x.strip()]
-            if len(evs) <= seen:
-                continue
-            for ev in evs[seen:]:
-                if ev.get("type") == "tool/call":
-                    dd = ev.get("data") or {}
-                    name = str(dd.get("name") or "?")
-                    args = str(dd.get("arguments") or "")
-                    brief = args[:110] + ("…" if len(args) > 110 else "")
-                    tools += 1
-                    last_tool = name + " " + brief if brief else name
-                elif ev.get("type") == "assistant/message":
-                    for part in (ev.get("data", {}).get("message") or {}).get("content") or []:
-                        if part.get("type") == "text" and part.get("text", "").strip():
-                            last_text = part["text"].strip()[:160]
-            seen = len(evs)
-            with _EXEC_LOCK:
-                _EXEC_STATE.setdefault(act, {})["session"] = d.name[-12:]
-            _exec_beat(act, tools, last_tool, last_text, t0)
+            if len(evs) > seen:
+                for ev in evs[seen:]:
+                    if ev.get("type") == "tool/call":
+                        dd = ev.get("data") or {}
+                        name = str(dd.get("name") or "?")
+                        brief = _squeeze(str(dd.get("arguments") or ""), 110)
+                        tools += 1
+                        last_tool = (name + " " + brief).strip()
+                    elif ev.get("type") == "assistant/message":
+                        txt = _squeeze(_ev_text(ev), 90)
+                        if txt:
+                            last_text = txt
+                seen = len(evs)
+                with _EXEC_LOCK:
+                    _EXEC_STATE.setdefault(act, {})["session"] = d.name[-12:]
+                _exec_beat(act, tools, last_tool, last_text, t0)
+                last_emit = time.monotonic()
+            elif time.monotonic() - last_emit > _BEAT_IDLE:
+                # 周期心跳：暂无新事件也刷新一次，界面能看出「还在跑」而不是卡住
+                _exec_beat(act, tools, last_tool, last_text, t0)
+                last_emit = time.monotonic()
         except Exception:
             continue
 
@@ -171,6 +219,7 @@ def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
     if si is not None:
         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
         si.wShowWindow = 0
+    pre_sessions = _session_names() if act else set()   # spawn 前的会话快照（认领用）
     try:
         p = subprocess.Popen(base + ["--profile", "headless"] + argv,
                              cwd=str(config.ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -190,7 +239,9 @@ def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
 
     threading.Thread(target=_drain, daemon=True).start()
     if act:
-        threading.Thread(target=_watch_session, args=(act, p, time.time(), time.monotonic()),
+        threading.Thread(target=_watch_session,
+                         args=(act, p, time.time(), time.monotonic(), pre_sessions,
+                               argv[-1] if argv else ""),
                          daemon=True).start()
     t0 = time.monotonic()
     t_first = None        # stdout 首帧时刻（headless 期末才打印，平时靠会话事件心跳）
