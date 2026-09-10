@@ -162,6 +162,68 @@ class TestWatchSession(unittest.TestCase):
         self.assertNotIn(self._act, runner.exec_state())
 
 
+class TestUsageFromClaimedSession(unittest.TestCase):
+    """usage 抽取优先用已认领的会话：按 mtime 猜在并发下会选空/选错（T-008-S1 正常完成却无用量）。"""
+
+    def setUp(self):
+        self._tmp = Path(tempfile.mkdtemp(prefix="usage-"))
+        self._old_home = os.environ.get("DSH_HOME")
+        os.environ["DSH_HOME"] = str(self._tmp)
+
+    def tearDown(self):
+        if self._old_home is None:
+            os.environ.pop("DSH_HOME", None)
+        else:
+            os.environ["DSH_HOME"] = self._old_home
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _mk_session(self, name, mtime_ago=3600.0):
+        d = runner._dsh_sessions_dir() / "proj" / name
+        _zst_write(d / "session.jsonl.zstd", [
+            {"type": "session", "cwd": "C:/x/proj"},
+            {"type": "assistant/message", "data": {"usage": {
+                "inputTokens": 100, "outputTokens": 20,
+                "cacheReadTokens": 900, "reasoningTokens": 3}}},
+        ])
+        past = time.time() - mtime_ago
+        os.utime(d / "session.jsonl.zstd", (past, past))
+        return d
+
+    def test_claimed_session_wins_over_since_filter(self):
+        d = self._mk_session("session-old", mtime_ago=3600)
+        # 按 mtime 猜：会话早于 since → 抽不到
+        self.assertIsNone(runner.read_session_usage(since=time.time()))
+        # 给定已认领的会话：直接取到用量
+        got = runner.read_session_usage(since=time.time(), session_dir=d)
+        self.assertEqual(got["inputTokens"], 100)
+        self.assertEqual(got["cacheReadTokens"], 900)
+
+    def test_none_session_falls_back_to_scan(self):
+        d = self._mk_session("session-new", mtime_ago=0)
+        got = runner.read_session_usage(since=time.time() - 60, session_dir=None)
+        self.assertIsNotNone(got)
+        self.assertEqual(got["outputTokens"], 20)
+
+
+class TestPutTokens(unittest.TestCase):
+    """token 记账：完成与阻塞两条路径共用；usage 为空不写字段。"""
+
+    def test_writes_four_fields(self):
+        meta = {"subNo": "T-1-S1"}
+        chain._put_tokens(meta, {"inputTokens": 10, "outputTokens": 2,
+                                "cacheReadTokens": 90, "reasoningTokens": 1})
+        self.assertEqual(meta["tokensIn"], 100)      # 计费口径 = input + cacheRead
+        self.assertEqual(meta["tokensOut"], 2)
+        self.assertEqual(meta["tokensCacheRead"], 90)
+        self.assertEqual(meta["tokensReasoning"], 1)
+
+    def test_empty_usage_writes_nothing(self):
+        meta = {"subNo": "T-1-S1"}
+        chain._put_tokens(meta, None)
+        chain._put_tokens(meta, {})
+        self.assertEqual([k for k in meta if "token" in k], [])
+
+
 class TestLandedEvidence(unittest.TestCase):
     """headless 无输出时的核盘：落盘了就不判阻塞（T-007-S1 实际完成却被判阻塞）。"""
 

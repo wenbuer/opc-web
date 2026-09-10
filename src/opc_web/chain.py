@@ -167,6 +167,18 @@ def prepare_files(sub_no, task_no, sub, spec):
     return body, meta
 
 
+def _put_tokens(meta: dict, usage) -> None:
+    """把 headless 用量写进 meta（完成/阻塞两条路径共用）；usage 为空则不写。
+
+    阻塞（含被强杀）的执行同样消耗了 token，不记就等于统计里凭空少一块。"""
+    if not usage:
+        return
+    meta["tokensIn"] = usage["inputTokens"] + usage["cacheReadTokens"]
+    meta["tokensOut"] = usage["outputTokens"]
+    meta["tokensCacheRead"] = usage["cacheReadTokens"]
+    meta["tokensReasoning"] = usage["reasoningTokens"]
+
+
 def _landed_evidence(body_p, size0: int, t_exec: float, limit: int = 4) -> list:
     """headless 无输出时的核盘证据。
 
@@ -298,12 +310,7 @@ def execute(task_no, task_text):
                 try:
                     meta = json.loads(meta_p.read_text(encoding="utf-8"))
                     meta["status"] = "完成"
-                    if usage:
-                        # token 用量写入 meta.json（输入=含缓存读取的计费口径，另存拆分）
-                        meta["tokensIn"] = usage["inputTokens"] + usage["cacheReadTokens"]
-                        meta["tokensOut"] = usage["outputTokens"]
-                        meta["tokensCacheRead"] = usage["cacheReadTokens"]
-                        meta["tokensReasoning"] = usage["reasoningTokens"]
+                    _put_tokens(meta, usage)     # 输入=含缓存读取的计费口径，另存拆分
                     meta_p.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 except Exception:
                     pass
@@ -319,6 +326,7 @@ def execute(task_no, task_text):
                         fh.write("\n\n## 执行结果\n\n【%s，置阻塞】\n" % reason)
                     meta = json.loads(meta_p.read_text(encoding="utf-8"))
                     meta["status"] = "阻塞"
+                    _put_tokens(meta, usage)     # 被强杀/无输出也烧了 token，照样记账
                     meta_p.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 except Exception:
                     pass

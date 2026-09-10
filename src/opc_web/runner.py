@@ -23,6 +23,7 @@ _ACTIVE = {"events": [], "seq": 0}
 _ACTIVE_SPAWN = {}   # act(key: 子任务号) -> 运行中 headless 子进程 pid，供删除任务时终止
 _EXEC_LOCK = threading.Lock()
 _EXEC_STATE = {}     # act -> {startedAt, tools, lastTool, lastText, beatMono, session}——执行实时状态值
+_LAST_SESSION = {}   # act -> 本次 headless 认领到的会话目录（抽 usage 用，比按 mtime 猜准）
 
 
 def exec_state() -> dict:
@@ -148,6 +149,7 @@ def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float,
                 seen = len(evs)
                 with _EXEC_LOCK:
                     _EXEC_STATE.setdefault(act, {})["session"] = d.name[-12:]
+                    _LAST_SESSION[act] = d          # 抽 usage 时直接用这个会话，不再按 mtime 猜
                 _exec_beat(act, tools, last_tool, last_text, t0)
                 last_emit = time.monotonic()
             elif time.monotonic() - last_emit > _BEAT_IDLE:
@@ -347,7 +349,7 @@ def _usage_from_session(session_dir: Path) -> dict:
     return last
 
 
-def read_session_usage(since: float = 0.0) -> dict:
+def read_session_usage(since: float = 0.0, session_dir=None) -> dict:
     """定位本次 headless 调用最新写入的会话日志并抽取 token 用量。
 
     位置：~/.dsh/sessions/<cwd片段>/session-<uuid>/session.jsonl.zstd。
@@ -357,6 +359,10 @@ def read_session_usage(since: float = 0.0) -> dict:
     会同时写入多个会话，若只按全局最新 mtime 取，极易读到「另一条还在写/尚无 usage」的会话，
     导致 usage 读到 None 而不写 token。带 since 过滤后，本次 headless 的会话必然在 since 之后，
     可精确锁定本次调用。cwd = config.ROOT（headless 子进程 cwd）。无会话/无 zstandard/无 usage 返回 None。"""
+    if session_dir is not None:
+        # 已知会话（执行期间由 _watch_session 三重校验认领）：直接取，避开「按 mtime 猜」
+        # 在并发执行下选错会话/选空的问题（T-008-S1 正常完成却没读到用量即此因）。
+        return _usage_from_session(Path(session_dir))
     sess = _dsh_sessions_dir()
     if not sess.is_dir():
         return None
@@ -401,7 +407,9 @@ def run_headless_task(task_text: str, timeout: float = 600, act: str = ""):
     base=下次调用 read_session_usage 的 since 锚点（当前时刻，早于本次 headless 会话落盘）。"""
     base = time.time()
     text = _decode_stdout(_spawn_headless([task_text], timeout, act)).strip()
-    return text, read_session_usage(base)
+    with _EXEC_LOCK:
+        claimed = _LAST_SESSION.pop(act, None) if act else None
+    return text, read_session_usage(base, claimed)
 
 
 def kill_spawn(act: str) -> bool:
