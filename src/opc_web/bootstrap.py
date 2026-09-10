@@ -36,12 +36,12 @@ def bootstrap():
     init_agents()
     for d in (config.BATCH_ROOT, config.WORKSPACE_ROOT, config.KB_ROOT, config.PROJECT_ROOT):
         d.mkdir(parents=True, exist_ok=True)
-    # 角色工作区：按「角色名称」建目录（v1.10）；角色技能共享库 agents/skills/（平铺，卡上登记即装配）
+    # 角色工作区：按「R<n>（角色名）」建目录；角色技能共享库 agents/skills/（平铺，卡上登记即装配）
     try:
         from . import roles as _roles
         active = bool(config.active_project())
         for _no, _name in _roles.role_files():
-            (config.WORKSPACE_ROOT / config.sanitize_dir(_name)).mkdir(parents=True, exist_ok=True)
+            (config.WORKSPACE_ROOT / config.role_dir(_no)).mkdir(parents=True, exist_ok=True)
         if active:
             (config.AGENTS_DIR / config.SKILLS_REL).mkdir(parents=True, exist_ok=True)
     except Exception:

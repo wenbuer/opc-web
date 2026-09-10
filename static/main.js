@@ -1721,7 +1721,13 @@
         if (f.task){ if (!seenT[f.task]){ seenT[f.task] = 1; tasks.push(f.task); } }
         else { hasNone = true; }
       });
-      roles.sort();
+      roles.sort(function(a, b){                 // 按 R 编号递增（R2 排 R10 前）
+        var ma = /^R(\d+)/.exec(a), mb = /^R(\d+)/.exec(b);
+        if (ma && mb) return parseInt(ma[1], 10) - parseInt(mb[1], 10);
+        if (ma) return -1;
+        if (mb) return 1;
+        return a < b ? -1 : a > b ? 1 : 0;
+      });
       var hasProj = roles.indexOf("项目") >= 0;
       if (hasProj) roles = roles.filter(function(x){ return x !== "项目"; });
       tasks.sort(function(a, b){ return parseInt(a.slice(2), 10) - parseInt(b.slice(2), 10); });
@@ -1735,7 +1741,11 @@
         /* 预置筛选：调用方可能给角色编号也可能给角色名（筛选项的值＝工作区目录名＝角色名），两种都认 */
         var want = pendingWsRole, alt = roleName(want), hit = null;
         pendingWsRole = "";
-        if (rs) Array.prototype.forEach.call(rs.options, function(o){ if (!hit && (o.value === want || o.value === alt)) hit = o.value; });
+        if (rs) Array.prototype.forEach.call(rs.options, function(o){
+          if (hit) return;
+          /* 值可能是「R3（全栈开发）」；传编号时按前缀命中，传名称时精确匹配 */
+          if (o.value === want || o.value === alt || o.value.indexOf(want + "（") === 0) hit = o.value;
+        });
         if (hit){ rs.value = hit; wsRole = hit; }
       }
       renderWsList();

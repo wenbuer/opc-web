@@ -81,7 +81,7 @@ def subtask_spec(no: str, task_text: str, expect: str = "", sub_no: str = "") ->
     共用固定名会让同角色的多个任务互相覆盖，且归档正则只认得第一条。"""
     if not sub_no:
         raise ValueError("subtask_spec 需要子任务编号：产出按编号命名，共用固定名会让同角色的多任务互相覆盖")
-    d = "%s/%s" % (config.WORKSPACE_REL, config.sanitize_dir(config.role_name(no)))
+    d = "%s/%s" % (config.WORKSPACE_REL, config.role_dir(no))
     out_rel = "%s/%s-report.md" % (d, sub_no)      # 完成回报（人读交付物）
     meta_rel = "%s/%s.meta.json" % (d, sub_no)
     return {

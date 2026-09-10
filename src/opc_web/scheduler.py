@@ -434,7 +434,7 @@ def work_summary(task_no: str) -> str:
             lines.append(_TRIPLE_BT)
             lines.append(_tree_text(config.ROOT))
             lines.append(_TRIPLE_BT)
-        out_p = config.WORKSPACE_ROOT / config.sanitize_dir(config.role_name("R1")) / (task_no + "-summary.md")
+        out_p = config.WORKSPACE_ROOT / config.role_dir("R1") / (task_no + "-summary.md")
         out_p.parent.mkdir(parents=True, exist_ok=True)
         out_p.write_text("\n".join(lines), encoding="utf-8")
         return out_p.relative_to(config.ROOT).as_posix()

@@ -132,7 +132,7 @@ def add_role(name, duty, position, type_="业务", skills=(), tags=(), dry=False
         raise ValueError("还没有激活的项目：请先在「设置 → 项目」新建或选择一个项目，再新增角色")
     no = next_no()
     card = role_card(no, name, duty, position, type_, skills or (), tags=tags)
-    wsname = config.sanitize_dir(name)
+    wsname = config.role_dir(no)
     result = {
         "no": no, "name": name, "card": card,
         "cardPath": str(config.AGENTS_DIR / (no + ".role.md")),

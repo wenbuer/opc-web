@@ -317,6 +317,15 @@ def sanitize_dir(name: str) -> str:
     return s or "未命名"
 
 
+def role_dir(no: str) -> str:
+    """角色工作区目录名：R<n>（<角色名>）——编号在前可按 R 递增排序，名称在后便于人读。
+
+    历史上只用角色名做目录名，多角色时既不好按编号排序、也看不出编号，故统一成这个格式。"""
+    nm = role_name(str(no or ""))
+    s = "%s（%s）" % (no, nm) if nm and nm != no else str(no or "")
+    return sanitize_dir(s)
+
+
 def role_name(no: str) -> str:
     """角色编号 → 角色名称（读本项目 agents/R?.role.md「身份·名称」；缺失时回退编号）。"""
     p = AGENTS_DIR / (no + ".role.md")
