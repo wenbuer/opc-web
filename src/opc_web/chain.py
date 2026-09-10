@@ -14,6 +14,7 @@ v1.15 的改动只在存储层：
 import datetime
 import json
 import re
+import time
 
 from . import agent, config, runner, scheduler as sch, store
 
@@ -166,6 +167,37 @@ def prepare_files(sub_no, task_no, sub, spec):
     return body, meta
 
 
+def _landed_evidence(body_p, size0: int, t_exec: float, limit: int = 4) -> list:
+    """headless 无输出时的核盘证据。
+
+    判阻塞的语义是「本轮没落盘」——headless 没打印 final 文本不等于没干活：
+    T-007-S1 目录迁移已写入 25 个文件，却因为期末没有文本输出被判阻塞。
+    故无文本输出时先核盘：产出回报文件是否增长、《项目/》下是否有本轮写入的文件。"""
+    ev = []
+    try:
+        now_sz = body_p.stat().st_size
+        if now_sz > size0 + 20:
+            ev.append("产出回报文件已写入（%d → %d 字节）：%s" % (size0, now_sz, body_p.name))
+    except OSError:
+        pass
+    try:
+        proj = config.ROOT / "项目"
+        if proj.is_dir():
+            hits = []
+            for f in proj.rglob("*"):
+                try:
+                    if f.is_file() and f.stat().st_mtime >= t_exec - 60:
+                        hits.append(str(f.relative_to(config.ROOT)).replace("\\", "/"))
+                except OSError:
+                    continue
+            if hits:
+                ev.append("《项目/》下 %d 个文件在本轮写入（如 %s）"
+                          % (len(hits), "、".join(hits[:3])))
+    except Exception:
+        pass
+    return ev[:limit]
+
+
 def _meaningful_reply(text: str, min_len: int = 60) -> str:
     """headless 回报有效性检查：U+FFFD（替换符）占比过高或实质内容过短 → 判为无效，返回空串。
 
@@ -241,6 +273,11 @@ def execute(task_no, task_text):
             store.set_subtask(sub_no, "执行中")
             store.open_execution(sub_no, task_no, s["role"])
             try:
+                size0 = body_p.stat().st_size        # 核盘基线：执行前产出文件大小
+            except OSError:
+                size0 = 0
+            t_exec = time.time()
+            try:
                 text, usage = runner.run_headless_task(_flat(spec["prompt"]), EXEC_TIMEOUT, act=sub_no)
             except Exception:
                 text, usage = "", None
@@ -248,6 +285,13 @@ def execute(task_no, task_text):
                 return
             raw = (text or "").strip()
             text = _meaningful_reply(text)   # 产出校验：过短/乱码 → 不予采信（T-006 事故教训）
+            if not text:
+                # 无文本输出先核盘：落盘了就不该判阻塞（T-007-S1 已完成 25 个文件写入，
+                # 只因 headless 期末没打印文本被判阻塞）。核盘成立即按完成处理。
+                ev = _landed_evidence(body_p, size0, t_exec)
+                if ev:
+                    text = ("【headless 未返回最终文本；核盘确认本轮产出已落盘，按完成处理】\n"
+                            + "\n".join("- " + x for x in ev))
             if text:
                 with open(body_p, "a", encoding="utf-8") as fh:          # 完成回报（唯一的子任务产出文件）
                     fh.write("\n\n## 完成回报（控制台自动执行 %s）\n\n%s\n" % (sub_no, text))

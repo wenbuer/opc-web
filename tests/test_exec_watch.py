@@ -9,7 +9,9 @@ import json
 import os
 import time
 import types
+import os
 import sys
+import tempfile
 import unittest
 import shutil
 from pathlib import Path
@@ -18,7 +20,7 @@ import zstandard as zstd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from opc_web import config, runner  # noqa: E402
+from opc_web import chain, config, runner  # noqa: E402
 
 
 def _zst_write(path: Path, events: list):
@@ -158,6 +160,44 @@ class TestWatchSession(unittest.TestCase):
                 return 0      # 立即结束：只应完成"找不到匹配会话"的静默退出
         runner._watch_session(self._act, _P(), time.time() - 30, time.monotonic() - 30)
         self.assertNotIn(self._act, runner.exec_state())
+
+
+class TestLandedEvidence(unittest.TestCase):
+    """headless 无输出时的核盘：落盘了就不判阻塞（T-007-S1 实际完成却被判阻塞）。"""
+
+    def setUp(self):
+        self._tmp = Path(tempfile.mkdtemp(prefix="landed-"))
+        self._old_root = config.ROOT
+        config.ROOT = self._tmp
+        (self._tmp / "项目").mkdir()
+
+    def tearDown(self):
+        config.ROOT = self._old_root
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def test_evidence_from_report_growth_and_project_files(self):
+        body = self._tmp / "T-007-S1-report.md"
+        body.write_text("骨架\n" * 2, encoding="utf-8")
+        size0 = body.stat().st_size
+        body.write_text("骨架\n" * 20, encoding="utf-8")          # 本轮写入
+        (self._tmp / "项目" / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        ev = chain._landed_evidence(body, size0, time.time() - 120)
+        self.assertTrue(any("回报文件已写入" in x for x in ev))
+        self.assertTrue(any("《项目/》" in x for x in ev))
+
+    def test_no_evidence_when_nothing_landed(self):
+        body = self._tmp / "T-007-S1-report.md"
+        body.write_text("骨架\n", encoding="utf-8")
+        old = self._tmp / "项目" / "old.py"
+        old.write_text("pass\n", encoding="utf-8")
+        past = time.time() - 86400
+        os.utime(old, (past, past))                                 # 旧文件不算本轮落盘
+        ev = chain._landed_evidence(body, body.stat().st_size, time.time() - 60)
+        self.assertEqual(ev, [])
+
+    def test_missing_report_file_does_not_raise(self):
+        ev = chain._landed_evidence(self._tmp / "nope.md", 0, time.time())
+        self.assertEqual(ev, [])
 
 
 if __name__ == "__main__":
