@@ -331,22 +331,6 @@
       });
     }).catch(function(e){ if (fb) fb.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
   }
-  function showRoleFile(rel, code){
-    var fb = $("roleFilesBody");
-    var ft = $("roleFilesTitle");
-    if (ft) ft.textContent = roleName(code) + " · " + rel.split("/").pop();
-    if (fb) fb.innerHTML = "<div class='placeholder'>加载中…</div>";
-    api("/api/md?rel=" + encodeURIComponent(rel)).then(function(j){
-      if (!j || !j.ok){ if (fb) fb.innerHTML = "<div class='placeholder'>读取失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
-      var go = "<div class='back-bar'><a href='javascript:void(0)' id='backToFiles'>← 返回产物列表</a></div>";
-      var body = "<div class='role-card-doc'>" + renderMd(j.text || "") + "</div>";
-      var wrap = document.createElement("div");
-      wrap.innerHTML = go + body;
-      var back = wrap.querySelector("#backToFiles");
-      if (back) back.addEventListener("click", function(){ if (ft) ft.textContent = roleName(code); renderRoleList(code); });
-      if (fb){ fb.innerHTML = ""; fb.appendChild(wrap); }
-    }).catch(function(e){ if (fb) fb.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
-  }
 
   function renderTimeline(events, msg){
     var box = $("timeline");
