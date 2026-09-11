@@ -1189,9 +1189,17 @@
       box.innerHTML = "<div class='placeholder'>" + (q || state.activeNo ? "没有匹配的子任务" : "暂无子任务 —— 下达任务后 R1 拆解即出现") + "</div>";
       return;
     }
+    box.className = "board";
+    box.style.gridTemplateColumns = "";
     var buckets = {};
     BOARD_COLS.forEach(function(c){ buckets[c.key] = []; });
     rows.forEach(function(x){ buckets[boardColOf(x.st)].push(x); });
+    /* 待派/已派/阻塞都是 0 = 没有任何东西在流动 → 看板这个形态本身就不合适
+       （只剩完成列有数据，四列等宽下挤在 1/4 宽里）。换成「最近完成」列表。 */
+    if (!buckets["待派"].length && !buckets["已派"].length && !buckets["阻塞"].length){
+      boardRecent(buckets["完成"], box, rows.length);
+      return;
+    }
     /* 未点任务且未搜索 = 全局总览：每列倒序（最新在前），最多显示 5 张卡，其余收进 +N 提示 */
     if (!state.activeNo && !q){
       BOARD_COLS.forEach(function(c){
@@ -1226,6 +1234,42 @@
       col.appendChild(list);
       box.appendChild(col);
     });
+  }
+  /* 全部静止时的形态：按完成时间倒序，一行一个子任务。
+     看板看「正在流动」，列表看「最近发生了什么」—— 两种状态不该用同一种图。 */
+  function boardRecent(list, box, total){
+    box.className = "board list-mode";
+    box.innerHTML = "";
+    var wrap = document.createElement("div");
+    wrap.className = "bd-recent";
+    var head = document.createElement("div");
+    head.className = "br-head";
+    head.innerHTML = "<span>最近完成</span><em>共 " + total + " 个子任务</em>";
+    wrap.appendChild(head);
+    var arr = list.slice().sort(function(a, b){
+      return String(b.lastStarted || "").localeCompare(String(a.lastStarted || ""));
+    }).slice(0, 30);
+    arr.forEach(function(x){
+      var partial = String(x.st || "").indexOf("部分") >= 0;
+      var el = document.createElement("div");
+      el.className = "br-row" + (state.activeSub === x.no ? " sel" : "");
+      el.innerHTML = "<span class='br-time'>"
+        + esc(String(x.lastStarted || "").replace("T", " ").slice(5, 16)) + "</span>"
+        + "<span class='br-no'>" + esc(x.no) + "</span>"
+        + "<span class='br-sub'>" + esc(x.sub) + "</span>"
+        + (partial ? "<span class='bc-tag partial'>部分</span>" : "")
+        + "<span class='br-role'>" + esc(x.role) + " " + esc(roleName(x.role)) + "</span>";
+      el.title = "期望产出：" + (x.expect || "—");
+      el.addEventListener("click", function(){ showSubOutput(x); });
+      wrap.appendChild(el);
+    });
+    if (list.length > arr.length){
+      var m = document.createElement("div");
+      m.className = "bd-more";
+      m.textContent = "… 更早还有 " + (list.length - arr.length) + " 条 · 点任务看全部";
+      wrap.appendChild(m);
+    }
+    box.appendChild(wrap);
   }
   function boardCard(x){
     var el = document.createElement("div");

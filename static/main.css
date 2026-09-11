@@ -1281,6 +1281,21 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .tok-bar.alt.in{background:linear-gradient(180deg,#a78bfa,#7c5cf0)}
 .tok-bar.alt.out{background:linear-gradient(180deg,#e9a6f5,#a855c7)}
 
+/* ===== 全部静止时的「最近完成」列表（替代看板） ===== */
+.board.list-mode{grid-template-columns:minmax(0,1fr)}
+.bd-recent{grid-column:1/-1;min-height:0;overflow-y:auto;border:1px solid var(--line);border-radius:9px;padding:6px 8px}
+.br-head{display:flex;justify-content:space-between;align-items:baseline;padding:3px 6px 8px;margin-bottom:4px;
+  border-bottom:1px solid var(--line);font-size:11px;color:var(--ok)}
+.br-head em{font-style:normal;font-family:var(--mono);font-size:10px;color:var(--faint)}
+.br-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:7px;cursor:pointer;
+  border-left:2px solid transparent;font-size:11px}
+.br-row:hover{background:#dde7f2}
+.br-row.sel{border-left-color:var(--gold);background:rgba(2,132,199,.10)}
+.br-time{flex:none;width:74px;font-family:var(--mono);font-size:10px;color:var(--faint)}
+.br-no{flex:none;font-family:var(--mono);font-size:10.5px}
+.br-sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.br-role{flex:none;width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--dim);text-align:right}
+:root[data-theme="dark"] .br-row:hover{background:#22304f}
 .bd-more{font-size:9px;color:var(--faint);text-align:center;padding:6px 2px;border:1px dashed var(--line);border-radius:6px}
 /* 工作台调度状态条 → 面板底部 footer */
 .wb-footer{flex:none;margin:10px 0 2px;padding-top:8px;border-top:1px dashed var(--line2)}
