@@ -536,13 +536,6 @@
     document.querySelectorAll(".dq-row").forEach(function(r){ r.classList.remove("sel"); });
     if (row) row.classList.add("sel");
     var box = $("taskOut");
-    if (box && !box.dataset.logBound){       // 委托一次：执行历史里的子任务号点开完整运行日志
-      box.dataset.logBound = "1";
-      box.addEventListener("click", function(e){
-        var t = e.target;
-        if (t && t.classList && t.classList.contains("ex-log")) openRunLog(t.getAttribute("data-sub"));
-      });
-    }
     box.innerHTML = "<div class='placeholder'>加载任务 " + esc(no) + " 的输出…</div>";
     api("/api/task-output?no=" + encodeURIComponent(no)).then(function(j){
       if (!j || !j.ok){ box.innerHTML = "<div class='placeholder'>读取失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
@@ -555,7 +548,7 @@
             var done = !!e.result;
             var cls = !done ? "run" : (e.result === "完成" ? "ok" : (e.result === "部分" ? "warn" : "bad"));
             return "<div class='exec-row " + cls + "'>"
-              + "<span class='ex-id ex-log' data-sub='" + esc(e.id) + "' title='查看完整运行日志（思考 / 工具 / 输出全文）'>" + esc(e.id) + "</span>"
+              + "<span class='ex-id'>" + esc(e.id) + "</span>"
               + "<span class='ex-role'>" + esc(e.role) + "</span>"
               + "<span class='ex-time'>" + esc(fmtTs(e.started_at)) + (e.ended_at ? " → " + esc(fmtTs(e.ended_at)) : " → 进行中") + "</span>"
               + "<em class='ex-st'>" + esc(e.result || "执行中") + "</em>"
@@ -585,7 +578,8 @@
       box.querySelectorAll(".to-cap").forEach(function(f){
         f.addEventListener("click", function(){
           var rel = f.getAttribute("data-rel");
-          box.innerHTML = "<div class='placeholder'>加载 " + esc(rel) + " 全文…</div>";
+          gotoWsFile(rel);            // 跳到「项目文件」页打开原文
+          return;                     // 就地预览不再走（下面那段留着不影响）
           api("/api/md?rel=" + encodeURIComponent(rel)).then(function(r){
             if (r && r.ok){
               box.innerHTML = "<div class='to-head'><a href='javascript:void(0)' id='toBack'>← 返回任务输出</a> <span>" + esc(rel.split("/").pop()) + "</span></div>"
@@ -1821,6 +1815,20 @@
   }
 
   /* ================= 04 项目文件：各角色工作区（按角色/任务筛选；md 渲染、文本 txt 查看、不可读不放行） ================= */
+  /* 跳到「项目文件」页并定位打开某个文件：角色档位由 rel 推出来
+     （工作区/<角色名>/… → 角色名；项目/… → 项目档位）。 */
+  function wsRoleOfRel(rel){
+    var p = String(rel || "").split("/");
+    if (p[0] === "项目") return "项目";
+    if (p[0] === "工作区" && p.length > 2) return p[1];
+    return "";
+  }
+  function gotoWsFile(rel){
+    pendingWsRole = wsRoleOfRel(rel);
+    pendingWsFile = rel;
+    var tab = document.querySelector('.tab[data-view="wsfiles"]');
+    if (tab) tab.click(); else loadWsFiles();
+  }
   var wsFiles = [], wsRole = "", wsTask = "", pendingWsRole = "", pendingWsFile = ""; function gotoRoleFiles(role){ pendingWsRole = role; var tab = document.querySelector('.tab[data-view="wsfiles"]'); if (tab){ tab.click(); } else { document.querySelectorAll(".view").forEach(function(x){ x.classList.remove("active"); }); var v = $("view-wsfiles"); if (v) v.classList.add("active"); loadWsFiles(); } }
   function wsFmtSize(n){
     n = Number(n) || 0;
@@ -2667,7 +2675,8 @@
         + fmtTok(tIn + aIn) + "</b>（其中缓存命中 <b>" + fmtTok(cacheAll) + "</b>，"
         + Math.round(cacheAll / inAll * 100) + "%）· 总输出 <b>" + fmtTok(tOut + aOut) + "</b> · 输入:输出 "
         + Math.round((tOut + aOut) / inAll * 100) + "%";
-      var bars = names.map(function(t){
+      var altBars = "";
+      var tCol = names.map(function(t){
         var v = byTask[t];
         var fresh = Math.max(0, v.inn - v.cache);
         var hFresh = Math.max(2, Math.round(fresh / max * 180));
@@ -2681,12 +2690,13 @@
           + "<span class='tok-bar out' style='height:" + hOut + "px' title='" + esc(t) + " 输出 " + fmtTok(v.out) + "'></span>"
           + "</div><div class='tok-lab'>" + esc(t) + "</div><div class='tok-val'>" + fmtTok(v.inn + v.out) + "</div></div>";
       }).join("");
+      var bars = altBars + tCol;                   // 临时会话排最前：它是唯一特殊的一组
       if (aIn || aOut){
         var aCache = asst.cache || 0, aFresh = Math.max(0, aIn - aCache);
         var ahIn = Math.max(2, Math.round(aFresh / max * 180));
         var ahCache = Math.round(aCache / max * 180);
         var ahOut = Math.max(2, Math.round(aOut / max * 180));
-        bars += "<div class='tok-col alt'><div class='tok-bars'><span class='tok-stack'>"
+        altBars = "<div class='tok-col alt'><div class='tok-bars'><span class='tok-stack'>"
           + "<span class='tok-bar in alt' style='height:" + ahIn + "px' title='临时会话 新输入 " + fmtTok(aFresh) + "'></span>"
           + (ahCache ? "<span class='tok-bar cache alt' style='height:" + ahCache + "px' title='临时会话 缓存命中 " + fmtTok(aCache) + "'></span>" : "")
           + "</span>"
