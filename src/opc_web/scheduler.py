@@ -903,6 +903,33 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
         return None
 
 
+def clean_piyuetai(no: str) -> int:
+    """从《批阅台》移除某任务的条目块（删除任务时调用，避免留下指向已删任务的记录）。
+
+    块的边界只认标题：从「### …｜任务 T-xxx…」起到下一个标题（# 起首的任意级）之前。
+    任务号是唯一可靠的锚 —— 按行号或固定偏移切块，历史上吃过亏（内容一改就劈错段）。
+    只删标题里点了这个任务号的块，其余条目一个字不动。"""
+    p = config.ROOT / config.PIYUETAI_REL
+    if not p.is_file():
+        return 0
+    lines = config.read_text(p).split(chr(10))
+    pat = re.compile(r"^#{2,4}\s.*任务\s*%s(?!\d)" % re.escape(no))
+    out, i, removed = [], 0, 0
+    while i < len(lines):
+        if pat.match(lines[i].strip()):
+            removed += 1
+            i += 1
+            while i < len(lines) and not re.match(r"^#{1,4}\s", lines[i]):
+                i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    if removed:
+        txt = re.sub(r"\n{3,}", chr(10) + chr(10), chr(10).join(out))
+        p.write_text(txt, encoding="utf-8")
+    return removed
+
+
 def clean_task_files(no: str) -> int:
     """删除某任务在工作区/公共项目区的产出文件（子任务正文 / .meta.json / 汇总 / 回报，含已归档/）。
 

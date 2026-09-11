@@ -354,9 +354,12 @@ class Handler(BaseHTTPRequestHandler):
         rep_n = len(store.reports(no))            # 删除将连带移除回报/批阅依据
         store.delete_task(no)
         removed = scheduler.clean_task_files(no)
-        return {"ok": True, "no": no, "removedFiles": removed, "queue": self._queue_rows(),
+        piyue_n = scheduler.clean_piyuetai(no)     # 批阅台里该任务的条目块一并清掉
+        return {"ok": True, "no": no, "removedFiles": removed, "removedPiyue": piyue_n,
+                "queue": self._queue_rows(),
                 "msg": ("已删除任务 " + no + (" · 连带移除 " + str(rep_n) + " 条回报/批阅记录" if rep_n else "")
-                        + ((" · 清理工作区文件 " + str(removed) + " 个") if removed else ""))}
+                        + ((" · 清理工作区文件 " + str(removed) + " 个") if removed else "")
+                        + ((" · 清理批阅台条目 " + str(piyue_n) + " 条") if piyue_n else ""))}
 
     def _post_plan_pause(self):
         body = self._body() or {}
