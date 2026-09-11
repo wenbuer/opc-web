@@ -1201,14 +1201,9 @@
       });
     }
     box.innerHTML = "";
-    /* 有内容的列分宽度，空列收成窄条 —— 四列等宽时 22:0:0:0 的信息量会挤在 1/4 宽里。
-       空列不隐藏：阻塞 0 本身就是「没有卡住的」这个信息。 */
-    box.style.gridTemplateColumns = BOARD_COLS.map(function(c){
-      return buckets[c.key].length ? "minmax(0,1fr)" : "56px";
-    }).join(" ");
     BOARD_COLS.forEach(function(c){
       var col = document.createElement("div");
-      col.className = "bd-col " + c.cls + (buckets[c.key].length ? "" : " closed");
+      col.className = "bd-col " + c.cls;
       var head = document.createElement("div");
       head.className = "bd-head";
       var moreN = buckets[c.key].more || 0;
@@ -1234,28 +1229,17 @@
   }
   function boardCard(x){
     var el = document.createElement("div");
+    el.className = "bd-card" + (state.activeSub === x.no ? " sel" : "");
     var partial = String(x.st || "").indexOf("部分") >= 0;
-    var done = partial || String(x.st || "").indexOf("完成") >= 0;
-    el.className = "bd-card" + (done ? " slim" : "") + (state.activeSub === x.no ? " sel" : "");
     var tries = x.tries || 0;
-    var stamp = x.lastStarted ? esc(String(x.lastStarted).replace("T", " ").slice(5, 16)) : "";
-    if (done){
-      /* 完成态压成单行：描述是「要做什么」，完成之后不关心了 —— 进 title 悬浮 */
-      el.innerHTML = "<div class='bc-line'><span class='bc-no'>" + esc(x.no) + "</span>"
-        + (partial ? "<span class='bc-tag partial'>部分</span>" : "")
-        + (tries > 1 ? "<span class='bc-tag retry'>×" + tries + "</span>" : "")
-        + "<span class='bc-role'>" + esc(x.role) + " " + esc(roleName(x.role)) + "</span>"
-        + (stamp ? "<em>" + stamp + "</em>" : "") + "</div>";
-    } else {
-      el.innerHTML = "<div class='bc-top'><span class='bc-no'>" + esc(x.no) + "</span>"
-        + (partial ? "<span class='bc-tag partial'>部分</span>" : "")
-        + (tries > 1 ? "<span class='bc-tag retry'>第 " + tries + " 次</span>" : "")
-        + "</div><div class='bc-sub'>" + esc(x.sub) + "</div>"
-        + "<div class='bc-foot'><span class='bc-role'>" + esc(x.role) + " " + esc(roleName(x.role)) + "</span>"
-        + (stamp ? "<em>" + stamp + "</em>" : "")
-        + "</div>";
-    }
-    el.title = esc(x.sub || "") + "\n期望产出：" + (x.expect || "—");
+    el.innerHTML = "<div class='bc-top'><span class='bc-no'>" + esc(x.no) + "</span>"
+      + (partial ? "<span class='bc-tag partial'>部分</span>" : "")
+      + (tries > 1 ? "<span class='bc-tag retry'>第 " + tries + " 次</span>" : "")
+      + "</div><div class='bc-sub'>" + esc(x.sub) + "</div>"
+      + "<div class='bc-foot'><span class='bc-role'>" + esc(x.role) + " " + esc(roleName(x.role)) + "</span>"
+      + (x.lastStarted ? "<em>" + esc(String(x.lastStarted).replace("T", " ").slice(5, 16)) + "</em>" : "")
+      + "</div>";
+    el.title = "期望产出：" + (x.expect || "—");
     el.addEventListener("click", function(){
       state.activeSub = x.no;
       showSubOutput(x);
