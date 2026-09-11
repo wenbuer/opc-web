@@ -1384,22 +1384,6 @@
   function runVisible(sub){ return !RUN_FOCUS || !sub || sub === RUN_FOCUS; }
   function runFocusSub(sub){
     RUN_FOCUS = sub || null;
-    var head = document.querySelector(".live-head");
-    var tip = $("runFocusTip");
-    if (RUN_FOCUS){
-      if (!tip && head){
-        tip = document.createElement("span");
-        tip.id = "runFocusTip";
-        tip.className = "run-focus";
-        tip.innerHTML = "只看 <b></b><a href='javascript:void(0)' title='显示全部子任务'>全部</a>";
-        tip.querySelector("a").addEventListener("click", function(){ runFocusSub(null); });
-        // 插在全屏按钮**之前**：live-head 是 space-between 两栏布局，
-        // 直接 append 会把全屏按钮挤成第三个元素顶出去
-        var fs = $("runFsBtn");
-        if (fs) head.insertBefore(tip, fs); else head.appendChild(tip);
-      }
-      if (tip){ tip.querySelector("b").textContent = RUN_FOCUS; tip.hidden = false; }
-    } else if (tip){ tip.hidden = true; }
     var box = runSecBody(false);
     if (box){
       Array.prototype.forEach.call(box.children, function(el){
@@ -1463,6 +1447,13 @@
     var d = ev.data || {};
     var body;
     if (type === "run/start"){
+      // 新任务开始：上一条任务的聚焦作废，否则新子任务的事件会被整段挡掉
+      if (RUN_FOCUS){
+        RUN_FOCUS = null;
+        Array.prototype.forEach.call(lg.querySelectorAll(".run-sec-body > *"), function(el){
+          el.style.display = "";
+        });
+      }
       body = newRunSec(ev);
       var b = document.createElement("div");
       b.className = "run-banner";
