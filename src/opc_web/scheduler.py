@@ -224,14 +224,18 @@ def r1_archive() -> dict:
             if (d / (f.stem + ".meta.json")).exists():
                 continue
             ledger.append(f.relative_to(config.WORKSPACE_ROOT).as_posix())
-    # 任务级回填：子任务全部完成 → 任务完成
+    # 任务级回填：子任务全部完成 → 任务完成。
+    # 只在状态真的变了才进 done：否则每归档一次就把所有历史任务重报一遍，
+    # 日志写着「自动归档入库 13 项」而其中只有 1 项是这次的。
+    cur = {str(t.get("no")): str(t.get("status") or "") for t in store.tasks()}
     by_task = {}
     for s in store.subtasks():
         by_task.setdefault(s["taskNo"], []).append(s["st"])
     for task_no, sts in by_task.items():
         if sts and all(x == "完成" for x in sts):
+            if cur.get(str(task_no)) != "完成":
+                done.append("%s → 任务完成" % task_no)
             store.set_task(task_no, "完成", "%d/%d 子任务完成" % (len(sts), len(sts)))
-            done.append("%s → 任务完成" % task_no)
     out = {"archived": done, "skipped": skipped, "ledger": ledger}
     if done:
         agent.log_schedule("R1 自动归档",
