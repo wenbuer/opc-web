@@ -550,6 +550,7 @@
   function showTaskOutput(no, row){
     state.activeNo = no;
     state.activeSub = null;
+    runFocusSub(null);
     showCurTask(no);
     renderAct(no);
     renderBoard();                    // 看板跟随选中任务筛选
@@ -624,6 +625,7 @@
   function showSubOutput(x){
     state.activeNo = x.taskNo;
     state.activeSub = x.no;
+    runFocusSub(x.no);            // 实时事件跟着看板选中的子任务走
     showCurTask(x.taskNo);
     renderAct(x.taskNo);
     renderBoard();
@@ -1377,6 +1379,31 @@
      心跳（exec/progress）只报「最近在干什么」，轨迹（exec/trace）报全文。
      同屏只展开最新一块 —— 正在跑的那个看得见，历史块收起来，点块头可展开。 */
   var RT_KIND = { reasoning: "思考", tool: "调用工具", result: "工具返回", text: "输出", final: "最终输出" };
+  /* 实时事件跟着看板选中的子任务走：聚焦某子任务时只留它自己（与不带 sub 的任务级事件） */
+  var RUN_FOCUS = null;
+  function runVisible(sub){ return !RUN_FOCUS || !sub || sub === RUN_FOCUS; }
+  function runFocusSub(sub){
+    RUN_FOCUS = sub || null;
+    var head = document.querySelector(".live-head");
+    var tip = $("runFocusTip");
+    if (RUN_FOCUS){
+      if (!tip && head){
+        tip = document.createElement("span");
+        tip.id = "runFocusTip";
+        tip.className = "run-focus";
+        tip.innerHTML = "只看 <b></b><a href='javascript:void(0)'>显示全部</a>";
+        tip.querySelector("a").addEventListener("click", function(){ runFocusSub(null); });
+        head.appendChild(tip);
+      }
+      if (tip){ tip.querySelector("b").textContent = RUN_FOCUS; tip.hidden = false; }
+    } else if (tip){ tip.hidden = true; }
+    var box = runSecBody(false);
+    if (box){
+      Array.prototype.forEach.call(box.children, function(el){
+        el.style.display = runVisible(el.getAttribute("data-sub")) ? "" : "none";
+      });
+    }
+  }
   function runTraceBlock(body, sub){
     var el = body.querySelector(".run-trace[data-sub='" + sub + "']");
     if (el) return el;
@@ -1397,6 +1424,7 @@
       x.classList.remove("open");
       var a = x.querySelector(".rt-arrow"); if (a) a.textContent = "▸";
     });
+    el.style.display = runVisible(sub) ? "" : "none";
     body.appendChild(el);
     return el;
   }
@@ -1441,19 +1469,30 @@
       body = runSecBody(true);
     }
     if (!body) return;
+    var esub = String(ev.sub || d.sub || "");
     if (type === "step/start"){
-      body.appendChild(runStepEl(d.turn, d.step, ""));
-      body.appendChild(runOutEl(d.turn, d.step));
+      var s1 = runStepEl(d.turn, d.step, "");
+      s1.setAttribute("data-sub", esub);
+      s1.style.display = runVisible(esub) ? "" : "none";
+      body.appendChild(s1);
+      var o1 = runOutEl(d.turn, d.step);
+      o1.setAttribute("data-sub", esub);
+      o1.style.display = runVisible(esub) ? "" : "none";
+      body.appendChild(o1);
     } else if (type === "assistant/chunk"){
       if (d.text != null){
         var ob = runLastOut();
         if (!ob){ ob = runOutEl("", ""); body.appendChild(ob); }
+        if (!ob.getAttribute("data-sub") && esub) ob.setAttribute("data-sub", esub);
         var span = document.createElement("span");
         span.textContent = d.text;
         ob.appendChild(span);
       }
     } else if (type === "step/end"){
-      body.appendChild(runStepEl(d.turn, d.step, "步骤完成"));
+      var s2 = runStepEl(d.turn, d.step, "步骤完成");
+      s2.setAttribute("data-sub", esub);
+      s2.style.display = runVisible(esub) ? "" : "none";
+      body.appendChild(s2);
     } else if (type === "run/end"){
       /* 不截断：全文进 DOM，超长由 .run-out 折叠 + 「展开全部」承载 */
       // 跑完把每块轨迹的块头从「运行中 [..]」改回「N 块 · M 字」

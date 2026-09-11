@@ -309,8 +309,9 @@ def execute(task_no, task_text, direct=None):
             if not _alive(task_no):          # 任务已被删除/终止 → 提前退出，不再执行剩余子任务
                 return
             set_state(tag="执行 %d/%d：%s %s" % (i + 1, total, s["role"], s["sub"]))
-            runner.emit({"type": "step/start", "data": {"turn": i + 2, "step": 1}})
-            runner.emit({"type": "assistant/chunk",
+            # 事件带 sub：实时事件面板据此跟着看板上选中的子任务走
+            runner.emit({"type": "step/start", "sub": sub_no, "data": {"turn": i + 2, "step": 1}})
+            runner.emit({"type": "assistant/chunk", "sub": sub_no,
                          "data": {"text": "自动执行 %s（%s）：%s —— headless 直跑" % (sub_no, s["role"], s["sub"])}})
             spec = agent.subtask_spec(s["role"], "执行子任务：%s。期望产出：%s。%s" % (s["sub"], s["expect"], _decision_block(task_text)),
                                       expect=s["expect"], sub_no=sub_no)
@@ -358,7 +359,7 @@ def execute(task_no, task_text, direct=None):
                         "text": "⚠ %s 元数据更新失败：%s" % (sub_no, e)}})
                 store.settle_execution(sub_no, "完成")
                 ok_cnt += 1
-                runner.emit({"type": "assistant/chunk",
+                runner.emit({"type": "assistant/chunk", "sub": sub_no,
                              "data": {"text": "✔ %s（%s）执行完成，产出回报已写入：%s（归档时改名 output）" % (sub_no, s["role"], spec["output"])}})
             else:
                 reason = (("headless 回报无效：原始输出 %d 字符，过短或含乱码（疑似瞬时故障），不予采信" % len(raw))
@@ -377,13 +378,13 @@ def execute(task_no, task_text, direct=None):
                         "text": "⚠ %s 元数据更新失败：%s" % (sub_no, e)}})
                 store.settle_execution(sub_no, "阻塞", reason[:40])
                 fail.append(sub_no)
-                runner.emit({"type": "assistant/chunk",
+                runner.emit({"type": "assistant/chunk", "sub": sub_no,
                              "data": {"text": "✗ %s %s（已置阻塞，可点名重试）" % (sub_no, reason)}})
             agent.log_schedule("自动执行 %s" % sub_no,
                                "角色 %s %s 执行子任务：%s\n产出文件：%s\n结果：%s"
                                % (s["role"], spec["roleName"], s["sub"], spec["output"],
                                   "完成" if text else "阻塞"))
-            runner.emit({"type": "step/end", "data": {"turn": i + 2, "step": 1,
+            runner.emit({"type": "step/end", "sub": sub_no, "data": {"turn": i + 2, "step": 1,
                         "reason": {"kind": "完成" if text else "阻塞"}}})
         # 归档入库：已完成/阻塞子任务回报落库、正文与元数据移入 已归档/（幂等，会顺带做任务级回填）
         try:
