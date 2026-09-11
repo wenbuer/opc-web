@@ -217,8 +217,13 @@ class Handler(BaseHTTPRequestHandler):
 
         事件流里的轨迹块有内存上限，超过的部分只在落盘文件里 —— 这里读的就是文件全文。"""
         sub = str(self._qs().get("sub", [""])[0] or "").strip()
+        task = str(self._qs().get("task", [""])[0] or "").strip()
+        if task:
+            text = runner.read_trace_task(task)
+            return {"ok": True, "task": task, "text": text, "size": len(text),
+                    "msg": "" if text else "这个任务还没有运行日志"}
         if not sub:
-            raise ApiError(400, "缺少子任务编号 sub")
+            raise ApiError(400, "缺少子任务编号 sub（或任务号 task）")
         text = runner.read_trace(sub)
         return {"ok": True, "sub": sub, "text": text, "size": len(text),
                 "msg": "" if text else "还没有这个子任务的运行日志"}
@@ -240,6 +245,9 @@ class Handler(BaseHTTPRequestHandler):
                               "entries": knowledge.kb_entries()})
         elif url == "/api/md":
             self._ok(self._get_md, err=400)
+        elif url == "/api/runlogs":
+            self._ok(lambda: {"ok": True, "rows": runner.trace_list(
+                str(self._qs().get("role", [""])[0] or "").strip())})
         elif url == "/api/runlog":
             self._ok(self._get_runlog)
         elif url == "/api/pending":

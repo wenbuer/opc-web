@@ -675,6 +675,9 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 .rc-chat{position:fixed;right:22px;bottom:96px;width:min(420px,92vw);max-height:min(520px,70vh);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line2);border-radius:14px;box-shadow:0 18px 50px rgba(15,23,42,.32);z-index:1250;overflow:hidden}
 .rc-chat[hidden]{display:none}
 .rc-dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:none}
+.rc-rec{flex:none;font-size:10px;padding:3px 9px;border:1px solid var(--line2);border-radius:6px;background:transparent;color:var(--dim);cursor:pointer}
+.rc-rec:hover{color:var(--txt);border-color:var(--gold)}
+.to-head .to-log{float:right;margin-top:-2px}
 .role-card .rc-del{position:absolute;right:8px;top:50%;transform:translateY(calc(-50% + 30px));background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:7px;padding:3px 8px;font-size:12px;cursor:pointer;line-height:1.3;font-weight:600;opacity:.85;transition:all .15s ease}
 .role-card .rc-del:hover{opacity:1;color:var(--red-bright);border-color:rgba(239,68,68,.6);background:rgba(239,68,68,.1);box-shadow:0 2px 10px rgba(239,68,68,.25);transform:translateY(calc(-50% + 30px)) scale(1.05)}
 .role-card .rc-cur{padding-right:54px}
