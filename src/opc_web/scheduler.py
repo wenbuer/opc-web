@@ -1266,10 +1266,15 @@ def sub_output(sub_no: str) -> dict:
         return {}
     for d in _wb_role_dirs():
         for base in (d, d / "已归档"):
-            p = base / (sub_no + "-report.md")
-            if not p.exists():
-                p = base / (sub_no + ".md")
-            if not p.exists():
+            # 归档时正文会从 {sub}-report.md 改名成 {sub}-output.md，三个名字都要认 ——
+            # 只认前两个的话，任务一归档（自动发生），点看板上的子任务就必然 404。
+            p = None
+            for nm in (sub_no + "-report.md", sub_no + "-output.md", sub_no + ".md"):
+                cand = base / nm
+                if cand.exists():
+                    p = cand
+                    break
+            if p is None:
                 continue
             meta = {}
             meta_p = base / (sub_no + ".meta.json")
