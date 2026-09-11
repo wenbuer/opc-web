@@ -213,6 +213,7 @@
           <button class="snav-item" data-snav="schedule">④ 定时任务</button>
           <button class="snav-item" data-snav="tokens">⑤ Token 统计</button>
     <button class="snav-item" data-snav="skill">⑥ Skill 导入</button>
+          <button class="snav-item" data-snav="assistant">⑦ R1 助理</button>
         </aside>
         <div class="settings-main">
           <div class="snav-pane active" data-pane="dir">
@@ -328,18 +329,22 @@
             <div class="set-head">任务 Token 统计</div>
             <div class="tok-sum" id="tokSum"></div>
             <div class="tok-chart" id="tokChart"><div class="placeholder">加载中…</div></div>
-            <div class="tok-assistant" id="tokAssistant"></div>
-            <div class="set-note"><b>口径</b> 每个子任务执行时把用量写进 <code>T-xxx-Sn.meta.json</code>（tokensIn = 输入 + 缓存读取，tokensOut = 输出），并记下执行它的引擎与会话标识，统计对不上时能回溯。<br>「临时会话」是 R1 助理悬浮窗里的问答，单独成项，不进任务统计。</div>
-            <div class="set-head" style="margin-top:18px">R1 助理悬浮窗</div>
-            <div class="dock-row">
-              <label class="dock-switch">
-                <input type="checkbox" id="dockOn">
-                <span>开启悬浮窗（右下角常驻）</span>
-              </label>
-              <span class="set-msg" id="dockMsg"></span>
-            </div>
-            <div class="set-note"><b>临时会话</b> 悬浮窗里的问答<b>不进任务流程</b> —— 不建任务、不派角色、不写回报，用量单独记在上面那一项里。R1 会带着项目现状作答（任务概况 / 档案 / 最新简报）。</div>
+            <div class="set-note"><b>口径</b> 每个子任务执行时把用量写进 <code>T-xxx-Sn.meta.json</code>（tokensIn = 输入 + 缓存读取，tokensOut = 输出），并记下执行它的引擎与会话标识，统计对不上时能回溯。<br>R1 助理临时会话的用量不在这里 —— 单列在「⑦ R1 助理」页。</div>
           </div>
+        <div class="snav-pane" data-pane="assistant">
+          <div class="set-head">R1 助理悬浮窗</div>
+          <div class="dock-row">
+            <label class="dock-switch">
+              <input type="checkbox" id="dockOn">
+              <span>开启悬浮窗（右下角常驻）</span>
+            </label>
+            <span class="set-msg" id="dockMsg"></span>
+          </div>
+          <div class="set-note"><b>临时会话</b> 悬浮窗里的问答<b>不进任务流程</b> —— 不建任务、不派角色、不写回报，也不会出现在任务队列里。<br>R1 会带着项目现状作答（任务概况 / 档案数 / 最新简报）；要细节就在问题里点名，它会自己去读文件。</div>
+          <div class="set-head" style="margin-top:18px">临时会话用量</div>
+          <div class="tok-assistant" id="tokAssistant"></div>
+          <div class="set-note"><b>单独记账</b> 这些用量写在《批阅台/临时会话.jsonl》，与任务统计完全分开、互不并入。</div>
+        </div>
         </div>
       </div>
     </section>

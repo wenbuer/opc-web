@@ -2403,6 +2403,7 @@
         if (k === "tokens") loadTokenStats();
         if (k === "skill") loadEngineSkills();
         if (k === "engine") loadEngines();
+        if (k === "assistant") loadTokenStats();     // 顺带刷新临时会话用量那一块
       });
     });
     var sss = $("skillSearch"); if (sss && !sss.dataset.bound){ sss.dataset.bound = "1"; sss.addEventListener("input", renderEngineSkills); }
