@@ -2223,8 +2223,8 @@
     var fab = $("r1Fab"), ava = $("r1Ava");
     if (fab){ fab.innerHTML = R1_SVG; fab.addEventListener("click", function(){ toggleR1Panel(); }); }
     if (ava) ava.innerHTML = R1_SVG;
-    // 右上角 × 直接关闭悬浮窗（不是只收面板）：与设置里的开关同源，关掉即写配置
-    var x = $("r1Close"); if (x) x.addEventListener("click", function(){ setDockOff(); });
+    // 右上角 × 只收起面板；悬浮球一直留在原处（要彻底关掉去「设置 → ⑦ R1 助理」取消勾选）
+    var x = $("r1Close"); if (x) x.addEventListener("click", function(){ showR1Panel(false); });
     var s = $("r1Send"); if (s) s.addEventListener("click", askR1);
     var q = $("r1Q");
     if (q) q.addEventListener("keydown", function(e){
@@ -2270,6 +2270,7 @@
     var st = { on: false, moved: false, sx: 0, sy: 0, ox: 0, oy: 0 };
     function down(e){
       if (e.button !== 0) return;
+      if (e.target && e.target.closest && e.target.closest("button")) return;   // 按的是按钮就别拖
       var r = d.getBoundingClientRect();
       st.on = true; st.moved = false;
       st.sx = e.clientX; st.sy = e.clientY; st.ox = r.left; st.oy = r.top;
@@ -2298,13 +2299,6 @@
     if (fab) fab.addEventListener("click", function(e){
       if (st.moved){ e.preventDefault(); e.stopPropagation(); }
     }, true);
-  }
-
-  /* 关掉悬浮窗：与设置里的开关同源（写配置），两处不会各说各话 */
-  function setDockOff(){
-    applyDock(false, true);
-    var cb = $("dockOn"); if (cb) cb.checked = false;
-    var m = $("dockMsg"); if (m) m.textContent = "已关闭 —— 可在「设置 → ⑦ R1 助理」重新开启";
   }
 
   function applyDock(on, save){
