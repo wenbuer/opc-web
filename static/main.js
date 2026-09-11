@@ -2219,7 +2219,13 @@
 
   function mountDock(){
     var fab = $("r1Fab"), ava = $("r1Ava");
-    if (fab){ fab.innerHTML = R1_SVG; fab.addEventListener("click", function(){ toggleR1Panel(); }); }
+    if (fab){
+      // 光球本体用 CSS 画（呼吸核心 + 漂移光晕 + 刻度环 + 频谱条），
+      // 不再是"把一个图标塞进按钮里"那种做法。
+      fab.innerHTML = "<span class='r1-halo'></span><span class='r1-ring'></span>"
+        + "<span class='r1-wave'><i></i><i></i><i></i><i></i></span>";
+      fab.addEventListener("click", function(){ toggleR1Panel(); });
+    }
     if (ava) ava.innerHTML = R1_SVG;
     // 右上角 × 只收起面板；悬浮球一直留在原处（要彻底关掉去「设置 → ⑦ R1 助理」取消勾选）
     var x = $("r1Close"); if (x) x.addEventListener("click", function(){ showR1Panel(false); });
