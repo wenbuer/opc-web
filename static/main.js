@@ -2461,9 +2461,12 @@
     if (!d) return;
     var grips = [$("r1Fab")].filter(Boolean);   // 只有悬浮球能拖；面板不参与拖动
     var st = { on: false, moved: false, sx: 0, sy: 0, ox: 0, oy: 0 };
-    function down(e){
+    function down(e, grip){
       if (e.button !== 0) return;
-      if (e.target && e.target.closest && e.target.closest("button")) return;   // 按的是按钮就别拖
+      // 按到**别的**按钮（面板上的 × 等）就不拖；悬浮球自己就是 button，
+      // 不能拿「target 是不是 button」当判据 —— 那会把拖动整个挡掉。
+      var b = (e.target && e.target.closest) ? e.target.closest("button") : null;
+      if (b && b !== grip) return;
       var r = d.getBoundingClientRect();
       st.on = true; st.moved = false;
       st.sx = e.clientX; st.sy = e.clientY; st.ox = r.left; st.oy = r.top;
@@ -2485,7 +2488,7 @@
       // click 在 mouseup 之后触发：延后清零，拖动过的那一次就不会被当成点击
       setTimeout(function(){ st.moved = false; }, 0);
     }
-    grips.forEach(function(g){ g.addEventListener("mousedown", down); });
+    grips.forEach(function(g){ g.addEventListener("mousedown", function(e){ down(e, g); }); });
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
     var fab = $("r1Fab");
