@@ -2198,10 +2198,10 @@
   /* 悬浮球里的图形：一个对话气泡 + 三个点。底色与光环由 CSS 给（跟随主题），
      这里只画图形本身 —— 不再是具体的人脸形象。 */
   var R1_SVG = "<svg viewBox='0 0 48 48' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>"
-    + "<path d='M11 13h26a5 5 0 0 1 5 5v11a5 5 0 0 1-5 5H24l-8 7v-7h-5a5 5 0 0 1-5-5V18a5 5 0 0 1 5-5z' fill='#fff' opacity='.96'/>"
-    + "<circle cx='17' cy='23.5' r='2.3' fill='#0b4a7a'/>"
-    + "<circle cx='24' cy='23.5' r='2.3' fill='#0b4a7a'/>"
-    + "<circle cx='31' cy='23.5' r='2.3' fill='#0b4a7a'/>"
+    + "<path d='M11 13h26a5 5 0 0 1 5 5v11a5 5 0 0 1-5 5H24l-8 7v-7h-5a5 5 0 0 1-5-5V18a5 5 0 0 1 5-5z' fill='#43536b'/>"
+    + "<circle cx='17' cy='23.5' r='2.3' fill='#f4f8fc'/>"
+    + "<circle cx='24' cy='23.5' r='2.3' fill='#f4f8fc'/>"
+    + "<circle cx='31' cy='23.5' r='2.3' fill='#f4f8fc'/>"
     + "</svg>";
 
   function fmtTok(n){ return (Number(n) || 0).toLocaleString(); }

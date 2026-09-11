@@ -1525,44 +1525,46 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
      · 频谱 bar —— 中间四条竖条跳动，呼应「说话」
    只有球能拖；面板不参与拖动。 */
 .r1-fab{position:relative;width:56px;height:56px;padding:0;border:none;border-radius:50%;cursor:grab;
-  background:radial-gradient(circle at 34% 28%,#8fd3fb,#0b3f66 72%);
-  box-shadow:0 6px 22px rgba(2,132,199,.34),inset 0 0 16px rgba(150,215,255,.34);
+  /* 银白金属球：左上高光 → 右下渐深，配内外两道阴影做出厚度 */
+  background:radial-gradient(circle at 34% 28%,#ffffff 0%,#e9eff6 36%,#bcc9d9 68%,#8d9cb0 100%);
+  box-shadow:0 6px 20px rgba(15,23,42,.20),0 2px 6px rgba(15,23,42,.12),
+    inset 0 1px 2px rgba(255,255,255,.95),inset 0 -7px 14px rgba(120,140,165,.30);
   animation:r1breathe 3.4s ease-in-out infinite;
   transition:transform .18s ease}
 .r1-fab:hover{transform:translateY(-2px) scale(1.05)}
 .r1-fab:active{cursor:grabbing}
 /* 漂移光晕 */
 .r1-halo{position:absolute;inset:0;border-radius:50%;pointer-events:none;
-  background:radial-gradient(circle at 62% 68%,rgba(170,225,255,.55),transparent 62%);
+  background:radial-gradient(circle at 62% 68%,rgba(255,255,255,.8),transparent 62%);
   animation:r1drift 5.6s ease-in-out infinite alternate}
 /* 旋转刻度环（外虚线 + 内反向细弧） */
 .r1-ring{position:absolute;inset:-6px;border-radius:50%;pointer-events:none;
-  border:1.5px dashed rgba(143,211,251,.65);animation:r1spin 9s linear infinite}
+  border:1.5px dashed rgba(176,193,213,.85);animation:r1spin 9s linear infinite}
 .r1-ring::after{content:"";position:absolute;inset:4px;border-radius:50%;
-  border:1px solid rgba(143,211,251,.4);border-top-color:transparent;border-bottom-color:transparent;
+  border:1px solid rgba(176,193,213,.5);border-top-color:transparent;border-bottom-color:transparent;
   animation:r1spin 4.5s linear infinite reverse}
 /* 语音频谱 */
 .r1-wave{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   gap:3px;pointer-events:none}
-.r1-wave i{display:block;width:3px;height:8px;border-radius:2px;background:#eaf7ff;
-  box-shadow:0 0 6px rgba(180,225,255,.9);animation:r1bar 1.15s ease-in-out infinite}
+.r1-wave i{display:block;width:3px;height:8px;border-radius:2px;background:#5c6c82;
+  box-shadow:0 0 5px rgba(255,255,255,.85);animation:r1bar 1.15s ease-in-out infinite}
 .r1-wave i:nth-child(2){animation-delay:.13s}
 .r1-wave i:nth-child(3){animation-delay:.26s}
 .r1-wave i:nth-child(4){animation-delay:.39s}
 @keyframes r1breathe{
-  0%,100%{box-shadow:0 6px 22px rgba(2,132,199,.32),0 0 0 0 rgba(2,132,199,.42),inset 0 0 16px rgba(150,215,255,.32)}
-  70%{box-shadow:0 6px 22px rgba(2,132,199,.32),0 0 0 15px rgba(2,132,199,0),inset 0 0 20px rgba(150,215,255,.5)}
-  100%{box-shadow:0 6px 22px rgba(2,132,199,.32),0 0 0 0 rgba(2,132,199,0),inset 0 0 16px rgba(150,215,255,.32)}}
+  0%,100%{box-shadow:0 6px 20px rgba(15,23,42,.20),0 2px 6px rgba(15,23,42,.12),0 0 0 0 rgba(196,214,234,.55),
+    inset 0 1px 2px rgba(255,255,255,.95),inset 0 -7px 14px rgba(120,140,165,.30)}
+  70%{box-shadow:0 6px 20px rgba(15,23,42,.20),0 2px 6px rgba(15,23,42,.12),0 0 0 15px rgba(196,214,234,0),
+    inset 0 1px 2px rgba(255,255,255,.95),inset 0 -7px 14px rgba(120,140,165,.30)}
+  100%{box-shadow:0 6px 20px rgba(15,23,42,.20),0 2px 6px rgba(15,23,42,.12),0 0 0 0 rgba(196,214,234,0),
+    inset 0 1px 2px rgba(255,255,255,.95),inset 0 -7px 14px rgba(120,140,165,.30)}}
 @keyframes r1spin{to{transform:rotate(360deg)}}
 @keyframes r1drift{from{transform:translate(-12%,-10%) scale(.9)}to{transform:translate(12%,10%) scale(1.05)}}
 @keyframes r1bar{0%,100%{height:7px;opacity:.7}50%{height:19px;opacity:1}}
 /* 暗色主题：金色科技球 */
-:root[data-theme="dark"] .r1-fab{background:radial-gradient(circle at 34% 28%,#f9e2a3,#6b4e08 72%);
-  box-shadow:0 6px 22px rgba(0,0,0,.4),inset 0 0 16px rgba(255,230,160,.35)}
-:root[data-theme="dark"] .r1-ring{border-color:rgba(232,183,61,.6)}
-:root[data-theme="dark"] .r1-ring::after{border-color:rgba(232,183,61,.35);border-top-color:transparent;border-bottom-color:transparent}
-:root[data-theme="dark"] .r1-halo{background:radial-gradient(circle at 62% 68%,rgba(255,228,155,.5),transparent 62%)}
-:root[data-theme="dark"] .r1-wave i{background:#fff6de;box-shadow:0 0 6px rgba(255,225,150,.9)}
+/* 暗色主题下同样用银白球：深色底上银白的对比最好，也不再切金色 */
+:root[data-theme="dark"] .r1-fab{box-shadow:0 8px 24px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.35),
+  inset 0 1px 2px rgba(255,255,255,.95),inset 0 -7px 14px rgba(90,105,125,.4)}
 /* 悬停（以及首次露面时）浮出的招呼气泡 */
 .r1-fab::after{content:attr(data-tip);position:absolute;right:64px;top:50%;
   transform:translateY(-50%) translateX(4px);white-space:nowrap;font-size:11px;color:var(--txt);
@@ -1576,8 +1578,7 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
   border-radius:14px;box-shadow:0 18px 50px rgba(15,23,42,.32);overflow:hidden}
 .r1-head{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--line)}
 .r1-ava{width:32px;height:32px;flex:none;border-radius:50%;
-  background-image:radial-gradient(circle at 34% 28%,#6cc0f5,#0b4a7a 74%)}
-:root[data-theme="dark"] .r1-ava{background-image:radial-gradient(circle at 34% 28%,#f7dc90,#7a5a0b 74%)}
+  background-image:radial-gradient(circle at 34% 28%,#ffffff,#bcc9d9 72%)}
 .r1-who{flex:1;min-width:0;display:flex;flex-direction:column}
 .r1-who b{font-size:12px}
 .r1-who em{font-style:normal;font-size:9.5px;color:var(--faint);letter-spacing:.3px}
