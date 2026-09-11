@@ -10,31 +10,75 @@ v1.19 移除 DSH preset 通道：原设计想让「会话选择 preset → 派�
 agent_prompt() 把角色卡全文注入 prompt 生效，preset 资产从未参与自动派发。
 
 角色「技能装配」（C 路线）：技能 md 平铺共享在 agents/skills/<技能名>.md，装配关系
-登记在角色卡「## 技能」段；agent_prompt() 按清单注入技能正文——不依赖 DSH 会话技能
-体系，headless / subagent 两条执行通道都生效。
+登记在角色卡「## 技能」段；agent_prompt() 只注入**技能清单与路径**，正文由模型按需
+读——不依赖 DSH 会话技能体系，headless / subagent 两条执行通道都生效。
+
+v1.20 起不再把技能正文拼进 prompt：全文注入会让 R3 的执行 prompt 有九成是技能文本
+（实测 16396/17383 字），而一次任务通常只真正用到一个技能。改成给清单 + 路径，
+模型自己读那一篇。
 """
 import datetime
 
-from . import config, roles
+from . import config, knowledge, roles, skills
 
 SKILLS_REL = config.SKILLS_REL   # 角色技能共享库目录名（agents/skills/，见 config）
 
 
-def role_skills(no: str) -> str:
-    """按角色卡「## 技能」段登记的清单，从共享技能库 agents/skills/ 取对应 md 正文。
+def role_skills(no: str) -> list:
+    """按角色卡「## 技能」段登记的清单，列出技能库里的对应技能：{name, rel, desc}。
 
     技能 md 平铺共享、多角色可复用；装配关系登记在角色卡上（设置页编辑角色时
-    若未改技能字段，会原样保留，不会因整卡重生成而丢装配）。"""
-    parts = []
+    若未改技能字段，会原样保留，不会因整卡重生成而丢装配）。
+
+    只列清单、**不返回正文**（正文按需读，见 skills_block）。"""
+    out = []
     for name in roles.role_skill_names(no):
         f = config.AGENTS_DIR / SKILLS_REL / (name if name.lower().endswith(".md") else name + ".md")
-        try:
-            t = config.read_text(f).strip()
-        except Exception:
+        if not f.is_file():
             continue
-        if t:
-            parts.append(t if t.startswith("#") else "# " + f.stem + "\n\n" + t)
-    return "\n\n---\n\n".join(parts)
+        try:
+            rel = f.relative_to(config.ROOT).as_posix()
+        except ValueError:
+            rel = f.as_posix()
+        out.append({"name": f.stem, "rel": rel, "desc": _skill_desc(f)})
+    return out
+
+
+def _skill_desc(f) -> str:
+    """技能的一行说明：优先 front-matter 的 description，没有就取正文首句（截断）。"""
+    try:
+        d = skills.describe(f)
+    except Exception:
+        d = ""
+    if not d:
+        try:
+            for ln in config.read_text(f).splitlines():
+                ln = ln.strip()
+                if ln and not ln.startswith(("#", "---", "|")):
+                    d = ln
+                    break
+        except Exception:
+            d = ""
+    return " ".join(str(d or "").split())[:110]
+
+
+def skills_block(no: str) -> str:
+    """【装配技能】段落：技能清单 + 逐条路径 + 「先读再动手」的硬性要求。
+
+    正文不进 prompt，所以这里必须把要求写死 —— 否则模型可能跳过读技能这一步，
+    直接凭印象干活，技能就等于没装。"""
+    items = role_skills(no)
+    if not items:
+        return ""
+    lines = []
+    for it in items:
+        lines.append("· %s%s" % (it["name"], (" —— " + it["desc"]) if it["desc"] else ""))
+        lines.append("  正文：%s" % it["rel"])
+    return ("\n\n【装配技能】你装配了以下技能（共享技能库 agents/skills/，随项目分发）：\n"
+            + "\n".join(lines)
+            + "\n动手前先判断本任务用得上哪个技能，再用工具把那个技能 md **完整读一遍**，"
+              "然后按它的规范执行；没读技能直接产出的结果视为不合格。"
+              "技能要求与任务要求或 R0 意见冲突时，以后者为准。")
 
 
 def agent_prompt(no: str, task_text: str, out_rel: str = "", meta_rel: str = "") -> str:
@@ -45,12 +89,7 @@ def agent_prompt(no: str, task_text: str, out_rel: str = "", meta_rel: str = "")
     card = config.AGENTS_DIR / (no + ".role.md")
     head = card.read_text(encoding="utf-8") if card.exists() else "OPC 角色 %s" % no
     kb = str(config.ROOT).replace("\\", "/")
-    skills = ""
-    body = role_skills(no)
-    if body:
-        skills = ("\n\n【装配技能】\n你装配了以下技能（来自共享技能库 agents/skills/，随项目分发）。"
-                  "动手前先通读并按其规范执行；技能内容与任务要求冲突时，以任务要求与 R0 意见为准："
-                  "\n\n" + body)
+    skills = skills_block(no)
     tail = ""
     if out_rel:
         tail = ("\n产出文件：%s —— 边做边追加进度，可写多次（有输出即视为存活）。"
@@ -61,8 +100,12 @@ def agent_prompt(no: str, task_text: str, out_rel: str = "", meta_rel: str = "")
                 "\n完成后：把 %s 里的 status 改为 完成 / 部分 / 阻塞（只改这一个字段，其余勿动）。"
                 % (out_rel, meta_rel))
     # 知识库：全员只读，执行前建议先查相关档案与员工手册
-    kb_note = ("\n\n【知识库】《知识库/》对全员只读开放；动手前先以只读方式查阅与本任务相关的档案与《员工手册》，"
+    kb_note = ("\n\n【知识库】《知识库/》对全员只读开放：动手前先读与本任务相关的档案与《员工手册》，"
                "作为依据与规范。")
+    idx = "\n".join(knowledge.index_lines())
+    if idx:
+        # 清单直接给出：省掉「先列目录发现有什么」那一轮工具调用（列一次的响应比整份索引还大）
+        kb_note += "档案清单与路径如下（相对项目根），要正文就用工具直接读该路径，不必先列目录：\n" + idx
     # 公共项目区（项目/）：工程标签可写，其他只读 —— 落点控制 + 提示约定
     pj = ("\n\n【公共项目区】《项目/》是公共源码/工程性产出区：仅「工程」标签角色可写，其他角色只读。")
     if roles.can_write_project(no):

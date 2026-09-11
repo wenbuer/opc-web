@@ -55,6 +55,21 @@ def front_meta(text: str) -> dict:
     return out
 
 
+def index_lines() -> list:
+    """知识库档案清单（紧凑索引）：一行一篇，形如 `· [方法] 方法/冗余代码清理.md`。
+
+    用途：把「有哪些档案、都在哪」一次性交给执行方 —— 助手据此直接答「有没有 / 在哪篇」，
+    角色据此直接读目标文件。省掉的是探索开销：列一次目录要几百 token 的响应，
+    而这份索引十几篇总共一百上下。路径相对项目根，已去掉《知识库/》前缀。"""
+    out = []
+    for e in kb_entries():
+        rel = str(e.get("rel") or "")
+        if rel.startswith("知识库/"):
+            rel = rel[len("知识库/"):]
+        out.append("· [%s] %s" % (e.get("okfLabel") or "知识", rel))
+    return out
+
+
 def latest_daily() -> list:
     """返回《批阅台/每日简报-*.md》列表（按文件名日期降序，无日期兜底按修改时间）。"""
     d = config.BATCH_ROOT

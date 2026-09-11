@@ -87,10 +87,8 @@ def _context() -> str:
         lines.append("- 知识库：%d 篇档案（清单如下，问「有没有 / 在哪篇」据此直接答，不必开文件）" % len(kb))
         # 把清单直接给出来：读一篇全文动辄一两千 token，而这份索引总共两百上下。
         # 索引常驻后，多数问题不用再靠工具去翻档案，也就不会把工具步数耗光。
-        for e in kb:
-            lines.append("  · [%s] %s（%s）" % (e.get("okfLabel") or "知识",
-                                              e.get("name") or "",
-                                              e.get("top") or "根目录"))
+        for ln in knowledge.index_lines():
+            lines.append("  " + ln)
     except Exception:
         pass
     try:

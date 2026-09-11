@@ -175,9 +175,10 @@ class Handler(BaseHTTPRequestHandler):
         """可导入的技能（扫本机技能源）：**与当前引擎无关** —— 技能是项目资产，不是引擎能力。
 
         技能 md 导入后进共享技能库 agents/skills/，角色卡登记装配，执行时由
-        agent_prompt() 拼进 prompt，所以两套引擎用的是同一份技能。引擎的差别只在
-        capabilities.skills：技能里那些「跑命令 / 读写文件」的步骤，dsh 自带工具沙箱能直接
-        执行，直连 API 引擎只有 4 个基础工具。"""
+        agent_prompt() 把技能清单与路径注入 prompt、正文由角色按需读，所以两套引擎
+        用的是同一份技能。引擎的差别只在 capabilities.skills：技能里那些「跑命令 /
+        读写文件」的步骤，dsh 自带工具沙箱能直接执行，直连 API 引擎只有 4 个基础工具
+        （含 read_file，按需读技能两套都成立）。"""
         eng = engines.get_engine()
         cap = bool((eng.capabilities() or {}).get("skills"))
         lib = config.AGENTS_DIR / config.SKILLS_REL
