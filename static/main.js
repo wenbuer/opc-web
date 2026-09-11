@@ -1391,9 +1391,12 @@
         tip = document.createElement("span");
         tip.id = "runFocusTip";
         tip.className = "run-focus";
-        tip.innerHTML = "只看 <b></b><a href='javascript:void(0)'>显示全部</a>";
+        tip.innerHTML = "只看 <b></b><a href='javascript:void(0)' title='显示全部子任务'>全部</a>";
         tip.querySelector("a").addEventListener("click", function(){ runFocusSub(null); });
-        head.appendChild(tip);
+        // 插在全屏按钮**之前**：live-head 是 space-between 两栏布局，
+        // 直接 append 会把全屏按钮挤成第三个元素顶出去
+        var fs = $("runFsBtn");
+        if (fs) head.insertBefore(tip, fs); else head.appendChild(tip);
       }
       if (tip){ tip.querySelector("b").textContent = RUN_FOCUS; tip.hidden = false; }
     } else if (tip){ tip.hidden = true; }
