@@ -2321,9 +2321,19 @@
     if (save) post("/api/settings", { assistantDock: on }).catch(function(){});
   }
 
+  // 悬浮球三态：待命 / open（面板展开）/ busy（正在算）。这里只切类名，样式全在 CSS。
+  var R1_TIP = "";
+  function r1State(name, on){
+    var f = $("r1Fab");
+    if (!f) return;
+    if (!R1_TIP) R1_TIP = f.dataset.tip || "";
+    f.classList.toggle(name, !!on);
+    if (name === "busy") f.dataset.tip = on ? "R1 正在思考…" : R1_TIP;
+  }
   function showR1Panel(on){
     var p = $("r1Panel");
     if (p) p.hidden = !on;
+    r1State("open", !!on);
     if (on){
       var box = $("r1Msgs");
       if (box && !box.childElementCount)
@@ -2352,6 +2362,7 @@
     addR1Msg("q", text);
     if (q) q.value = "";
     if (s) s.disabled = true;
+    r1State("busy", true);
     if (m) m.textContent = "R1 正在看项目现状…";
     var wait = addR1Msg("sys", "思考中…");
     post("/api/assistant/ask", { q: text }).then(function(j){
@@ -2366,7 +2377,7 @@
       if (wait) wait.remove();
       addR1Msg("sys", "异常：" + ((e && e.message) || ""));
       if (m) m.textContent = "";
-    }).then(function(){ if (s) s.disabled = false; });
+    }).then(function(){ r1State("busy", false); if (s) s.disabled = false; });
   }
   function loadTokenStats(){
     var sum = $("tokSum"), chart = $("tokChart");

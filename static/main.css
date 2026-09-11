@@ -1561,6 +1561,22 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 @keyframes r1spin{to{transform:rotate(360deg)}}
 @keyframes r1drift{from{transform:translate(-12%,-10%) scale(.9)}to{transform:translate(12%,10%) scale(1.05)}}
 @keyframes r1bar{0%,100%{height:7px;opacity:.7}50%{height:19px;opacity:1}}
+@keyframes r1barBusy{0%,100%{height:6px;opacity:.75}50%{height:26px;opacity:1}}
+/* ===== 悬浮球三态：待命（默认）/ 面板展开（.open）/ 运行中（.busy） =====
+   三种状态共用同一颗球，只改转速、亮度与频谱幅度 —— 形状不变，右下角始终是同一个东西。
+   待命：银白慢呼吸，一眼是「静着」；展开：环提速并转蓝，是「在工作」；
+   运行中：脉冲与频谱明显加快加高、转成实蓝，是「正在算」。 */
+.r1-fab.open{animation:none}                       /* 看着你：不呼吸，静着等输入 */
+.r1-fab.open .r1-halo{animation:none;opacity:.55}
+.r1-fab.open .r1-ring{animation-duration:5s;border-color:rgba(122,158,205,.95)}
+.r1-fab.open .r1-ring::after{animation-duration:2.6s;border-color:rgba(122,158,205,.6)}
+.r1-fab.open .r1-wave i{animation:none;height:9px;opacity:.85;background:#4a6da8}
+.r1-fab.busy{animation:r1breathe 1.5s ease-in-out infinite;cursor:progress}
+.r1-fab.busy .r1-ring{animation-duration:1.6s;border-color:rgba(56,132,222,.95);
+  box-shadow:0 0 12px rgba(56,132,222,.45)}
+.r1-fab.busy .r1-ring::after{animation-duration:.9s;border-color:rgba(56,132,222,.7)}
+.r1-fab.busy .r1-halo{animation-duration:2.2s}
+.r1-fab.busy .r1-wave i{background:#2f6fd0;animation:r1barBusy .55s ease-in-out infinite}
 /* 暗色主题：金色科技球 */
 /* 暗色主题下同样用银白球：深色底上银白的对比最好，也不再切金色 */
 :root[data-theme="dark"] .r1-fab{box-shadow:0 8px 24px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.35),

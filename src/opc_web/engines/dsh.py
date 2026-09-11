@@ -68,14 +68,32 @@ def _decode_stdout(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+_SESS_GLOB = "session*.jsonl.zstd"      # v3 起是 session.v3.jsonl.zstd，旧版 session.jsonl.zstd
+
+
+def _sess_log(session_dir):
+    """本次会话的事件日志文件（没有就返回 None）。
+
+    DSH 0.1.5 起把事件日志改名为 session.v3.jsonl.zstd，旧的 session.jsonl.zstd 不再写；
+    只认旧名会一直读到上一次运行留下的陈旧文件 —— 心跳不刷新（任务被当无活动强杀）、
+    用量读不到、进度认领不到本次会话。这里按通配取最新一个文件，新旧名字都认。"""
+    best = None
+    for p in Path(session_dir).glob(_SESS_GLOB):
+        try:
+            if p.is_file() and (best is None or p.stat().st_mtime > best.stat().st_mtime):
+                best = p
+        except OSError:
+            continue
+    return best
+
+
 def _usage_from_session(session_dir) -> dict:
-    """从一次会话的 session.jsonl.zstd 抽最终 token 用量。
+    """从一次会话的事件日志抽最终 token 用量。
 
     语义同 dsh-tokenledger 的 sampleOf：取最后一条 assistant/message 的 data.usage，
     兜底 assistant/chunk 里 data.chunk.type === 'usage' 的 usage。缺 zstandard / 无日志返回 None。"""
-    session_dir = Path(session_dir)
-    zf = session_dir / "session.jsonl.zstd"
-    if not zf.is_file():
+    zf = _sess_log(session_dir)
+    if zf is None:
         return None
     try:
         with open(zf, "rb") as fh, zstd.ZstdDecompressor().stream_reader(fh) as _s:
@@ -109,9 +127,9 @@ def _usage_from_session(session_dir) -> dict:
 
 
 def _ztime(d) -> float:
-    zf = Path(d) / "session.jsonl.zstd"
+    zf = _sess_log(d)
     try:
-        return zf.stat().st_mtime if zf.is_file() else 0.0
+        return zf.stat().st_mtime if zf else 0.0
     except OSError:
         return 0.0
 
@@ -224,12 +242,14 @@ def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float,
                 # 候选 = spawn 前快照里没有的会话目录，最新的先试（认领规则见函数说明）
                 cands = []
                 for d in root.glob("*/session-*"):
-                    zf = d / "session.jsonl.zstd"
-                    if d.name in pre or not zf.is_file():
+                    zf = _sess_log(d)
+                    if d.name in pre or zf is None:
                         continue
                     cands.append((zf.stat().st_mtime, d))
                 for _, d in sorted(cands, reverse=True):
-                    zf = d / "session.jsonl.zstd"
+                    zf = _sess_log(d)
+                    if zf is None:
+                        continue
                     with open(zf, "rb") as fh:
                         raw = zstd.ZstdDecompressor().stream_reader(fh).read()
                     evs = [json.loads(x) for x in raw.decode("utf-8", "replace").splitlines() if x.strip()]
@@ -245,7 +265,9 @@ def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float,
                     continue
                 # seen 保持 0：认领到的会话里的事件全属本次任务
             d, _ = sess
-            zf = d / "session.jsonl.zstd"
+            zf = _sess_log(d)
+            if zf is None:
+                continue
             with open(zf, "rb") as fh:
                 raw = zstd.ZstdDecompressor().stream_reader(fh).read()
             evs = [json.loads(x) for x in raw.decode("utf-8", "replace").splitlines() if x.strip()]
@@ -281,7 +303,10 @@ def _spawn_headless(argv: list, timeout: float, act: str = "", on_progress=None)
     因此「无输出」不能当死亡判据 —— 900 秒无输出强杀曾把正在干活 15+ 分钟的 R3/R4 误判阻塞。
     现在以 _watch_session 追踪的会话事件心跳为准：事件持续增长即存活；心跳停摆超 timeout
     才判死（真挂死），另有 timeout*3 的总时长硬上限兜底。act 为空时退回纯 stdout 语义。
-    spawn 失败返回 b""。"""
+    stdout 只放最终答案，stderr 放推理流（headless 把 reasoning 增量直接写 stderr，前缀
+    「dsh: reasoning:」）与错误行。两者必须分开读：合流之后整段思考会被当成「最终文本」
+    返回给用户 —— 用户等了三分钟，等到的是一份思考过程而不是答案。
+    spawn 失败返回 (b"", b"")。"""
     base = _dsh_command()
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
     si = subprocess.STARTUPINFO() if hasattr(subprocess, "STARTUPINFO") else None
@@ -291,23 +316,24 @@ def _spawn_headless(argv: list, timeout: float, act: str = "", on_progress=None)
     pre_sessions = _session_names() if act else set()   # spawn 前的会话快照（认领用）
     try:
         p = subprocess.Popen(base + ["--profile", "headless"] + argv,
-                             cwd=str(config.ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             cwd=str(config.ROOT), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              creationflags=flags, startupinfo=si, env=_child_env())
     except Exception:
-        return b""
+        return b"", b""
     if act:
         with _STATE_LOCK:
             _ACTIVE_SPAWN[act] = p.pid
-    chunks = []
+    out_chunks, err_chunks = [], []
 
-    def _drain():
+    def _drain(stream, sink):
         try:
-            for blk in iter(lambda: p.stdout.read(65536), b""):
-                chunks.append(blk)
+            for blk in iter(lambda: stream.read(65536), b""):
+                sink.append(blk)
         except Exception:
-            pass
+            pass                # 两个流各排一个线程：任一个不读满都可能把子进程堵在写管道上
 
-    threading.Thread(target=_drain, daemon=True).start()
+    for _stream, _sink in ((p.stdout, out_chunks), (p.stderr, err_chunks)):
+        threading.Thread(target=_drain, args=(_stream, _sink), daemon=True).start()
     if act:
         threading.Thread(target=_watch_session,
                          args=(act, p, time.time(), time.monotonic(), pre_sessions,
@@ -334,7 +360,7 @@ def _spawn_headless(argv: list, timeout: float, act: str = "", on_progress=None)
     while True:
         if p.poll() is not None:
             break                       # 自然结束
-        if chunks and t_first is None:
+        if out_chunks and t_first is None:
             t_first = time.monotonic()  # 首帧输出：任务开始活动
         now = time.monotonic()
         last = t_first
@@ -351,17 +377,18 @@ def _spawn_headless(argv: list, timeout: float, act: str = "", on_progress=None)
         if now - t0 > hard:
             _kill(); break              # 总时长硬上限 → 判阻塞
         time.sleep(0.5)
-    try:
-        p.stdout.close()
-    except Exception:
-        pass
+    for _stream in (p.stdout, p.stderr):
+        try:
+            _stream.close()
+        except Exception:
+            pass
     if act:
         with _STATE_LOCK:
             _ACTIVE_SPAWN.pop(act, None)
             _BEAT.pop(act, None)
         if on_progress:                 # 跑完报一次，让上层清掉「执行中」状态
             on_progress(Progress(finished=True, elapsed=int(time.monotonic() - t0)))
-    return b"".join(chunks)
+    return b"".join(out_chunks), b"".join(err_chunks)
 
 
 def _kill_spawn(act: str) -> bool:
@@ -381,6 +408,16 @@ def _kill_spawn(act: str) -> bool:
         return False
 
 
+def _stderr_errors(raw: str) -> str:
+    """stderr 里的失败原因（`dsh: <code>: <msg>` 那几行）。
+
+    推理流也在 stderr 上，但它不是答案：只取 dsh 明确报错的行，其余丢弃 ——
+    否则一次失败会被上层当成「有产出」，既看不到真实原因，也不会回退到备用引擎。"""
+    out = [ln.strip() for ln in str(raw or "").splitlines()
+           if ln.strip().startswith("dsh: ") and ln.strip() != "dsh: reasoning:"]
+    return " / ".join(out[-3:])[:300]
+
+
 def _run_prompt_dsh(task_text: str, timeout: float, act: str = "", on_progress=None):
     """dsh 引擎的底层实现。
 
@@ -388,7 +425,11 @@ def _run_prompt_dsh(task_text: str, timeout: float, act: str = "", on_progress=N
     用量从 DSH 会话日志（~/.dsh/sessions/<cwd>/session-<uuid>/session.jsonl.zstd）抽取，
     会话由 _watch_session 三重校验认领，避免并发下认领到别的会话。"""
     base = time.time()
-    text = _decode_stdout(_spawn_headless([task_text], timeout, act, on_progress)).strip()
+    raw, err = _spawn_headless([task_text], timeout, act, on_progress)
+    text = _decode_stdout(raw).strip()
+    if not text:
+        # 没有产出：把 stderr 里的失败原因回传，别让上层只看到一片空白
+        text = _stderr_errors(_decode_stdout(err))
     with _STATE_LOCK:
         claimed = _LAST_SESSION.pop(act, None) if act else None
     sess = Path(claimed).name[-12:] if claimed else ""
