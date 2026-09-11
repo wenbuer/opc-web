@@ -59,6 +59,58 @@ def scan_once():
         pass
 
 
+_BOOT = datetime.datetime.now()          # 进程启动时刻：没跑过的 interval 任务拿它当基准
+
+
+def _parse_ts(s):
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.datetime.strptime(str(s).strip(), fmt)
+        except Exception:
+            pass
+    return None
+
+
+def schedule_due(j: dict, now=None) -> bool:
+    """这个定时任务现在该不该跑。
+
+    原来拿 config.schedule_next()（下次运行时刻，永远在未来）与 now 比较，条件恒不成立，
+    任务因此**从不触发**（lastRun 一直为空）。正确的问法是「应运行的时点是否已经越过、
+    且这一轮还没跑过」：
+
+    - daily  ：今天的 HH:MM 已过，且今天还没跑过 → 到期。服务当天晚些才启动也会补上；
+               跑过（lastRun 是今天）则不再重复。
+    - weekly ：到了指定星期、时点已过，且当天还没跑过。
+    - interval：距上次运行已超过 N 分钟（没跑过就按进程启动时刻起算）。
+    """
+    now = now or datetime.datetime.now()
+    if not j.get("enabled", True):
+        return False
+    mode = str(j.get("mode") or "daily")
+    last = _parse_ts(j.get("lastRun")) or _BOOT
+    if mode == "interval":
+        try:
+            mins = max(1, int(str(j.get("intervalMin") or "60")))
+        except Exception:
+            mins = 60
+        return (now - last).total_seconds() >= mins * 60
+    if mode == "weekly":
+        try:
+            wd = int(str(j.get("weekday") or "0"))
+        except Exception:
+            wd = 0
+        if now.weekday() != wd:
+            return False
+    m = re.match(r"^(\d{1,2}):(\d{2})$", str(j.get("time") or "").strip())
+    if not m:
+        return False
+    target = now.replace(hour=int(m.group(1)), minute=int(m.group(2)),
+                         second=0, microsecond=0)
+    if now < target:
+        return False
+    return last.date() != now.date()          # 今天还没跑过 → 到期
+
+
 def schedule_once():
     """定时任务触发检查：到期任务 → 落台账 + 调度日志。"""
     try:
@@ -66,10 +118,7 @@ def schedule_once():
         jobs = config.load_schedules()
         changed = False
         for j in jobs:
-            if not j.get("enabled", True):
-                continue
-            nxt = config.schedule_next(j, now)
-            if nxt is None or nxt > now:
+            if not schedule_due(j, now):
                 continue
             task = str(j.get("task") or "").strip() or "定时任务"
             no = store.add_task(task, "定时任务（R1 执行）")
