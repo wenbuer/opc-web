@@ -2206,17 +2206,6 @@
 
   function fmtTok(n){ return (Number(n) || 0).toLocaleString(); }
 
-  /* Token 统计里的「临时会话」单独一项：与任务用量分开，互不并入 */
-  function renderAssistantTokens(a){
-    var el = $("tokAssistant");
-    if (!el) return;
-    a = a || { in: 0, out: 0, count: 0 };
-    var tot = (a.in || 0) + (a.out || 0);
-    el.innerHTML = "<div class='tok-a-card'><span>临时会话</span><b>" + fmtTok(tot) + "</b>"
-      + "<span>输入 " + fmtTok(a.in) + " · 输出 " + fmtTok(a.out) + " · " + (a.count || 0) + " 次问答</span>"
-      + "<em>不进任务统计</em></div>";
-  }
-
   function mountDock(){
     var fab = $("r1Fab"), ava = $("r1Ava");
     if (fab){
@@ -2384,10 +2373,12 @@
     if (sum) sum.textContent = "";
     if (chart) chart.innerHTML = "<div class='placeholder'>加载中…</div>";
     api("/api/tokens").then(function(j){
-      renderAssistantTokens(j && j.assistant);   // 任务行为空时这一项也要显示，所以放在早返回之前
       if (!j || !j.ok){ if (chart) chart.innerHTML = "<div class='placeholder'>读取失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
       var rows = j.rows || [];
-      if (!rows.length){
+      var asst = j.assistant || { in: 0, out: 0, count: 0 };
+      var aIn = asst.in || 0, aOut = asst.out || 0, aCnt = asst.count || 0;
+      // 任务为空但临时会话有量时也要出图，所以两个条件一起判
+      if (!rows.length && !aCnt){
         if (chart) chart.innerHTML = "<div class='placeholder'>暂无 token 数据 —— 启用 token 统计后执行的任务会写入 meta.json</div>";
         return;
       }
@@ -2402,10 +2393,12 @@
         var ia = parseInt(a.slice(2), 10), ib = parseInt(b.slice(2), 10);
         return (isNaN(ia) ? 0 : ia) - (isNaN(ib) ? 0 : ib);
       });
-      var max = 0;
+      var max = aIn + aOut;        // 临时会话与任务柱共用同一把尺子，否则高度没有可比性
       names.forEach(function(t){ max = Math.max(max, byTask[t].inn + byTask[t].out); });
       max = max || 1;
-      if (sum) sum.innerHTML = "共 <b>" + rows.length + "</b> 个子任务 · 总输入 <b>" + fmtTok(tIn) + "</b> · 总输出 <b>" + fmtTok(tOut) + "</b> · 输入:输出 " + Math.round(tOut / (tIn || 1) * 100) + "%";
+      if (sum) sum.innerHTML = "共 <b>" + rows.length + "</b> 个子任务 + 临时会话 <b>" + aCnt + "</b> 次 · 总输入 <b>"
+        + fmtTok(tIn + aIn) + "</b> · 总输出 <b>" + fmtTok(tOut + aOut) + "</b> · 输入:输出 "
+        + Math.round((tOut + aOut) / ((tIn + aIn) || 1) * 100) + "%";
       var bars = names.map(function(t){
         var v = byTask[t];
         var hIn = Math.max(2, Math.round(v.inn / max * 180));
@@ -2415,7 +2408,16 @@
           + "<span class='tok-bar out' style='height:" + hOut + "px' title='" + esc(t) + " 输出 " + fmtTok(v.out) + "'></span>"
           + "</div><div class='tok-lab'>" + esc(t) + "</div><div class='tok-val'>" + fmtTok(v.inn + v.out) + "</div></div>";
       }).join("");
-      chart.innerHTML = "<div class='tok-legend'><span class='lg-in'>输入</span><span class='lg-out'>输出</span></div>"
+      if (aIn || aOut){
+        var ahIn = Math.max(2, Math.round(aIn / max * 180));
+        var ahOut = Math.max(2, Math.round(aOut / max * 180));
+        bars += "<div class='tok-col alt'><div class='tok-bars'>"
+          + "<span class='tok-bar in alt' style='height:" + ahIn + "px' title='临时会话 输入 " + fmtTok(aIn) + "'></span>"
+          + "<span class='tok-bar out alt' style='height:" + ahOut + "px' title='临时会话 输出 " + fmtTok(aOut) + "'></span>"
+          + "</div><div class='tok-lab'>临时会话</div><div class='tok-val'>" + fmtTok(aIn + aOut) + "</div></div>";
+      }
+      chart.innerHTML = "<div class='tok-legend'><span class='lg-in'>输入</span><span class='lg-out'>输出</span>"
+        + "<span class='lg-alt'>临时会话（单列一组，不进任务统计）</span></div>"
         + "<div class='tok-zone'>" + bars + "</div>";
     }).catch(function(e){ if (chart) chart.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
   }
@@ -2523,7 +2525,6 @@
         if (k === "tokens") loadTokenStats();
         if (k === "skill") loadEngineSkills();
         if (k === "engine") loadEngines();
-        if (k === "assistant") loadTokenStats();     // 顺带刷新临时会话用量那一块
       });
     });
     var sss = $("skillSearch"); if (sss && !sss.dataset.bound){ sss.dataset.bound = "1"; sss.addEventListener("input", renderEngineSkills); }

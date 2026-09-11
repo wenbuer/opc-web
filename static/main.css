@@ -1234,9 +1234,11 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .tok-sum{margin-bottom:10px;font-size:12px;color:var(--txt)}
 .tok-sum b{color:var(--gold);font-family:var(--mono)}
 .tok-legend{display:flex;gap:14px;font-size:10.5px;color:var(--dim);margin-bottom:4px;align-items:center}
-.tok-legend .lg-in::before,.tok-legend .lg-out::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.tok-legend .lg-in::before,.tok-legend .lg-out::before,.tok-legend .lg-alt::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .tok-legend .lg-in::before{background:var(--gold)}
 .tok-legend .lg-out::before{background:var(--ok)}
+.tok-legend .lg-alt{margin-left:auto;color:var(--faint)}
+.tok-legend .lg-alt::before{background:#8b5cf6}
 .tok-zone{display:flex;align-items:flex-end;gap:14px;padding:6px 4px 0;height:250px;overflow-x:auto;overflow-y:hidden;border-bottom:1px solid var(--line2)}
 .tok-col{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;width:56px;height:100%}
 .tok-bars{display:flex;align-items:flex-end;gap:3px;height:200px}
@@ -1244,7 +1246,11 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .tok-bar.in{background:linear-gradient(180deg,#3db8f5,var(--gold))}
 .tok-bar.out{background:linear-gradient(180deg,#34d399,var(--ok))}
 .tok-lab{font-family:var(--mono);font-size:9.5px;color:var(--gold);margin-top:4px;white-space:nowrap}
-.tok-val{font-size:9px;color:var(--faint);font-family:var(--mono)}
+/* 临时会话：不进任务流程，所以不并入任何任务柱 —— 在末尾单列一组，用分隔线隔开 */
+.tok-col.alt{border-left:1px dashed var(--line2);padding-left:14px;width:auto;min-width:64px}
+.tok-col.alt .tok-lab{color:var(--dim)}
+.tok-bar.alt.in{background:linear-gradient(180deg,#a78bfa,#7c5cf0)}
+.tok-bar.alt.out{background:linear-gradient(180deg,#e9a6f5,#a855c7)}
 
 .bd-more{font-size:9px;color:var(--faint);text-align:center;padding:6px 2px;border:1px dashed var(--line);border-radius:6px}
 /* 工作台调度状态条 → 面板底部 footer */
@@ -1627,8 +1633,4 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .dock-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:4px 0 10px}
 .dock-switch{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;color:var(--txt);cursor:pointer}
 .dock-switch input{width:16px;height:16px;accent-color:var(--gold);cursor:pointer}
-.tok-assistant{margin:10px 0}
-.tok-a-card{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding:9px 12px;border:1px dashed var(--line2);
-  border-radius:9px;font-size:11px;color:var(--dim)}
-.tok-a-card b{color:var(--gold);font-family:var(--mono);font-size:12.5px}
-.tok-a-card em{font-style:normal;color:var(--faint);font-size:10px}
+/* 临时会话用量统一在「设置 → Token 统计」里看（单独一组柱），助理页不再重复显示 */

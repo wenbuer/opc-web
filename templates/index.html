@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260912a">
+<link rel="stylesheet" href="/static/main.css?v=20260912b">
 </head>
 <body>
 <div class="shell">
@@ -341,7 +341,7 @@
             <div class="set-head">任务 Token 统计</div>
             <div class="tok-sum" id="tokSum"></div>
             <div class="tok-chart" id="tokChart"><div class="placeholder">加载中…</div></div>
-            <div class="set-note"><b>口径</b> 每个子任务执行时把用量写进 <code>T-xxx-Sn.meta.json</code>（tokensIn = 输入 + 缓存读取，tokensOut = 输出），并记下执行它的引擎与会话标识，统计对不上时能回溯。<br>R1 助理临时会话的用量不在这里 —— 单列在「⑦ R1 助理」页。</div>
+            <div class="set-note"><b>口径</b> 每个子任务执行时把用量写进 <code>T-xxx-Sn.meta.json</code>（tokensIn = 输入 + 缓存读取，tokensOut = 输出），并记下执行它的引擎与会话标识，统计对不上时能回溯。<br><b>临时会话</b>（⑦ R1 助理）的用量记在《批阅台/临时会话.jsonl》，不进任何子任务、不并入任务合计，在图上单列一组柱。</div>
           </div>
         <div class="snav-pane" data-pane="assistant">
           <div class="set-head">R1 助理悬浮窗</div>
@@ -352,10 +352,7 @@
             </label>
             <span class="set-msg" id="dockMsg"></span>
           </div>
-          <div class="set-note"><b>临时会话</b> 悬浮窗里的问答<b>不进任务流程</b> —— 不建任务、不派角色、不写回报，也不会出现在任务队列里。<br>R1 会带着项目现状作答（任务概况 / 档案数 / 最新简报）；要细节就在问题里点名，它会自己去读文件。</div>
-          <div class="set-head" style="margin-top:18px">临时会话用量</div>
-          <div class="tok-assistant" id="tokAssistant"></div>
-          <div class="set-note"><b>单独记账</b> 这些用量写在《批阅台/临时会话.jsonl》，与任务统计完全分开、互不并入。</div>
+          <div class="set-note"><b>临时会话</b> 悬浮窗里的问答<b>不进任务流程</b> —— 不建任务、不派角色、不写回报，也不会出现在任务队列里。<br>R1 会带着项目现状作答（任务概况 / 档案数 / 最新简报）；要细节就在问题里点名，它会自己去读文件。<br><b>用量</b> 记在《批阅台/临时会话.jsonl》，在「③ Token 统计」里单列一组柱。</div>
         </div>
         </div>
       </div>
@@ -459,6 +456,6 @@
   </div>
   <button id="r1Fab" class="r1-fab" data-tip="问我项目的事 · 临时会话" title="R1 助理（临时会话，可拖动）"></button>
 </div>
-<script src="/static/main.js?v=20260912a"></script>
+<script src="/static/main.js?v=20260912b"></script>
 </body>
 </html>
