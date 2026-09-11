@@ -153,12 +153,13 @@
       card.innerHTML = "<span class='rc-st " + stCls + "'>" + esc(r.status || "") + "</span>"
         + "<div class='rc-top'><span class='rc-name'>" + esc(r.name || r.code) + "</span><span class='rc-n'>" + esc(r.code) + "</span>"
         + "<span class='rc-tags'>" + (r.tags || []).map(function(t){ return "<i>" + esc(t) + "</i>"; }).join("") + "</span>"
-        + "<button class='rc-folder' title='查看项目文件'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/></svg></button><button class='rc-del' title='删除角色（需二次确认）'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 6h18'/><path d='M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2'/><path d='M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6'/><path d='M10 11v6'/><path d='M14 11v6'/></svg></button></div>"
+        + "<button class='rc-term' title='终端：直接给这个角色下达任务（跳过 R1 拆解）'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='4 17 10 11 4 5'/><line x1='12' y1='19' x2='20' y2='19'/></svg></button><button class='rc-folder' title='查看项目文件'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/></svg></button><button class='rc-del' title='删除角色（需二次确认）'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 6h18'/><path d='M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2'/><path d='M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6'/><path d='M10 11v6'/><path d='M14 11v6'/></svg></button></div>"
         + "<div class='rc-duty'>" + esc(r.duty || "") + "</div>"
         + "<div class='rc-cur'>当前：" + esc(r.current || "无") + "</div>";
       card.addEventListener("click", function(){ openRole(r.code); });
       var btDel = card.querySelector(".rc-del");
       if (btDel) btDel.addEventListener("click", function(ev){ ev.stopPropagation(); openDelRoleModal(r.code, r.name || r.code); }); var btFolder = card.querySelector(".rc-folder"); if (btFolder) btFolder.addEventListener("click", function(ev){ ev.stopPropagation(); gotoRoleFiles(r.name || r.code); });
+      var btTerm = card.querySelector(".rc-term"); if (btTerm) btTerm.addEventListener("click", function(ev){ ev.stopPropagation(); openRoleChat(r.code, r.name || r.code); });
       grid.appendChild(card);
     });
     /* 原「未激活角色」位已改为固定「＋ 新增角色」入口（orgAdd）：点击弹窗新增角色；
@@ -166,6 +167,70 @@
        新增/编辑均走 /api/roles/add、/api/roles/edit（角色卡 + 工作区《名称/》）。 */
   }
 
+  /* ===== 角色终端：对某个角色直接下达任务 =====
+     跳过 R1 拆解，下游与自动执行链完全一致（产出/回报/归档/token 都走同一条链路）。
+     不做跨消息记忆：每一条消息都是一次独立执行，消息流只是流水。 */
+  var RC_ROLE = "";
+  function rcPanel(){
+    var p = $("rcChat");
+    if (p) return p;
+    p = document.createElement("div");
+    p.id = "rcChat";
+    p.className = "rc-chat";
+    p.hidden = true;
+    p.innerHTML = "<div class='r1-head'><span class='rc-dot'></span>"
+      + "<div class='r1-who'><b id='rcWho'></b><em>直派 · 跳过 R1 拆解 · 每次独立执行</em></div>"
+      + "<button id='rcClose' class='r1-x' title='关闭'>×</button></div>"
+      + "<div id='rcMsgs' class='r1-msgs'></div>"
+      + "<div class='r1-input'><input id='rcQ' placeholder='给这个角色下达任务，回车发送'>"
+      + "<button id='rcSend'>下达</button></div>"
+      + "<div class='r1-foot'><span id='rcMsg'></span></div>";
+    document.body.appendChild(p);
+    $("rcClose").addEventListener("click", function(){ p.hidden = true; });
+    $("rcSend").addEventListener("click", rcSend);
+    $("rcQ").addEventListener("keydown", function(e){
+      if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); rcSend(); }
+    });
+    return p;
+  }
+  function rcMsg(kind, text){
+    var box = $("rcMsgs"); if (!box) return null;
+    var el = document.createElement("div");
+    el.className = "r1-m " + kind;
+    el.textContent = text;
+    box.appendChild(el);
+    box.scrollTop = box.scrollHeight;
+    return el;
+  }
+  function openRoleChat(code, name){
+    var p = rcPanel();
+    RC_ROLE = code;
+    $("rcWho").textContent = code + " " + (name || "");
+    p.hidden = false;
+    if (!p.dataset.tip){
+      p.dataset.tip = "1";
+      rcMsg("sys", "下达的任务会直接派给该角色执行，不进 R1 拆解；每条消息独立执行，进度去「工作台 → 实时事件」看。");
+    }
+    var q = $("rcQ"); if (q) q.focus();
+  }
+  function rcSend(){
+    var q = $("rcQ"), m = $("rcMsg"), s = $("rcSend");
+    var text = (q && q.value || "").trim();
+    if (!text || !RC_ROLE) return;
+    rcMsg("q", text);
+    if (q) q.value = "";
+    if (s) s.disabled = true;
+    if (m) m.textContent = "已下达，正在执行…";
+    post("/api/role-task", { role: RC_ROLE, task: text }).then(function(j){
+      if (j && j.ok) rcMsg("a", "已建任务 " + j.no + "，直派给 " + j.role + " " + (j.roleName || "") + " 执行中。");
+      else rcMsg("sys", (j && j.msg) || "下达失败");
+      if (m) m.textContent = "";
+      scheduleWbRefresh(true);
+    }).catch(function(e){
+      rcMsg("sys", "异常：" + ((e && e.message) || ""));
+      if (m) m.textContent = "";
+    }).then(function(){ if (s) s.disabled = false; });
+  }
   function skillStem(n){ return String(n || "").replace(/\.md$/i, ""); }
   function renderSkillCaps(names){
     var body = $("roleSkillsBody");

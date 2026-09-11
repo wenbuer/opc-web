@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
@@ -354,6 +355,29 @@ class Handler(BaseHTTPRequestHandler):
         scheduler.scan_once()  # 立即生成 R1 拆解指令，不等 8s 轮询
         return {"ok": True, "no": no, "queue": self._queue_rows(), "state": scheduler.SCHED_STATE}
 
+    def _post_role_task(self):
+        """角色卡片上的终端入口：一条任务直接派给指定角色，**跳过 R1 拆解**。
+
+        走的是与自动执行链完全相同的下游（预置产出 → headless 执行 → 回报落库 →
+        归档 → token 记账），只是少了拆解那一步与它的一次模型调用。不做跨消息记忆：
+        每次下达都是独立执行，界面上的连续消息只是流水。"""
+        body = self._body()
+        if body is None:
+            raise ApiError(400, "JSON 解析失败")
+        role = str(body.get("role") or "").strip().upper()
+        text = str(body.get("task") or "").strip()
+        expect = str(body.get("expect") or "R1 判断").strip()
+        if not (role.startswith("R") and role[1:].isdigit()):
+            raise ApiError(400, "角色编号非法：" + role)
+        if not text:
+            raise ApiError(400, "任务内容不能为空")
+        no = store.add_task(text, expect)
+        store.set_task(no, "已派")      # 立刻离开「待派」——否则调度扫描会再拆解一遍
+        threading.Thread(target=chain.execute, daemon=True,
+                         args=(no, text, {"role": role, "sub": text, "expect": expect})).start()
+        return {"ok": True, "no": no, "role": role, "roleName": config.role_name(role),
+                "queue": self._queue_rows(), "state": scheduler.SCHED_STATE}
+
     def _post_task_delete(self):
         body = self._body()
         if body is None:
@@ -607,6 +631,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._post_retry)
         elif url == "/api/dispatch":
             self._ok(self._post_dispatch)
+        elif url == "/api/role-task":
+            self._ok(self._post_role_task)
         elif url == "/api/task-delete":
             self._ok(self._post_task_delete)
         elif url == "/api/plan-execute":

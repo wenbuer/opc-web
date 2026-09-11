@@ -256,9 +256,13 @@ def _decision_block(task_text: str) -> str:
     return ("\n\n【R0 已拍板的决策上下文（任务文本里的「方案A/B/C」等简称以此为准）】\n%s" % ctx) if ctx else ""
 
 
-def execute(task_no, task_text):
+def execute(task_no, task_text, direct=None):
     """一键自动执行链：拆解 → 台账落库 → 逐子任务生成派发指令并预置产出文件。
-    全程把阶段事件写入 runner 事件流（工作台详情面板的「实时事件」区可见）。"""
+    全程把阶段事件写入 runner 事件流（工作台详情面板的「实时事件」区可见）。
+
+    direct = {"role": "R3", "sub": "...", "expect": "..."} 时**跳过 R1 拆解**，
+    直接把这条任务派给指定角色（角色卡片上的终端入口用）。产出/回报/归档/token
+    全走同一条链路，只是少了拆解这一步与它的一次模型调用。"""
     with sch.SCHED_LOCK:
         if sch.SCHED_STATE.get("busy"):
             return
@@ -268,12 +272,20 @@ def execute(task_no, task_text):
         runner.emit({"type": "run/start", "task": "%s · 自动执行链" % task_no,
                      "provider": "opc-web", "model": "chain"})
         runner.emit({"type": "step/start", "data": {"turn": 1, "step": 1}})
-        runner.emit({"type": "assistant/chunk", "data": {"text": "R1 拆解 %s：%s" % (task_no, task_text)}})
-        set_state(tag="R1 拆解中…")
-        # 指定 R1（含「请 R1 / 让 R1 …」）= R1 牵头派发：同样走模型拆解选业务角色（decompose 内已引导模型忽略 R1）
         head = head_named(task_text)
-        subs = decompose(task_no, task_text)
-        if not subs:
+        if direct:
+            role = str(direct.get("role") or "").strip()
+            subs = [{"role": role, "sub": str(direct.get("sub") or task_text),
+                     "expect": str(direct.get("expect") or "R1 判断")}]
+            runner.emit({"type": "assistant/chunk", "data": {
+                "text": "直派 %s %s：%s（跳过 R1 拆解）" % (role, config.role_name(role), subs[0]["sub"])}})
+            set_state(tag="直派 %s" % role)
+        else:
+            runner.emit({"type": "assistant/chunk", "data": {"text": "R1 拆解 %s：%s" % (task_no, task_text)}})
+            set_state(tag="R1 拆解中…")
+            # 指定 R1（含「请 R1 / 让 R1 …」）= R1 牵头派发：同样走模型拆解选业务角色
+            subs = decompose(task_no, task_text)
+        if not subs and not direct:
             # 拆解失败：区分「指定 R1」「点名了不可执行编号」「完全未点名」给出针对性提示
             if asks_r1(task_text):
                 msg = "R1 派发拆解暂无输出：模型未返回子任务（请确认 dsh 可用，或直接点名业务角色如「R6 …」让 R1 直派）"
