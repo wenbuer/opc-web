@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260911a">
+<link rel="stylesheet" href="/static/main.css?v=20260911b">
 </head>
 <body>
 <div class="shell">
@@ -328,7 +328,17 @@
             <div class="set-head">任务 Token 统计</div>
             <div class="tok-sum" id="tokSum"></div>
             <div class="tok-chart" id="tokChart"><div class="placeholder">加载中…</div></div>
-            <div class="set-note"><b>口径</b> 每个子任务执行时把 dsh headless 用量写进 <code>T-xxx-Sn.meta.json</code>（tokensIn = 输入 + 缓存读取，tokensOut = 输出）。<br>仅统计改版后执行的任务；旧任务没有字段不会计入。</div>
+            <div class="tok-assistant" id="tokAssistant"></div>
+            <div class="set-note"><b>口径</b> 每个子任务执行时把用量写进 <code>T-xxx-Sn.meta.json</code>（tokensIn = 输入 + 缓存读取，tokensOut = 输出），并记下执行它的引擎与会话标识，统计对不上时能回溯。<br>「临时会话」是 R1 助理悬浮窗里的问答，单独成项，不进任务统计。</div>
+            <div class="set-head" style="margin-top:18px">R1 助理悬浮窗</div>
+            <div class="dock-row">
+              <label class="dock-switch">
+                <input type="checkbox" id="dockOn">
+                <span>开启悬浮窗（右下角常驻）</span>
+              </label>
+              <span class="set-msg" id="dockMsg"></span>
+            </div>
+            <div class="set-note"><b>临时会话</b> 悬浮窗里的问答<b>不进任务流程</b> —— 不建任务、不派角色、不写回报，用量单独记在上面那一项里。R1 会带着项目现状作答（任务概况 / 档案 / 最新简报）。</div>
           </div>
         </div>
       </div>
@@ -415,6 +425,23 @@
     </div>
   </div>
 </div>
-<script src="/static/main.js?v=20260911a"></script>
+<!-- R1 助理悬浮窗：临时会话，不进入任务流程（头像与逻辑由 main.js 注入） -->
+<div id="r1Dock" class="r1-dock" hidden>
+  <div id="r1Panel" class="r1-panel" hidden>
+    <div class="r1-head">
+      <span class="r1-ava" id="r1Ava"></span>
+      <div class="r1-who"><b>R1 助理</b><em>临时会话 · 不进任务流程</em></div>
+      <button id="r1Close" class="r1-x" title="收起">×</button>
+    </div>
+    <div id="r1Msgs" class="r1-msgs"></div>
+    <div class="r1-input">
+      <input id="r1Q" placeholder="问点项目相关的事，比如「现在进行到哪一步了」">
+      <button id="r1Send">发送</button>
+    </div>
+    <div class="r1-foot"><span id="r1Msg"></span><span id="r1Tok"></span></div>
+  </div>
+  <button id="r1Fab" class="r1-fab" title="R1 助理（临时会话）"></button>
+</div>
+<script src="/static/main.js?v=20260911b"></script>
 </body>
 </html>

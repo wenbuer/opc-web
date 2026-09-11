@@ -2157,11 +2157,114 @@
     if (n >= 1000) return (n / 1000).toFixed(1) + "k";
     return String(n);
   }
+  /* ================= R1 助理悬浮窗（临时会话，不进任务流程） ================= */
+  /* 卡通 R1：圆脸 + 耳麦 + 金色领结，纯 inline SVG —— 不用 emoji、不引外部图，两个主题下都清楚。 */
+  var R1_SVG = "<svg viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>"
+    + "<circle cx='32' cy='32' r='32' fill='#1d2847'/>"
+    + "<path d='M13 31c0-12 8.5-19 19-19s19 7 19 19c-4.5-6-11-8.5-19-8.5S17.5 25 13 31z' fill='#0e1420'/>"
+    + "<circle cx='32' cy='35' r='14.5' fill='#f6d7ba'/>"
+    + "<path d='M18 33a14 14 0 0 1 28 0' stroke='#e8b73d' stroke-width='2.4' fill='none'/>"
+    + "<circle cx='18' cy='34' r='2.8' fill='#e8b73d'/><circle cx='46' cy='34' r='2.8' fill='#e8b73d'/>"
+    + "<circle cx='26.5' cy='34' r='2.1' fill='#22304f'/><circle cx='37.5' cy='34' r='2.1' fill='#22304f'/>"
+    + "<path d='M27 41.5q5 4 10 0' stroke='#22304f' stroke-width='2' fill='none' stroke-linecap='round'/>"
+    + "<path d='M32 48.5l-3.4 5.2h6.8z' fill='#e8b73d'/>"
+    + "</svg>";
+
+  function fmtTok(n){ return (Number(n) || 0).toLocaleString(); }
+
+  /* Token 统计里的「临时会话」单独一项：与任务用量分开，互不并入 */
+  function renderAssistantTokens(a){
+    var el = $("tokAssistant");
+    if (!el) return;
+    a = a || { in: 0, out: 0, count: 0 };
+    var tot = (a.in || 0) + (a.out || 0);
+    el.innerHTML = "<div class='tok-a-card'><span>临时会话</span><b>" + fmtTok(tot) + "</b>"
+      + "<span>输入 " + fmtTok(a.in) + " · 输出 " + fmtTok(a.out) + " · " + (a.count || 0) + " 次问答</span>"
+      + "<em>不进任务统计</em></div>";
+  }
+
+  function mountDock(){
+    var fab = $("r1Fab"), ava = $("r1Ava");
+    if (fab){ fab.innerHTML = R1_SVG; fab.addEventListener("click", function(){ toggleR1Panel(); }); }
+    if (ava) ava.innerHTML = R1_SVG;
+    var x = $("r1Close"); if (x) x.addEventListener("click", function(){ showR1Panel(false); });
+    var s = $("r1Send"); if (s) s.addEventListener("click", askR1);
+    var q = $("r1Q");
+    if (q) q.addEventListener("keydown", function(e){
+      if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); askR1(); }
+    });
+    var on = $("dockOn");
+    if (on) on.addEventListener("change", function(){ applyDock(on.checked, true); });
+    // 初始状态以配置为准（跨浏览器一致，而不是只看本机 localStorage）
+    api("/api/settings").then(function(j){
+      var v = !!(j && j.config && j.config.assistantDock);
+      applyDock(v, false);
+      var cb = $("dockOn"); if (cb) cb.checked = v;
+    }).catch(function(){});
+  }
+
+  function applyDock(on, save){
+    var d = $("r1Dock");
+    if (d) d.hidden = !on;
+    if (!on) showR1Panel(false);
+    var m = $("dockMsg");
+    if (m && save) m.textContent = on ? "已开启 —— 右下角点 R1 头像开始问答" : "已关闭";
+    if (save) post("/api/settings", { assistantDock: on }).catch(function(){});
+  }
+
+  function showR1Panel(on){
+    var p = $("r1Panel");
+    if (p) p.hidden = !on;
+    if (on){
+      var box = $("r1Msgs");
+      if (box && !box.childElementCount)
+        addR1Msg("sys", "临时会话：只问答，不建任务、不派角色。问我项目现在什么情况就行。");
+      var q = $("r1Q"); if (q) q.focus();
+    }
+  }
+  function toggleR1Panel(){
+    var p = $("r1Panel");
+    showR1Panel(!!(p && p.hidden));
+  }
+  function addR1Msg(kind, text){
+    var box = $("r1Msgs");
+    if (!box) return null;
+    var el = document.createElement("div");
+    el.className = "r1-m " + kind;
+    el.textContent = text;
+    box.appendChild(el);
+    box.scrollTop = box.scrollHeight;
+    return el;
+  }
+  function askR1(){
+    var q = $("r1Q"), s = $("r1Send"), m = $("r1Msg"), tk = $("r1Tok");
+    var text = (q && q.value || "").trim();
+    if (!text) return;
+    addR1Msg("q", text);
+    if (q) q.value = "";
+    if (s) s.disabled = true;
+    if (m) m.textContent = "R1 正在看项目现状…";
+    var wait = addR1Msg("sys", "思考中…");
+    post("/api/assistant/ask", { q: text }).then(function(j){
+      if (wait) wait.remove();
+      if (j && j.ok && j.a) addR1Msg("a", j.a);
+      else addR1Msg("sys", (j && j.msg) || "没有拿到回答");
+      if (m) m.textContent = "";
+      if (j && j.tokens && tk)
+        tk.innerHTML = "临时会话累计 <b>" + fmtTok((j.tokens.in || 0) + (j.tokens.out || 0)) + "</b>";
+      loadTokenStats();
+    }).catch(function(e){
+      if (wait) wait.remove();
+      addR1Msg("sys", "异常：" + ((e && e.message) || ""));
+      if (m) m.textContent = "";
+    }).then(function(){ if (s) s.disabled = false; });
+  }
   function loadTokenStats(){
     var sum = $("tokSum"), chart = $("tokChart");
     if (sum) sum.textContent = "";
     if (chart) chart.innerHTML = "<div class='placeholder'>加载中…</div>";
     api("/api/tokens").then(function(j){
+      renderAssistantTokens(j && j.assistant);   // 任务行为空时这一项也要显示，所以放在早返回之前
       if (!j || !j.ok){ if (chart) chart.innerHTML = "<div class='placeholder'>读取失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
       var rows = j.rows || [];
       if (!rows.length){
@@ -2528,6 +2631,7 @@
   tick();
   loadHome();
   bindSettings();
+  mountDock();            // R1 助理悬浮窗（临时会话，不进任务流程）
   loadProjects();   // 启动即拉项目清单：顶栏项目切换器一直显示正确项目名，而不是等进设置
   loadProjectTemplates();
   bindOnboard();

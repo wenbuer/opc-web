@@ -11,8 +11,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
-from . import (bootstrap, chain, config, engines, knowledge, parsers, review, roles, runner,
-               scheduler, skills, store, templates)
+from . import (assistant, bootstrap, chain, config, engines, knowledge, parsers, review, roles,
+               runner, scheduler, skills, store, templates)
 
 
 def _strip_okf_frontmatter(text: str) -> str:
@@ -247,7 +247,9 @@ class Handler(BaseHTTPRequestHandler):
         elif url == "/api/home-stats":
             self._ok(scheduler.home_stats)
         elif url == "/api/tokens":
-            self._ok(lambda: {"ok": True, "rows": scheduler.token_rows()})
+            # 任务用量 + 临时会话用量分开给：前者按子任务逐条，后者是悬浮窗问答的合计
+            self._ok(lambda: {"ok": True, "rows": scheduler.token_rows(),
+                              "assistant": assistant.totals()})
         elif url == "/api/ws-file":
             self._ok(self._get_ws_file, err=400)
         elif url == "/api/ws-html":
@@ -268,6 +270,9 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._get_skill_lib)
         elif url == "/api/skill-sources":
             self._ok(self._get_skill_sources)
+        elif url == "/api/assistant/history":
+            self._json({"ok": True, "items": assistant.records(limit=50),
+                        "totals": assistant.totals()})
         elif url == "/api/templates":
             self._json({"ok": True, "templates": templates.templates()})
         elif url == "/api/handbook":
@@ -477,6 +482,11 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             raise ApiError(500, "保存设置失败: " + str(e)[:200])
 
+    def _post_assistant_ask(self):
+        """R1 助理的临时会话：只问答，不建任务、不派角色（用量单独记账）。"""
+        body = self._body() or {}
+        return assistant.ask(str(body.get("q") or ""))
+
     def _post_model_test(self):
         try:
             return config.test_model(self._body() or {}, timeout=20)
@@ -597,6 +607,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._post_project, err=400)
         elif url == "/api/settings":
             self._ok(self._post_settings)
+        elif url == "/api/assistant/ask":
+            self._ok(self._post_assistant_ask)
         elif url == "/api/model/test":
             self._ok(self._post_model_test)
         elif url == "/api/roles/delete":
