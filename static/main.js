@@ -2041,8 +2041,46 @@
       box.appendChild(el);
     });
   }
-  /* 项目文件页里的公共项目区：只加载根层，点开目录才要下一层。
-     和首页共用 projNode/projFill/renderProjTree —— 同一份数据、同一套懒加载。 */
+  /* 懒加载版的树渲染：目录与文件都用「项目文件」页原有的样式（.pf-dir / .ws-item），
+     只是子层在首次展开时才请求。项目区以前走首页那套 .proj-file-item，跟其他角色
+     的 .ws-item 长得不一样，看着像两个页面拼起来的。 */
+  function renderWsLazy(node, box, depth){
+    Object.keys(node.dirs).sort().forEach(function(name){
+      var sub = node.dirs[name];
+      var row = document.createElement("div");
+      row.className = "pf-dir";
+      row.style.paddingLeft = (4 + depth * 12) + "px";
+      row.innerHTML = "<span class='pf-arrow'>▸</span>"
+        + "<span class='pf-name'>" + esc(name) + "</span><em class='pf-count'></em>";
+      var kids = document.createElement("div");
+      kids.style.display = "none";
+      row.addEventListener("click", function(ev){
+        ev.stopPropagation();
+        var open = kids.style.display !== "none";
+        kids.style.display = open ? "none" : "";
+        var a = row.querySelector(".pf-arrow");
+        if (a) a.textContent = open ? "▸" : "▾";
+        if (open || sub.loaded) return;               // 收起 / 已加载过 → 不发请求
+        kids.innerHTML = "<div class='placeholder'>加载中…</div>";
+        api("/api/project-files?path=" + encodeURIComponent(sub.rel)).then(function(j){
+          kids.innerHTML = "";
+          if (!j || !j.ok){ kids.innerHTML = "<div class='placeholder'>读取失败</div>"; return; }
+          projFill(sub, j.files || []);
+          renderWsLazy(sub, kids, depth + 1);
+          var c = row.querySelector(".pf-count");
+          if (c) c.textContent = wsTreeCount(sub) + " 项";
+        }).catch(function(){ kids.innerHTML = "<div class='placeholder'>读取失败</div>"; });
+      });
+      box.appendChild(row);
+      box.appendChild(kids);
+    });
+    node.files.sort(function(a, b){ return a.name.localeCompare(b.name); }).forEach(function(it){
+      var el = wsItemEl(it.f);
+      el.style.paddingLeft = (4 + depth * 12) + "px";
+      box.appendChild(el);
+    });
+  }
+  /* 项目文件页里的公共项目区：只加载根层，点开目录才要下一层。 */
   function wsProjTree(box){
     box.innerHTML = "<div class='placeholder'>加载项目区根层…</div>";
     api("/api/project-files").then(function(j){
@@ -2050,7 +2088,7 @@
       box.innerHTML = "";
       var root = projNode("项目");
       projFill(root, j.files || []);
-      renderProjTree(root, box, 0);
+      renderWsLazy(root, box, 0);
     }).catch(function(e){ box.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
   }
   function renderWsList(){
