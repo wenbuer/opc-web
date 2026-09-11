@@ -1294,6 +1294,10 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .br-time{flex:none;width:74px;font-family:var(--mono);font-size:10px;color:var(--faint)}
 .br-no{flex:none;font-family:var(--mono);font-size:10.5px}
 .br-sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.br-st{flex:none;font-size:9.5px;padding:1px 6px;border-radius:5px;border:1px solid var(--line2);color:var(--dim)}
+.br-st.ok{color:var(--ok);border-color:rgba(52,211,153,.45)}
+.br-st.run{color:#4f46e5;border-color:rgba(79,70,229,.45)}
+.br-st.bad{color:var(--red-bright);border-color:rgba(239,68,68,.45)}
 .br-role{flex:none;width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--dim);text-align:right}
 :root[data-theme="dark"] .br-row:hover{background:#22304f}
 .bd-more{font-size:9px;color:var(--faint);text-align:center;padding:6px 2px;border:1px dashed var(--line);border-radius:6px}

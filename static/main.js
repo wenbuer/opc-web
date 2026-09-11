@@ -1189,17 +1189,17 @@
       box.innerHTML = "<div class='placeholder'>" + (q || state.activeNo ? "没有匹配的子任务" : "暂无子任务 —— 下达任务后 R1 拆解即出现") + "</div>";
       return;
     }
+    /* 没点任何任务 = 全局总览：子任务只会越积越多，四列看板是**任务级**的视图，
+       全局用「一行一事」的列表。点了某个任务才回到四列看板。 */
+    if (!state.activeNo){
+      boardRecent(rows, box, rows.length);
+      return;
+    }
     box.className = "board";
     box.style.gridTemplateColumns = "";
     var buckets = {};
     BOARD_COLS.forEach(function(c){ buckets[c.key] = []; });
     rows.forEach(function(x){ buckets[boardColOf(x.st)].push(x); });
-    /* 待派/已派/阻塞都是 0 = 没有任何东西在流动 → 看板这个形态本身就不合适
-       （只剩完成列有数据，四列等宽下挤在 1/4 宽里）。换成「最近完成」列表。 */
-    if (!buckets["待派"].length && !buckets["已派"].length && !buckets["阻塞"].length){
-      boardRecent(buckets["完成"], box, rows.length);
-      return;
-    }
     /* 未点任务且未搜索 = 全局总览：每列倒序（最新在前），最多显示 5 张卡，其余收进 +N 提示 */
     if (!state.activeNo && !q){
       BOARD_COLS.forEach(function(c){
@@ -1244,7 +1244,7 @@
     wrap.className = "bd-recent";
     var head = document.createElement("div");
     head.className = "br-head";
-    head.innerHTML = "<span>最近完成</span><em>共 " + total + " 个子任务</em>";
+    head.innerHTML = "<span>子任务</span><em>共 " + total + " 个</em>";
     wrap.appendChild(head);
     var arr = list.slice().sort(function(a, b){
       return String(b.lastStarted || "").localeCompare(String(a.lastStarted || ""));
@@ -1256,6 +1256,8 @@
       el.innerHTML = "<span class='br-time'>"
         + esc(String(x.lastStarted || "").replace("T", " ").slice(5, 16)) + "</span>"
         + "<span class='br-no'>" + esc(x.no) + "</span>"
+        + "<span class='br-st " + (boardColOf(x.st) === "完成" ? "ok"
+            : (boardColOf(x.st) === "阻塞" ? "bad" : "run")) + "'>" + esc(x.st || "待派") + "</span>"
         + "<span class='br-sub'>" + esc(x.sub) + "</span>"
         + (partial ? "<span class='bc-tag partial'>部分</span>" : "")
         + "<span class='br-role'>" + esc(x.role) + " " + esc(roleName(x.role)) + "</span>";
