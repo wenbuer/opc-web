@@ -2195,15 +2195,13 @@
   }
   /* ================= R1 助理悬浮窗（临时会话，不进任务流程） ================= */
   /* 卡通 R1：圆脸 + 耳麦 + 金色领结，纯 inline SVG —— 不用 emoji、不引外部图，两个主题下都清楚。 */
-  var R1_SVG = "<svg viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>"
-    + "<circle cx='32' cy='32' r='32' fill='#1d2847'/>"
-    + "<path d='M13 31c0-12 8.5-19 19-19s19 7 19 19c-4.5-6-11-8.5-19-8.5S17.5 25 13 31z' fill='#0e1420'/>"
-    + "<circle cx='32' cy='35' r='14.5' fill='#f6d7ba'/>"
-    + "<path d='M18 33a14 14 0 0 1 28 0' stroke='#e8b73d' stroke-width='2.4' fill='none'/>"
-    + "<circle cx='18' cy='34' r='2.8' fill='#e8b73d'/><circle cx='46' cy='34' r='2.8' fill='#e8b73d'/>"
-    + "<circle cx='26.5' cy='34' r='2.1' fill='#22304f'/><circle cx='37.5' cy='34' r='2.1' fill='#22304f'/>"
-    + "<path d='M27 41.5q5 4 10 0' stroke='#22304f' stroke-width='2' fill='none' stroke-linecap='round'/>"
-    + "<path d='M32 48.5l-3.4 5.2h6.8z' fill='#e8b73d'/>"
+  /* 悬浮球里的图形：一个对话气泡 + 三个点。底色与光环由 CSS 给（跟随主题），
+     这里只画图形本身 —— 不再是具体的人脸形象。 */
+  var R1_SVG = "<svg viewBox='0 0 48 48' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>"
+    + "<path d='M11 13h26a5 5 0 0 1 5 5v11a5 5 0 0 1-5 5H24l-8 7v-7h-5a5 5 0 0 1-5-5V18a5 5 0 0 1 5-5z' fill='#fff' opacity='.96'/>"
+    + "<circle cx='17' cy='23.5' r='2.3' fill='#0b4a7a'/>"
+    + "<circle cx='24' cy='23.5' r='2.3' fill='#0b4a7a'/>"
+    + "<circle cx='31' cy='23.5' r='2.3' fill='#0b4a7a'/>"
     + "</svg>";
 
   function fmtTok(n){ return (Number(n) || 0).toLocaleString(); }
@@ -2234,6 +2232,14 @@
     if (on) on.addEventListener("change", function(){ applyDock(on.checked, true); });
     dockApplyPos();                                 // 恢复上次拖到的位置
     makeDockDraggable();
+    // 第一次露面时招呼一下（气泡 3 秒后自动收回），之后不再打扰
+    try {
+      if (!localStorage.getItem("opc.dockTipped")){
+        var f = $("r1Fab");
+        if (f){ f.classList.add("tipped"); setTimeout(function(){ f.classList.remove("tipped"); }, 3200); }
+        localStorage.setItem("opc.dockTipped", "1");
+      }
+    } catch (e) {}
     // 初始状态以配置为准（跨浏览器一致，而不是只看本机 localStorage）
     api("/api/settings").then(function(j){
       var v = !!(j && j.config && j.config.assistantDock);
@@ -2265,8 +2271,7 @@
   function makeDockDraggable(){
     var d = $("r1Dock");
     if (!d) return;
-    var panel = $("r1Panel");
-    var grips = [$("r1Fab"), panel ? panel.querySelector(".r1-head") : null].filter(Boolean);
+    var grips = [$("r1Fab")].filter(Boolean);   // 只有悬浮球能拖；面板不参与拖动
     var st = { on: false, moved: false, sx: 0, sy: 0, ox: 0, oy: 0 };
     function down(e){
       if (e.button !== 0) return;

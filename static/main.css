@@ -1517,20 +1517,39 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 
 /* ===== R1 助理悬浮窗（临时会话，不进任务流程） ===== */
 .r1-dock{position:fixed;right:22px;bottom:22px;z-index:1200}
-.r1-fab{width:56px;height:56px;padding:0;border:none;border-radius:50%;cursor:grab;background:none;
-  box-shadow:0 6px 20px rgba(15,23,42,.28);transition:transform .18s ease,box-shadow .18s ease}
-.r1-fab:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(15,23,42,.34)}
+/* 悬浮球：一个会呼吸的光球（光环脉冲），里面是对话气泡图标。
+   只有它能拖；面板不参与拖动。 */
+.r1-fab{position:relative;width:56px;height:56px;padding:0;border:none;border-radius:50%;cursor:grab;
+  background-image:radial-gradient(circle at 34% 28%,#6cc0f5,#0b4a7a 74%);
+  box-shadow:0 6px 20px rgba(15,23,42,.28);
+  animation:r1pulse 2.6s ease-out infinite;
+  transition:transform .18s ease}
+.r1-fab:hover{transform:translateY(-2px) scale(1.04);animation-play-state:paused}
 .r1-fab:active{cursor:grabbing}
+:root[data-theme="dark"] .r1-fab{background-image:radial-gradient(circle at 34% 28%,#f7dc90,#7a5a0b 74%);animation-name:r1pulseDark}
+@keyframes r1pulse{
+  0%{box-shadow:0 6px 20px rgba(15,23,42,.28),0 0 0 0 rgba(2,132,199,.42)}
+  70%{box-shadow:0 6px 20px rgba(15,23,42,.28),0 0 0 16px rgba(2,132,199,0)}
+  100%{box-shadow:0 6px 20px rgba(15,23,42,.28),0 0 0 0 rgba(2,132,199,0)}}
+@keyframes r1pulseDark{
+  0%{box-shadow:0 6px 20px rgba(0,0,0,.4),0 0 0 0 rgba(232,183,61,.45)}
+  70%{box-shadow:0 6px 20px rgba(0,0,0,.4),0 0 0 16px rgba(232,183,61,0)}
+  100%{box-shadow:0 6px 20px rgba(0,0,0,.4),0 0 0 0 rgba(232,183,61,0)}}
+/* 悬停（以及首次露面时）浮出的招呼气泡 */
+.r1-fab::after{content:attr(data-tip);position:absolute;right:64px;top:50%;
+  transform:translateY(-50%) translateX(4px);white-space:nowrap;font-size:11px;color:var(--txt);
+  background:var(--panel);border:1px solid var(--line2);border-radius:9px;padding:6px 10px;
+  box-shadow:0 4px 14px rgba(15,23,42,.18);opacity:0;pointer-events:none;
+  transition:opacity .18s ease,transform .18s ease}
+.r1-fab:hover::after,.r1-fab.tipped::after{opacity:1;transform:translateY(-50%) translateX(0)}
 .r1-fab svg,.r1-ava svg{display:block;width:100%;height:100%;border-radius:50%}
 .r1-panel{position:absolute;right:0;bottom:70px;width:min(380px,92vw);max-height:min(560px,78vh);
   display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line2);
   border-radius:14px;box-shadow:0 18px 50px rgba(15,23,42,.32);overflow:hidden}
-.r1-head{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--line);cursor:grab}
-.r1-head:active{cursor:grabbing}
-.r1-off{margin-left:auto;border:none;background:none;color:var(--faint);font-size:9.5px;cursor:pointer;
-  text-decoration:underline;padding:0;white-space:nowrap}
-.r1-off:hover{color:var(--red-bright)}
-.r1-ava{width:32px;height:32px;flex:none}
+.r1-head{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.r1-ava{width:32px;height:32px;flex:none;border-radius:50%;
+  background-image:radial-gradient(circle at 34% 28%,#6cc0f5,#0b4a7a 74%)}
+:root[data-theme="dark"] .r1-ava{background-image:radial-gradient(circle at 34% 28%,#f7dc90,#7a5a0b 74%)}
 .r1-who{flex:1;min-width:0;display:flex;flex-direction:column}
 .r1-who b{font-size:12px}
 .r1-who em{font-style:normal;font-size:9.5px;color:var(--faint);letter-spacing:.3px}
