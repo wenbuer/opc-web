@@ -51,50 +51,6 @@ def read_trace(act: str, limit: int = 400000) -> str:
         return ""
 
 
-def read_trace_task(task_no: str) -> str:
-    """一个任务下所有子任务的运行日志，按子任务分段拼起来。
-
-    子任务逐个执行、编号有序，所以直接按文件名排序拼即可；没有日志的跳过。
-    任务维度的记录就靠它 —— 不必再把轨迹实时灌进界面。"""
-    d = trace_path(task_no + "-S1").parent
-    if not d.is_dir():
-        return ""
-    parts = []
-    for p in sorted(d.glob("%s-S*.log" % task_no)):
-        try:
-            parts.append("=" * 58 + chr(10) + "# " + p.stem + chr(10) + "=" * 58 + chr(10)
-                         + p.read_text(encoding="utf-8", errors="replace"))
-        except OSError:
-            continue
-    return (chr(10) + chr(10)).join(parts)
-
-
-def trace_list(role: str = "", limit: int = 40) -> list:
-    """有哪些运行日志可看（最近的在前面）：{sub, role, task, started, result, size}。
-
-    数据源是执行记录表（谁在什么时候跑的）叠加日志文件是否存在 ——
-    只列真的留下日志的那些，点开就有全文。"""
-    from . import store
-    out = []
-    for e in reversed(store.executions()):
-        if role and str(e.get("role") or "") != role:
-            continue
-        sub = str(e.get("sub_no") or "")
-        p = trace_path(sub)
-        if not p.is_file():
-            continue
-        try:
-            size = p.stat().st_size
-        except OSError:
-            continue
-        out.append({"sub": sub, "role": str(e.get("role") or ""),
-                    "task": str(e.get("task_no") or ""),
-                    "started": str(e.get("started_at") or ""),
-                    "result": str(e.get("result") or ""), "size": size})
-        if len(out) >= limit:
-            break
-    return out
-
 
 def _trace_emit(act: str, kind: str, text: str) -> None:
     """完整轨迹：一条事件进事件流（面板实时看），同时追加落盘（事后回看）。

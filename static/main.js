@@ -180,7 +180,6 @@
     p.hidden = true;
     p.innerHTML = "<div class='r1-head'><span class='rc-dot'></span>"
       + "<div class='r1-who'><b id='rcWho'></b><em>直派 · 跳过 R1 拆解 · 每次独立执行</em></div>"
-      + "<button id='rcRec' class='rc-rec' title='这个角色的执行记录（落盘运行日志）'>记录</button>"
       + "<button id='rcClose' class='r1-x' title='关闭'>×</button></div>"
       + "<div id='rcMsgs' class='r1-msgs'></div>"
       + "<div class='r1-input'><input id='rcQ' placeholder='给这个角色下达任务，回车发送'>"
@@ -188,7 +187,6 @@
       + "<div class='r1-foot'><span id='rcMsg'></span></div>";
     document.body.appendChild(p);
     $("rcClose").addEventListener("click", function(){ p.hidden = true; });
-    $("rcRec").addEventListener("click", rcRecords);
     $("rcSend").addEventListener("click", rcSend);
     $("rcQ").addEventListener("keydown", function(e){
       if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); rcSend(); }
@@ -214,25 +212,6 @@
       rcMsg("sys", "下达的任务会直接派给该角色执行，不进 R1 拆解；每条消息独立执行，进度去「工作台 → 实时事件」看。");
     }
     var q = $("rcQ"); if (q) q.focus();
-  }
-  function rcRecords(){
-    if (!RC_ROLE) return;
-    var el = rcMsg("sys", "读取 " + RC_ROLE + " 的执行记录…");
-    api("/api/runlogs?role=" + encodeURIComponent(RC_ROLE)).then(function(j){
-      var rows = (j && j.rows) || [];
-      if (!rows.length){ if (el) el.textContent = "这个角色还没有留下运行日志。"; return; }
-      if (el) el.remove();
-      rows.forEach(function(r){
-        var line = rcMsg("sys", (r.started || "").replace("T", " ").slice(5, 16) + " · " + r.sub
-          + " · " + (r.result || "执行中") + " · " + Math.max(1, Math.round((r.size || 0) / 1024)) + " KB"
-          + " —— 点击查看");
-        if (line){
-          line.style.cursor = "pointer";
-          line.title = "打开 " + r.sub + " 的完整运行日志（思考 / 工具 / 输出）";
-          line.addEventListener("click", function(){ openRunLog(r.sub); });
-        }
-      });
-    }).catch(function(e){ if (el) el.textContent = "读取失败：" + ((e && e.message) || ""); });
   }
   function rcSend(){
     var q = $("rcQ"), m = $("rcMsg"), s = $("rcSend");
@@ -562,14 +541,12 @@
       box.addEventListener("click", function(e){
         var t = e.target;
         if (t && t.classList && t.classList.contains("ex-log")) openRunLog(t.getAttribute("data-sub"));
-        else if (t && t.classList && t.classList.contains("to-log")) openRunLogTask(t.getAttribute("data-task"));
       });
     }
     box.innerHTML = "<div class='placeholder'>加载任务 " + esc(no) + " 的输出…</div>";
     api("/api/task-output?no=" + encodeURIComponent(no)).then(function(j){
       if (!j || !j.ok){ box.innerHTML = "<div class='placeholder'>读取失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
-      var html = "<div class='to-head'>任务 " + esc(j.no) + " · 输出聚合"
-        + "<button class='rt-log to-log' data-task='" + esc(j.no) + "' title='这个任务下所有子任务的运行日志（按子任务分段）'>本任务完整日志</button></div>";
+      var html = "<div class='to-head'>任务 " + esc(j.no) + " · 输出聚合</div>";
       /* 台账来自 SQLite（/api/task-output），这里只把结构化行拼成 md 表格用于渲染 */
       function mdRow(cells){ return "| " + cells.map(function(c){ return String(c == null ? "" : c).replace(/\|/g, "／").replace(/\n/g, " "); }).join(" | ") + " |"; }
       function mdTable(head, rows){ return renderMd(mdRow(head) + "\n|" + head.map(function(){ return "---"; }).join("|") + "|\n" + rows.join("\n")); }
@@ -1421,12 +1398,12 @@
     var em = el.querySelector(".rt-meta");
     if (em) em.textContent = n + " 块 · " + chars.toLocaleString() + " 字";
   }
-  function openLogWindow(url, title){
+  function openRunLog(sub){
     var w = window.open("", "_blank");
     if (!w) return;
-    w.document.write("<title>" + title + " 运行日志</title><pre style=\"white-space:pre-wrap;word-break:break-word;"
+    w.document.write("<title>" + sub + " 运行日志</title><pre style=\"white-space:pre-wrap;word-break:break-word;"
       + "font:12px/1.6 ui-monospace,Consolas,monospace;padding:16px\">加载中…</pre>");
-    api(url).then(function(j){
+    api("/api/runlog?sub=" + encodeURIComponent(sub)).then(function(j){
       var pre = w.document.querySelector("pre");
       if (pre) pre.textContent = (j && j.text) || ((j && j.msg) || "没有日志");
     }).catch(function(e){
@@ -1434,9 +1411,6 @@
       if (pre) pre.textContent = "读取失败：" + ((e && e.message) || "");
     });
   }
-  /* 子任务维度 / 任务维度（全任务的日志按子任务分段拼在一起） */
-  function openRunLog(sub){ openLogWindow("/api/runlog?sub=" + encodeURIComponent(sub), sub); }
-  function openRunLogTask(task){ openLogWindow("/api/runlog?task=" + encodeURIComponent(task), task); }
   function runRender(ev){
     /* 事件源 = runner 缓冲（chain 只发 6 种合成事件）：run/start → 新建任务段；
        其余事件追加进当前段。 */
