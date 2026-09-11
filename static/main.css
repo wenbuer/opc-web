@@ -1576,6 +1576,9 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .r1-panel{position:absolute;right:0;bottom:70px;width:min(380px,92vw);max-height:min(560px,78vh);
   display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line2);
   border-radius:14px;box-shadow:0 18px 50px rgba(15,23,42,.32);overflow:hidden}
+/* hidden 属性必须显式兜底：上面的 display:flex 优先级高于 UA 的 [hidden]{display:none}，
+   不写这一条，JS 里 p.hidden = true 根本关不掉面板（收起按钮形同虚设）。 */
+.r1-panel[hidden]{display:none}
 .r1-head{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--line)}
 .r1-ava{width:32px;height:32px;flex:none;border-radius:50%;
   background-image:radial-gradient(circle at 34% 28%,#ffffff,#bcc9d9 72%)}
