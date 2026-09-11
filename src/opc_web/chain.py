@@ -178,6 +178,18 @@ def _put_run_info(meta: dict, sub_no: str) -> None:
         meta["engineSession"] = info.get("session") or info.get("engineSession")
 
 
+def _meta_read(meta_p):
+    """读子任务 meta：正常在工作区；**执行中被归档线程抢走**（角色 agent 早已把 status 写成
+    「完成」）就从 已归档/ 读回来。两处都没有返回 (None, None) —— 调用方据此报出来，
+    不再静默 pass：这个异常曾让 engine 与 tokens 一个字都写不进去，统计里凭空少一块。"""
+    for p in (meta_p, meta_p.parent / "已归档" / meta_p.name):
+        try:
+            return p, json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+    return None, None
+
+
 def _put_tokens(meta: dict, usage) -> None:
     """把 headless 用量写进 meta（完成/阻塞两条路径共用）；usage 为空则不写。
 
@@ -320,13 +332,18 @@ def execute(task_no, task_text):
                 with open(body_p, "a", encoding="utf-8") as fh:          # 完成回报（唯一的子任务产出文件）
                     fh.write("\n\n## 完成回报（控制台自动执行 %s）\n\n%s\n" % (sub_no, text))
                 try:
-                    meta = json.loads(meta_p.read_text(encoding="utf-8"))
-                    meta["status"] = "完成"
-                    _put_run_info(meta, sub_no)  # 引擎名 + 会话标识，事后可追溯
-                    _put_tokens(meta, usage)     # 输入=含缓存读取的计费口径，另存拆分
-                    meta_p.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                except Exception:
-                    pass
+                    mp, meta = _meta_read(meta_p)
+                    if meta is None:
+                        runner.emit({"type": "assistant/chunk", "data": {
+                            "text": "⚠ %s 元数据读不到（工作区与 已归档/ 都没有），engine 与 tokens 未记入" % sub_no}})
+                    else:
+                        meta["status"] = "完成"
+                        _put_run_info(meta, sub_no)  # 引擎名 + 会话标识，事后可追溯
+                        _put_tokens(meta, usage)     # 输入=含缓存读取的计费口径，另存拆分
+                        mp.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                except Exception as e:
+                    runner.emit({"type": "assistant/chunk", "data": {
+                        "text": "⚠ %s 元数据更新失败：%s" % (sub_no, e)}})
                 store.settle_execution(sub_no, "完成")
                 ok_cnt += 1
                 runner.emit({"type": "assistant/chunk",
@@ -337,13 +354,15 @@ def execute(task_no, task_text):
                 try:
                     with open(body_p, "a", encoding="utf-8") as fh:
                         fh.write("\n\n## 执行结果\n\n【%s，置阻塞】\n" % reason)
-                    meta = json.loads(meta_p.read_text(encoding="utf-8"))
-                    meta["status"] = "阻塞"
-                    _put_run_info(meta, sub_no)  # 引擎名 + 会话标识，事后可追溯
-                    _put_tokens(meta, usage)     # 被强杀/无输出也烧了 token，照样记账
-                    meta_p.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                except Exception:
-                    pass
+                    mp, meta = _meta_read(meta_p)
+                    if meta is not None:
+                        meta["status"] = "阻塞"
+                        _put_run_info(meta, sub_no)  # 引擎名 + 会话标识，事后可追溯
+                        _put_tokens(meta, usage)     # 被强杀/无输出也烧了 token，照样记账
+                        mp.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                except Exception as e:
+                    runner.emit({"type": "assistant/chunk", "data": {
+                        "text": "⚠ %s 元数据更新失败：%s" % (sub_no, e)}})
                 store.settle_execution(sub_no, "阻塞", reason[:40])
                 fail.append(sub_no)
                 runner.emit({"type": "assistant/chunk",

@@ -188,6 +188,7 @@ def r1_archive() -> dict:
     幂等由主键（子任务编号）保证：重复归档即覆盖同一行，不再靠整行字符串比对去重。
     文件在=待处理、文件移走=已处理，文件系统本身就是状态机。"""
     done, skipped, ledger = [], [], []
+    running = store.running_subs()      # 执行中的子任务不许归档（详见 store.running_subs）
     for d in _wb_role_dirs():
         for meta_p in sorted(d.glob("*.meta.json")):
             try:
@@ -200,6 +201,9 @@ def r1_archive() -> dict:
             body_p = d / (sub_no + "-report.md")          # 新命名：完成回报
             if not body_p.exists():
                 body_p = d / (sub_no + ".md")             # 兼容历史旧命名
+            if sub_no in running:
+                skipped.append("%s（执行中，不归档）" % sub_no)
+                continue
             if status in ("待执行", "执行中") or not body_p.exists():
                 skipped.append("%s（%s）" % (sub_no, status if body_p.exists() else "正文未产出"))
                 continue
