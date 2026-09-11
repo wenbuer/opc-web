@@ -211,15 +211,6 @@ def open_execution(sub_no: str, task_no: str, role: str) -> str:
         return eid
 
 
-def running_subs() -> set:
-    """还在执行中的子任务号集合（有未结算的执行记录）。
-
-    归档必须避开它们：角色 agent 在执行途中就按 prompt 要求把 meta 的 status 写成了
-    「完成」，归档线程看到「完成」就抢先把它移进 已归档/ —— 执行链回来更新 meta 时
-    文件已经不在原地，engine 与 tokens 全被 FileNotFoundError 吞掉（统计里凭空少一块）。"""
-    with _db() as c:
-        return {r["sub_no"] for r in c.execute("SELECT DISTINCT sub_no FROM execution WHERE ended_at IS NULL")}
-
 
 def settle_execution(sub_no: str, result: str, error: str = "") -> bool:
     """结算该子任务最近一次未结算的执行；没有在跑的执行则返回 False。"""

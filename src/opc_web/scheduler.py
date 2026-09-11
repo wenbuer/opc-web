@@ -188,7 +188,12 @@ def r1_archive() -> dict:
     幂等由主键（子任务编号）保证：重复归档即覆盖同一行，不再靠整行字符串比对去重。
     文件在=待处理、文件移走=已处理，文件系统本身就是状态机。"""
     done, skipped, ledger = [], [], []
-    running = store.running_subs()      # 执行中的子任务不许归档（详见 store.running_subs）
+    # 执行中的子任务不许归档（角色 agent 会提前把 meta 的 status 写成「完成」，
+    # 归档线程抢先搬走文件，执行链回来更新 meta 就找不到它了）。
+    # 判据必须是「**当前进程里真的在跑**」，不能用 DB 的未结算记录 ——
+    # 进程被杀（重启）会留下永远不结算的记录，那样这个守卫会永久挡住归档，
+    # 而子任务状态恰恰是靠归档更新的，于是永远卡在「执行中」。
+    running = set(runner.exec_state().keys())
     for d in _wb_role_dirs():
         for meta_p in sorted(d.glob("*.meta.json")):
             try:
