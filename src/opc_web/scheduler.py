@@ -104,7 +104,8 @@ def schedule_due(j: dict, now=None) -> bool:
             wd = 0
         if now.weekday() != wd:
             return False
-    m = re.match(r"^(\d{1,2}):(\d{2})$", str(j.get("time") or "").strip())
+    # 容错带秒的写法（部分浏览器的时间选择器会回 "HH:MM:SS"）
+    m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", str(j.get("time") or "").strip())
     if not m:
         return False
     target = now.replace(hour=int(m.group(1)), minute=int(m.group(2)),

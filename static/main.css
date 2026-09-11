@@ -741,7 +741,7 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 .sched-fld{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
 .sched-fld>label{font-size:10px;color:var(--dim);letter-spacing:.5px}
 .sched-fld input,.sched-fld textarea,.sched-fld select{background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:7px 10px;font-size:11.5px;font-family:inherit;width:100%;box-sizing:border-box}
-.sched-fld input:focus,.sched-fld textarea:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(2,132,199,.15);outline:none}
+.sched-fld input:focus,.sched-fld textarea:focus,.sched-fld select:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(2,132,199,.15);outline:none}
 .sched-fld textarea{min-height:64px;resize:vertical}
 .sched-fld-inline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .sched-actions{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}

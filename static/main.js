@@ -2417,7 +2417,11 @@
     post("/api/schedule", payload).then(function(jj){
       if (jj && jj.ok){
         if (msg) msg.textContent = "✓ 定时任务已添加 —— 到点自动下达《任务下达队列》并生成调度指令，交常驻主会话 R1 执行";
-        ["schedTask","schedTime","schedWeekday","schedInterval"].forEach(function(id){ var el = $(id); if (el) el.value = ""; });
+        // 复位：指令清空，三个受控字段回到默认值（时刻 / 星期 / 间隔都是选择器，不能清成空）
+        var td = $("schedTask"); if (td) td.value = "";
+        var tm = $("schedTime"); if (tm) tm.value = "09:30";
+        var wd = $("schedWeekday"); if (wd) wd.value = "0";
+        var iv = $("schedInterval"); if (iv) iv.value = "60";
         loadSchedules();
       } else { if (msg) msg.textContent = "添加失败：" + esc(jj && jj.msg || "未知"); }
     }).catch(function(e){ if (msg) msg.textContent = "异常：" + esc(e.message); });

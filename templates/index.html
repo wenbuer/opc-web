@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260910n">
+<link rel="stylesheet" href="/static/main.css?v=20260911a">
 </head>
 <body>
 <div class="shell">
@@ -292,9 +292,20 @@
                     </select>
                   </div>
                   <div class="sched-fld sched-fld-inline">
-                    <div><label>时刻 HH:MM（每天 / 每周）</label><input id="schedTime" placeholder="如 09:30"></div>
-                    <div><label>星期 0=周一 … 6=周日（每周）</label><input id="schedWeekday" placeholder="如 1"></div>
-                    <div><label>间隔分钟（间隔模式）</label><input id="schedInterval" placeholder="如 60"></div>
+                    <div><label>时刻（每天 / 每周）</label>
+                      <input type="time" id="schedTime" value="09:30" step="60"></div>
+                    <div><label>星期（每周）</label>
+                      <select id="schedWeekday">
+                        <option value="0">周一</option>
+                        <option value="1">周二</option>
+                        <option value="2">周三</option>
+                        <option value="3">周四</option>
+                        <option value="4">周五</option>
+                        <option value="5">周六</option>
+                        <option value="6">周日</option>
+                      </select></div>
+                    <div><label>间隔分钟（间隔模式）</label>
+                      <input type="number" id="schedInterval" value="60" min="1" step="1"></div>
                   </div>
                   <div class="sched-actions">
                     <button id="btnSchedAdd">＋ 添加定时任务</button>
@@ -404,6 +415,6 @@
     </div>
   </div>
 </div>
-<script src="/static/main.js?v=20260910n"></script>
+<script src="/static/main.js?v=20260911a"></script>
 </body>
 </html>
