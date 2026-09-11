@@ -239,8 +239,19 @@ def r1_archive() -> dict:
     if ledger:
         lg = config.BATCH_ROOT / ("归档登记-" + datetime.date.today().isoformat() + ".md")
         lg.parent.mkdir(parents=True, exist_ok=True)
-        with open(lg, "a", encoding="utf-8") as fh:
-            fh.write("\n".join("- " + p for p in ledger) + "\n")
+        # 登记的是「仍留在工作区、没有 meta 的内容交付物」——归档不会把它们移走，
+        # 所以每次扫描都会再看见同一批。这里去重后只追加没登记过的，否则同一批文件
+        # 每归档一次就重抄一遍（实测 13 项被写成 245 行，重复 6 遍）。
+        old = set()
+        if lg.is_file():
+            try:
+                old = {ln.strip() for ln in config.read_text(lg).splitlines() if ln.strip()}
+            except Exception:
+                old = set()
+        new = ["- " + p for p in ledger if ("- " + p) not in old]
+        if new:
+            with open(lg, "a", encoding="utf-8") as fh:
+                fh.write("\n".join(new) + "\n")
     return out
 
 
