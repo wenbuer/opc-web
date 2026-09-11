@@ -232,6 +232,9 @@ class ApiEngine(Engine):
     name = "api"
     label = "直连大模型 API"
     description = "内置 4 个工具的 agent 循环，直连 API 流式执行；不依赖 dsh"
+    cost = ("上下文只有本项目的 prompt 与 4 个基础工具的说明，单轮远小于 DSH；"
+            "但每轮都要重发全部历史，轮数一多总输入累积很快。跑不动需要沙箱的技能。")
+
     def capabilities(self) -> dict:
         return {"tools": True, "streaming": True, "usage": True, "skills": False, "sandbox": True}
 

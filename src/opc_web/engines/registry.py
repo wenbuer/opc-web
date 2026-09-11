@@ -73,6 +73,7 @@ def describe(name: str = None) -> dict:
             ok, note = False, "自检异常：%s" % e
         items.append({"name": n, "label": eng.label, "description": eng.description,
                       "current": n == cur, "ok": bool(ok), "note": note,
+                      "cost": getattr(eng, "cost", ""),
                       "capabilities": eng.capabilities()})
     return {"current": cur, "engines": items, "errors": load_errors(),
             # 设了 OPC_ENGINE 时它会盖掉设置页的选择，界面要说明白，否则「切了没反应」

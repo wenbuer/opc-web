@@ -87,11 +87,25 @@ def _sess_log(session_dir):
     return best
 
 
-def _usage_from_session(session_dir) -> dict:
-    """从一次会话的事件日志抽最终 token 用量。
+def _usage_row(u: dict) -> dict:
+    """一条 usage 记录 → 统一字段（缺的补 0）。"""
+    return {"inputTokens": int(u.get("inputTokens") or 0),
+            "outputTokens": int(u.get("outputTokens") or 0),
+            "cacheReadTokens": int(u.get("cacheReadTokens") or 0),
+            "reasoningTokens": int(u.get("reasoningTokens") or 0)}
 
-    语义同 dsh-tokenledger 的 sampleOf：取最后一条 assistant/message 的 data.usage，
-    兜底 assistant/chunk 里 data.chunk.type === 'usage' 的 usage。缺 zstandard / 无日志返回 None。"""
+
+def _usage_from_session(session_dir) -> dict:
+    """从一次会话的事件日志抽 token 用量：**逐轮累加**（旧格式回落到最后一条）。
+
+    每条 assistant/message 的 usage 是「该轮」的量，不是会话累计值：实测一次 9 轮任务，
+    第 1 轮 in 4975/cache 7680，第 9 轮 in 256/cache 26240 —— 每轮只报「本轮重发的上下文里
+    没命中缓存的那部分」。provider 按每轮重发的上下文计费，所以总消耗 = 各轮之和。
+    只取最后一条会漏掉前面所有轮次（同一会话实测 174k 输入被记成 26k，少记 85%），
+    而 api 引擎是逐轮累加的 —— 两个引擎的数字根本没法比，这才是「差距很大」的主因。
+
+    旧格式（没有 assistant/message 的 usage，只有 assistant/chunk）
+    保持原语义：取最后一条。缺 zstandard / 无日志返回 None。"""
     zf = _sess_log(session_dir)
     if zf is None:
         return None
@@ -100,7 +114,8 @@ def _usage_from_session(session_dir) -> dict:
             text = _s.read().decode("utf-8", "replace")
     except Exception:
         return None
-    last = None
+    total = None
+    last_chunk = None
     for ln in text.splitlines():
         ln = ln.strip()
         if not ln:
@@ -117,13 +132,16 @@ def _usage_from_session(session_dir) -> dict:
             u = data["usage"]
         elif (ev.get("type") == "assistant/chunk" and isinstance(data.get("chunk"), dict)
               and data["chunk"].get("type") == "usage" and isinstance(data["chunk"].get("usage"), dict)):
-            u = data["chunk"]["usage"]
+            last_chunk = _usage_row(data["chunk"]["usage"])
+            continue
         if u:
-            last = {"inputTokens": int(u.get("inputTokens") or 0),
-                    "outputTokens": int(u.get("outputTokens") or 0),
-                    "cacheReadTokens": int(u.get("cacheReadTokens") or 0),
-                    "reasoningTokens": int(u.get("reasoningTokens") or 0)}
-    return last
+            row = _usage_row(u)
+            if total is None:
+                total = row
+            else:
+                for k in total:
+                    total[k] += row[k]
+    return total if total is not None else last_chunk
 
 
 def _ztime(d) -> float:
@@ -440,6 +458,8 @@ class DshEngine(Engine):
     name = "dsh"
     label = "DSH（DeepSeek Harness）"
     description = "调用 dsh headless 执行，自带工具沙箱与技能生态；进度取自会话日志"
+    cost = ("每次执行是一整个 DSH 会话：自带系统提示、工具定义与技能生态，单轮上下文一万到数万 token，"
+            "其中约九成命中缓存按低价计费。能跑需要沙箱的技能，代价是上下文天然比直连 API 大。")
 
     def capabilities(self) -> dict:
         return {"tools": True, "streaming": True, "usage": True, "skills": True, "sandbox": True}

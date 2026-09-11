@@ -2055,6 +2055,7 @@
             + (e.current ? "<span class='eng-cur'>当前</span>" : "")
             + "<span class='eng-st " + (e.ok ? "ok" : "bad") + "'>" + (e.ok ? "可用" : "不可用") + "</span></div>"
             + "<div class='eng-desc'>" + esc(e.description || "") + "</div>"
+            + (e.cost ? "<div class='eng-cost'>" + esc(e.cost) + "</div>" : "")
             + "<div class='eng-note'>" + esc(e.note || "") + "</div>"
             + "<div class='eng-caps'>" + tags + "</div>";
           box.appendChild(el);
@@ -2067,6 +2068,10 @@
           + "（主引擎没跑起来时的备用，当前 <code>" + esc(j.fallback || "未启用") + "</code>）。改完刷新页面即生效，正在跑的任务不受影响。";
         t += "<br><b>回退</b> 主引擎「报错」或「秒退无产出」时改用备用引擎重跑一次，默认 <code>api</code> 兜底 <code>dsh</code>；已经跑了很久却没产出属于任务本身的问题，不会重跑（避免重复劳动与重复烧钱）。与主引擎相同时不生效。";
         t += "<br><b>按用途路由</b> 同一文件的 <code>engineFor</code> 段可给 <code>prompt</code>（拆解/汇总）与 <code>execute</code>（角色任务）分别指定引擎，留空即用主引擎。";
+        t += "<br><b>Token 与费用</b> 两个引擎都<b>逐轮累加</b>记账（provider 按每轮重发的完整上下文计费，命中缓存的按低价计）。"
+          + "DSH 的数字天然更大：它每轮都带着自己那套系统提示、工具与技能（一万到数万 token），但其中约九成命中缓存；"
+          + "直连 API 每轮上下文小，但历史全量重发。<b>所以要比总额、不要比单轮</b>，具体到「③ Token 统计」看 —— "
+          + "两个引擎的柱高是同一把尺子量的。";
         if (j.envOverride) t += "<br><b>注意</b> 环境变量 <code>OPC_ENGINE=" + esc(j.envOverride) + "</code> 优先于配置文件，改文件不会生效。";
         var errs = j.errors || {};
         var ek = Object.keys(errs);
@@ -2506,6 +2511,7 @@
         if (go === "project") goPane("settings", "dir");
         else if (go === "model") gotoModel();
         else if (go === "handbook") viewHandbook();
+        else if (go === "engine") goPane("settings", "engine");
       });
     });
     var oc = $("onbClose"); if (oc) oc.addEventListener("click", closeOnboard);

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260912b">
+<link rel="stylesheet" href="/static/main.css?v=20260912c">
 </head>
 <body>
 <div class="shell">
@@ -420,7 +420,7 @@
   <div class="onb-mask" id="onbMask" hidden>
     <div class="onb-box">
       <div class="onb-hero"><span class="onb-dot"></span>部署你的 OPC 指挥中心</div>
-      <div class="onb-sub">还没有项目和模型。这三步让 R1 与员工角色真正跑起来：</div>
+      <div class="onb-sub">还没有项目和模型。这四步让 R1 与员工角色真正跑起来：</div>
       <div class="onb-steps">
         <div class="onb-step">
           <div class="onb-num">01</div>
@@ -433,6 +433,10 @@
         <div class="onb-step">
           <div class="onb-num">03</div>
           <div class="onb-body"><b>认识《员工手册》</b><p>所有角色的唯一行为准则：不拍板 / 读写权限 / 产出回报格式。</p><button class="onb-go" data-go="handbook">查看员工手册 →</button></div>
+        </div>
+        <div class="onb-step">
+          <div class="onb-num">04</div>
+          <div class="onb-body"><b>选执行引擎 · 知道 token 花在哪</b><p>DSH 每轮都带着自己那套系统提示、工具与技能（一万到数万 token，其中约九成命中缓存按低价计费），能跑需要沙箱的技能；直连 API 每轮上下文小，但每轮都要重发全部历史，轮数一多累积很快。两者都逐轮累加记账，<b>比总额、不要比单轮</b>。</p><button class="onb-go" data-go="engine">去看执行引擎 →</button></div>
         </div>
       </div>
       <div class="onb-foot"><button id="onbClose" class="onb-skip">稍后再说</button></div>
@@ -456,6 +460,6 @@
   </div>
   <button id="r1Fab" class="r1-fab" data-tip="问我项目的事 · 临时会话" title="R1 助理（临时会话，可拖动）"></button>
 </div>
-<script src="/static/main.js?v=20260912b"></script>
+<script src="/static/main.js?v=20260912c"></script>
 </body>
 </html>

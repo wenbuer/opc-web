@@ -1445,6 +1445,8 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .eng-st.bad{color:var(--red-bright)}
 .eng-desc{font-size:10.5px;color:var(--dim);line-height:1.55}
 .eng-note{font-family:var(--mono);font-size:10px;color:var(--faint);line-height:1.5}
+/* token 消耗特征：选引擎时最该先看的一条，用左侧竖线与前两行区分开 */
+.eng-cost{font-size:10.5px;color:var(--txt);line-height:1.6;border-left:2px solid rgba(139,92,246,.55);padding-left:8px}
 .eng-caps{display:flex;gap:6px;flex-wrap:wrap}
 .eng-caps i{font-style:normal;font-size:9.5px;color:var(--dim);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
 :root[data-theme="dark"] .eng-item{background:rgba(255,255,255,.02)}

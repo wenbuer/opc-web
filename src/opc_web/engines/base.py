@@ -44,6 +44,7 @@ class Engine:
     name = "base"
     label = "base"        # 设置页显示名
     description = ""      # 一句话说明（设置页与自检提示用）
+    cost = ""             # token 消耗特征一句话（设置页展示，供选引擎时判断花销）
 
     def capabilities(self) -> dict:
         """能力声明：控制台据此决定 UI 与提示词策略。
