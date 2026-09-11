@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260911b">
+<link rel="stylesheet" href="/static/main.css?v=20260911c">
 </head>
 <body>
 <div class="shell">
@@ -443,10 +443,14 @@
       <input id="r1Q" placeholder="问点项目相关的事，比如「现在进行到哪一步了」">
       <button id="r1Send">发送</button>
     </div>
-    <div class="r1-foot"><span id="r1Msg"></span><span id="r1Tok"></span></div>
+    <div class="r1-foot">
+      <span id="r1Msg"></span>
+      <span id="r1Tok"></span>
+      <button id="r1Off" class="r1-off" title="关闭悬浮窗（可在「设置 → ⑦ R1 助理」重新开启）">关闭悬浮窗</button>
+    </div>
   </div>
   <button id="r1Fab" class="r1-fab" title="R1 助理（临时会话）"></button>
 </div>
-<script src="/static/main.js?v=20260911b"></script>
+<script src="/static/main.js?v=20260911c"></script>
 </body>
 </html>

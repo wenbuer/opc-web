@@ -2195,12 +2195,78 @@
     });
     var on = $("dockOn");
     if (on) on.addEventListener("change", function(){ applyDock(on.checked, true); });
+    var off = $("r1Off");
+    if (off) off.addEventListener("click", function(){
+      applyDock(false, true);                       // 与设置里的开关同源：关掉即写配置
+      var cb = $("dockOn"); if (cb) cb.checked = false;
+      var m = $("dockMsg"); if (m) m.textContent = "已关闭 —— 可在「设置 → ⑦ R1 助理」重新开启";
+    });
+    dockApplyPos();                                 // 恢复上次拖到的位置
+    makeDockDraggable();
     // 初始状态以配置为准（跨浏览器一致，而不是只看本机 localStorage）
     api("/api/settings").then(function(j){
       var v = !!(j && j.config && j.config.assistantDock);
       applyDock(v, false);
       var cb = $("dockOn"); if (cb) cb.checked = v;
     }).catch(function(){});
+  }
+
+  /* ---- 悬浮球可拖动：位置存本机（设备相关，不跟着配置跨设备同步） ---- */
+  function dockPosSave(x, y){
+    try { localStorage.setItem("opc.dockPos", x + "," + y); } catch (e) {}
+  }
+  function dockPosLoad(){
+    try {
+      var v = localStorage.getItem("opc.dockPos");
+      if (!v) return null;
+      var p = v.split(",");
+      var x = parseInt(p[0], 10), y = parseInt(p[1], 10);
+      return (isNaN(x) || isNaN(y)) ? null : { x: x, y: y };
+    } catch (e) { return null; }
+  }
+  function dockApplyPos(){
+    var d = $("r1Dock"), p = dockPosLoad();
+    if (!d || !p) return;                           // 没拖过就留在 CSS 默认的右下角
+    d.style.right = "auto"; d.style.bottom = "auto";
+    d.style.left = Math.max(4, Math.min(window.innerWidth - 60, p.x)) + "px";
+    d.style.top = Math.max(4, Math.min(window.innerHeight - 60, p.y)) + "px";
+  }
+  function makeDockDraggable(){
+    var d = $("r1Dock");
+    if (!d) return;
+    var panel = $("r1Panel");
+    var grips = [$("r1Fab"), panel ? panel.querySelector(".r1-head") : null].filter(Boolean);
+    var st = { on: false, moved: false, sx: 0, sy: 0, ox: 0, oy: 0 };
+    function down(e){
+      if (e.button !== 0) return;
+      var r = d.getBoundingClientRect();
+      st.on = true; st.moved = false;
+      st.sx = e.clientX; st.sy = e.clientY; st.ox = r.left; st.oy = r.top;
+      d.style.right = "auto"; d.style.bottom = "auto";
+      d.style.left = r.left + "px"; d.style.top = r.top + "px";
+    }
+    function move(e){
+      if (!st.on) return;
+      var dx = e.clientX - st.sx, dy = e.clientY - st.sy;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) st.moved = true;
+      var h = Math.max(d.offsetHeight, 60);
+      d.style.left = Math.max(4, Math.min(window.innerWidth - d.offsetWidth - 4, st.ox + dx)) + "px";
+      d.style.top = Math.max(4, Math.min(window.innerHeight - h - 4, st.oy + dy)) + "px";
+    }
+    function up(){
+      if (st.on && st.moved)
+        dockPosSave(parseInt(d.style.left, 10) || 0, parseInt(d.style.top, 10) || 0);
+      st.on = false;
+      // click 在 mouseup 之后触发：延后清零，拖动过的那一次就不会被当成点击
+      setTimeout(function(){ st.moved = false; }, 0);
+    }
+    grips.forEach(function(g){ g.addEventListener("mousedown", down); });
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+    var fab = $("r1Fab");
+    if (fab) fab.addEventListener("click", function(e){
+      if (st.moved){ e.preventDefault(); e.stopPropagation(); }
+    }, true);
   }
 
   function applyDock(on, save){
