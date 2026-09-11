@@ -18,6 +18,10 @@ from . import config, runner
 
 LOG_REL = "批阅台/临时会话.jsonl"
 
+# 轻问答的工具轮数上限：够「读一两个文件再回答」，又不至于让输入无限膨胀。
+# （api 引擎默认 40 步，那是给角色执行任务的；问答用不到，还容易烧钱。）
+_MAX_STEPS = 6
+
 
 def _path():
     return config.ROOT / LOG_REL
@@ -93,12 +97,41 @@ def _context() -> str:
     return chr(10).join(lines) if lines else "（项目现状读取失败，按已知信息回答即可）"
 
 
+# 「预告」特征：模型只回一句准备动作就收尾（api 引擎把无工具调用的文本当成最终答复，
+# 于是用户看到「思考中」半天，最后等来一句「我先看一下项目现状」而不是答案）。
+_TEASE = ("我先", "我将", "让我", "接下来我", "先看", "先查", "先了解",
+          "i'll", "let me", "i will", "i am going to")
+
+
+def _looks_like_teaser(text: str) -> bool:
+    """这条回答是不是「预告」而不是结论：空、极短且带准备动作的语气词。"""
+    t = " ".join(str(text or "").split())
+    if not t:
+        return True
+    if len(t) > 80:
+        return False
+    low = t.lower()
+    return any(k in low for k in _TEASE)
+
+
+def _merge_usage(u1, u2) -> dict:
+    """两次调用的用量合并：重试也是真的花了，不能只记一次。"""
+    out = dict(u1 or {})
+    for k in ("inputTokens", "outputTokens", "cacheReadTokens", "reasoningTokens"):
+        out[k] = int(out.get(k) or 0) + int((u2 or {}).get(k) or 0)
+    return out
+
+
 def _prompt(q: str) -> str:
     return (
         "你是 OPC 项目的老板助理 R1，现在和 R0（老板）做一次**临时答疑**。"
-        + chr(10) + "规则：" + chr(10)
-        + "- 只回答问题：不要新建任务、不要派发角色、不要输出任务编号与流程话术；" + chr(10)
-        + "- 需要查文件就用工具去看，别凭印象猜；回答先给结论、再给依据，简短直接。" + chr(10) + chr(10)
+        + chr(10) + "硬性要求：" + chr(10)
+        + "1. 直接给答案。**不许预告你打算做什么** —— 「我先看一下」「I'll check」这类准备动作"
+        + "一律不算回答，用户读到的是空气；" + chr(10)
+        + "2. 要文件内容就**立刻调用工具**去读，拿到结果再下结论，不许凭印象编；" + chr(10)
+        + "3. 全程用**中文**回答；" + chr(10)
+        + "4. 不要新建任务、不要派发角色、不要输出任务编号与流程话术；" + chr(10)
+        + "5. 简短：先给结论，再补一两句依据。" + chr(10) + chr(10)
         + "【项目现状】" + chr(10) + _context() + chr(10) + chr(10)
         + "【R0 的问题】" + chr(10) + q
     )
@@ -109,9 +142,23 @@ def ask(q: str, timeout: float = 240) -> dict:
     q = str(q or "").strip()
     if not q:
         return {"ok": False, "msg": "问题为空"}
-    text, usage = runner.run_headless_task(_prompt(q), timeout=timeout, act="", purpose="prompt")
+    prompt = _prompt(q)
+    text, usage = runner.run_headless_task(prompt, timeout=timeout, act="", purpose="prompt",
+                                           max_steps=_MAX_STEPS)
+    ans = (text or "").strip()
+    if _looks_like_teaser(ans):
+        # 只回了一句预告（或干脆没回）→ 追问一次，明确要求直接作答。
+        # 两次的用量合并记账：重试同样烧了 token，不能只记一次。
+        text2, usage2 = runner.run_headless_task(
+            prompt + chr(10) + chr(10)
+            + "（你上一次只回了一句准备动作，没有给出答案。这一次请直接作答："
+            + "需要就用工具去查，然后把结论写出来，用中文。）",
+            timeout=timeout, act="", purpose="prompt", max_steps=_MAX_STEPS)
+        if (text2 or "").strip():
+            ans = (text2 or "").strip()
+        usage = _merge_usage(usage, usage2)
     rec = {"ts": datetime.datetime.now().isoformat(timespec="seconds"),
-           "q": q, "a": (text or "").strip(), "usage": usage or {}}
+           "q": q, "a": ans, "usage": usage or {}}
     _append(rec)
     t = totals()
     return {"ok": True, "a": rec["a"], "ts": rec["ts"], "usage": rec["usage"],

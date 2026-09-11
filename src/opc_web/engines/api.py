@@ -253,8 +253,10 @@ class ApiEngine(Engine):
             return act in _RUNNING
 
     def run(self, prompt: str, *, timeout: float = 600, act: str = "",
-            cwd=None, on_progress=None) -> RunResult:
+            cwd=None, on_progress=None, max_steps=None) -> RunResult:
         cfg = _cfg()
+        if max_steps:
+            cfg["maxSteps"] = max(1, int(max_steps))
         t0 = time.monotonic()
         deadline = t0 + float(timeout or 600)
         # 注意：这里**不能**清取消标志——kill() 可能在 run() 之前被调用（删除任务/超时），
@@ -276,6 +278,21 @@ class ApiEngine(Engine):
         usage_total = {"inputTokens": 0, "outputTokens": 0, "cacheReadTokens": 0, "reasoningTokens": 0}
         messages = [{"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt}]
+
+        def trim_history(msgs, keep_tail=10, max_len=14):
+            """对话太长就丢掉中间的工具往返，只留开场与最近的几轮。
+
+            工具循环每一轮都把完整历史重发一遍，步数越多输入涨得越快：实测一次问答
+            跑满循环后 input 累计到 100 万 token，而最后只回了一句「我先查一下」。
+            修剪时起点必须落在 assistant（带 tool_calls）上 —— 否则会留下孤儿 tool
+            消息，OpenAI 兼容接口会直接报错。"""
+            if len(msgs) <= max_len:
+                return msgs
+            head, tail = msgs[:2], msgs[2:]
+            i = max(0, len(tail) - keep_tail)
+            while i < len(tail) and tail[i].get("role") == "tool":
+                i += 1
+            return head + tail[i:]
 
         def beat(last_tool_arg="", last_text_arg="", force=False):
             nonlocal last_beat, last_tool, last_text
@@ -328,6 +345,7 @@ class ApiEngine(Engine):
                             result = "工具执行失败：%s" % e
                         messages.append({"role": "tool", "tool_call_id": c["id"] or ("call_%d" % i),
                                          "content": str(result)[:12000]})
+                    messages = trim_history(messages)
                     continue
                 # 没有工具调用 → 结束
                 beat(force=True)

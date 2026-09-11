@@ -129,29 +129,34 @@ def _engine_failed(res) -> bool:
     return False
 
 
-def _run_engine(task_text: str, timeout: float, act: str = "", purpose: str = ""):
+def _run_engine(task_text: str, timeout: float, act: str = "", purpose: str = "", max_steps=None):
     """跑一次任务：主引擎失败时按配置回退到备用引擎（默认 api 兜底 dsh）。
 
     回退会留痕（engine/fallback 事件），工作台详情能看到「谁失败了、换了谁、为什么」。"""
     from .engines import get_engine
     name = config.engine_for(purpose)
-    res = _invoke(get_engine(name), name, task_text, timeout, act)
+    res = _invoke(get_engine(name), name, task_text, timeout, act, max_steps)
     alt = config.engine_fallback(name)
     if not alt or not _engine_failed(res):
         return res
     emit({"type": "engine/fallback",
           "data": {"purpose": purpose or "main", "from": name, "to": alt,
                    "reason": res.error or ("%s 秒退无产出" % int(res.elapsed or 0))}})
-    return _invoke(get_engine(alt), alt, task_text, timeout, act)
+    return _invoke(get_engine(alt), alt, task_text, timeout, act, max_steps)
 
 
-def _invoke(eng, name: str, task_text: str, timeout: float, act: str):
+def _invoke(eng, name: str, task_text: str, timeout: float, act: str, max_steps=None):
     """调一次引擎：登记 act → 引擎名（kill 用），跑完留下运行信息（追溯用）。"""
     if act:
         with _EXEC_LOCK:
             _ACT_ENGINE[act] = name
     try:
-        res = eng.run(task_text, timeout=timeout, act=act, on_progress=_progress_sink(act))
+        if max_steps:
+            res = eng.run(task_text, timeout=timeout, act=act, on_progress=_progress_sink(act),
+                          max_steps=max_steps)
+        else:
+            # 不传 max_steps：老签名/自建引擎照旧可用（接口上它是可选参数）
+            res = eng.run(task_text, timeout=timeout, act=act, on_progress=_progress_sink(act))
     finally:
         if act and _ACT_ENGINE.get(act) == name:
             with _EXEC_LOCK:
@@ -174,12 +179,13 @@ def run_headless_sync(task_text: str, timeout: float = 600, purpose: str = "") -
     return _run_engine(task_text, timeout, act="", purpose=purpose).text
 
 
-def run_headless_task(task_text: str, timeout: float = 600, act: str = "", purpose: str = ""):
+def run_headless_task(task_text: str, timeout: float = 600, act: str = "", purpose: str = "",
+                      max_steps=None):
     """headless 最终文本模式：返回 (最终文本, 用量 dict|None)。
 
     走配置的执行引擎（purpose 非空时按用途路由，如 "execute"）。签名与语义与解耦前一致，
     chain / scheduler / server 无需改动；同时登记 act → 引擎名，供 kill_spawn 精确找对引擎。"""
-    res = _run_engine(task_text, timeout, act=act, purpose=purpose)
+    res = _run_engine(task_text, timeout, act=act, purpose=purpose, max_steps=max_steps)
     return res.text, res.usage
 
 

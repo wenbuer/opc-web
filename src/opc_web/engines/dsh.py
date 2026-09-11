@@ -410,7 +410,7 @@ class DshEngine(Engine):
         return True, "dsh 命令可用：" + " ".join(str(x) for x in cmd[:2])
 
     def run(self, prompt: str, *, timeout: float = 600, act: str = "",
-            cwd=None, on_progress=None) -> RunResult:
+            cwd=None, on_progress=None, max_steps=None) -> RunResult:
         t0 = time.monotonic()
         try:
             text, usage, session = _run_prompt_dsh(prompt, timeout, act, on_progress)
