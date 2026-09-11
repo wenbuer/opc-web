@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS execution(
   result     TEXT,
   error      TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS seq(
+  name  TEXT PRIMARY KEY,
+  value INTEGER NOT NULL DEFAULT 0
+);
 CREATE INDEX IF NOT EXISTS ix_execution_sub ON execution(sub_no);
 CREATE INDEX IF NOT EXISTS ix_execution_task ON execution(task_no);
 """
@@ -80,10 +84,20 @@ def _db():
 
 # ---------- 任务 ----------
 def add_task(text: str, expect: str = "R1 判断") -> str:
-    """下达任务 → 返回任务编号 T-00N。"""
+    """下达任务 → 返回任务编号 T-00N。
+
+    号**只增不减**：取「台账最大号」与「历史序号」的较大者 +1，并把新号写进序号表。
+    只看台账 MAX 的话，删掉 T-015 之后下一个新任务又叫 T-015 —— 而《调度日志》《归档登记》
+    与知识库档案里还留着旧 T-015 的记录（那些是流水与知识，不随任务删除而消失），
+    两段同号混在一起就分不清谁是谁了。"""
     with _db() as c:
-        n = c.execute("SELECT COALESCE(MAX(CAST(SUBSTR(no, 3) AS INTEGER)), 0) FROM task").fetchone()[0]
-        no = "T-%03d" % (n + 1)
+        mx = int(c.execute("SELECT COALESCE(MAX(CAST(SUBSTR(no, 3) AS INTEGER)), 0) FROM task").fetchone()[0] or 0)
+        row = c.execute("SELECT value FROM seq WHERE name = 'task'").fetchone()
+        sq = int(row[0]) if row else 0
+        n = max(mx, sq) + 1
+        c.execute("INSERT INTO seq(name, value) VALUES('task', ?) "
+                  "ON CONFLICT(name) DO UPDATE SET value = excluded.value", (n,))
+        no = "T-%03d" % n
         c.execute("INSERT INTO task(no, date, task, expect) VALUES(?, ?, ?, ?)",
                   (no, datetime.date.today().isoformat(), text, expect))
         return no
