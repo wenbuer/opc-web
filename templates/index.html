@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260911c">
+<link rel="stylesheet" href="/static/main.css?v=20260911d">
 </head>
 <body>
 <div class="shell">
@@ -241,6 +241,18 @@
           </div>
           <div class="snav-pane" data-pane="engine">
             <div class="set-head">执行引擎</div>
+            <div class="mapi-row">
+              <label>谁在执行角色任务
+                <select id="engSel"><option value="">加载中…</option></select>
+              </label>
+              <label>主引擎跑不起来时回退到
+                <select id="engFb"><option value="">加载中…</option></select>
+              </label>
+            </div>
+            <div class="mapi-row mapi-actions">
+              <button id="btnSaveEngine">保存引擎选择</button>
+              <span id="engMsg" class="set-msg"></span>
+            </div>
             <div id="engList" class="eng-list"><div class="placeholder">加载中…</div></div>
             <div class="set-note" id="engNote"></div>
           </div>
@@ -436,21 +448,17 @@
     <div class="r1-head">
       <span class="r1-ava" id="r1Ava"></span>
       <div class="r1-who"><b>R1 助理</b><em>临时会话 · 不进任务流程</em></div>
-      <button id="r1Close" class="r1-x" title="收起">×</button>
+      <button id="r1Close" class="r1-x" title="关闭悬浮窗（可在「设置 → ⑦ R1 助理」重新开启）">×</button>
     </div>
     <div id="r1Msgs" class="r1-msgs"></div>
     <div class="r1-input">
       <input id="r1Q" placeholder="问点项目相关的事，比如「现在进行到哪一步了」">
       <button id="r1Send">发送</button>
     </div>
-    <div class="r1-foot">
-      <span id="r1Msg"></span>
-      <span id="r1Tok"></span>
-      <button id="r1Off" class="r1-off" title="关闭悬浮窗（可在「设置 → ⑦ R1 助理」重新开启）">关闭悬浮窗</button>
-    </div>
+    <div class="r1-foot"><span id="r1Msg"></span><span id="r1Tok"></span></div>
   </div>
   <button id="r1Fab" class="r1-fab" title="R1 助理（临时会话）"></button>
 </div>
-<script src="/static/main.js?v=20260911c"></script>
+<script src="/static/main.js?v=20260911d"></script>
 </body>
 </html>

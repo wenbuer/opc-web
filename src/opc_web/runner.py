@@ -112,6 +112,20 @@ def events(since: int = 0) -> dict:
                 "events": [e for e in _ACTIVE["events"] if e["seq"] > since]}
 
 
+def _engine_ready(name: str) -> bool:
+    """引擎环境是否就绪（preflight）：探命令、读配置，都很轻。
+
+    典型场景：默认引擎是 dsh，但本机没装 —— 这时应当**直接**改用备用引擎，
+    而不是先派一次、等它秒退再回退（那一次同样会花掉拆解或角色执行的时间）。
+    自检每次都做：用户可能刚装好 dsh，缓存住反而会挡住它。"""
+    try:
+        from .engines import get_engine
+        ok, _ = get_engine(name).preflight()
+        return bool(ok)
+    except Exception:
+        return False
+
+
 def _engine_failed(res) -> bool:
     """这次是「引擎没跑起来」还是「任务本身没做完」——只有前者值得回退重跑。
 
@@ -135,8 +149,14 @@ def _run_engine(task_text: str, timeout: float, act: str = "", purpose: str = ""
     回退会留痕（engine/fallback 事件），工作台详情能看到「谁失败了、换了谁、为什么」。"""
     from .engines import get_engine
     name = config.engine_for(purpose)
-    res = _invoke(get_engine(name), name, task_text, timeout, act, max_steps)
     alt = config.engine_fallback(name)
+    if alt and not _engine_ready(name):
+        # 主引擎环境不满足（如本机没装 dsh）→ 直接用备用引擎，不必让它先失败一次
+        emit({"type": "engine/fallback",
+              "data": {"purpose": purpose or "main", "from": name, "to": alt,
+                       "reason": "环境自检未通过（未安装或未配置）"}})
+        return _invoke(get_engine(alt), alt, task_text, timeout, act, max_steps)
+    res = _invoke(get_engine(name), name, task_text, timeout, act, max_steps)
     if not alt or not _engine_failed(res):
         return res
     emit({"type": "engine/fallback",

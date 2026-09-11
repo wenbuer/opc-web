@@ -143,8 +143,8 @@ PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
 # 取值必须是 engines.registry 里已注册的名字——写错会抛 EngineError，不静默回退（防配置错误被吞）。
 # 默认引擎与默认备用引擎提成常量：既给生产代码用，也让测试断言「默认值」而不必去读
 # 本机配置文件（那是用户的选择，会随设置页变化，拿它当断言依据必然时绿时红）。
-DEFAULT_ENGINE = "api"          # 直连大模型 API：不依赖 dsh，装好即可用
-DEFAULT_FALLBACK = "api"        # 主力 dsh 没跑起来时用直连 API 兜底
+DEFAULT_ENGINE = "dsh"          # 默认用 DSH：自带工具沙箱与技能生态，能力最全
+DEFAULT_FALLBACK = "api"        # 本机没有 dsh 环境（或 dsh 没跑起来）时，直连 API 兜底
 ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or DEFAULT_ENGINE)
 # 首页「今日用量」的估算单价（元 / 百万 token）。默认值只是占位，按你实际模型价格改：
 # 环境变量 OPC_TOKEN_PRICE_IN / OPC_TOKEN_PRICE_OUT（或 opc-config.json 的 priceIn/priceOut）。

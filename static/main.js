@@ -2020,6 +2020,28 @@
   function loadEngines(){
     api("/api/engines").then(function(j){
       if (!j || !j.ok) return;
+      var sel = $("engSel");
+      if (sel){
+        sel.innerHTML = "";
+        (j.engines || []).forEach(function(e){
+          var o = document.createElement("option");
+          o.value = e.name;
+          o.textContent = e.label + (e.ok ? "" : "（环境不可用）");
+          sel.appendChild(o);
+        });
+        sel.value = j.current;
+      }
+      var fb = $("engFb");
+      if (fb){
+        fb.innerHTML = "";
+        (j.engines || []).forEach(function(e){
+          var o = document.createElement("option");
+          o.value = e.name;
+          o.textContent = e.label + (e.ok ? "" : "（环境不可用）");
+          fb.appendChild(o);
+        });
+        fb.value = j.fallback || j.current;
+      }
       var box = $("engList");
       if (box){
         box.innerHTML = "";
@@ -2053,9 +2075,23 @@
       }
     }).catch(function(){});
   }
+  function saveEngine(){
+    var sel = $("engSel"), m = $("engMsg");
+    if (!sel || !sel.value) return;
+    var payload = { engine: sel.value };
+    var fb = $("engFb");
+    if (fb && fb.value) payload.engineFallback = fb.value;
+    if (m) m.textContent = "保存中…";
+    post("/api/settings", payload).then(function(j){
+      if (m) m.textContent = (j && j.msg) || ((j && j.ok) ? "已保存" : "保存失败");
+      loadEngines();
+    }).catch(function(e){ if (m) m.textContent = "异常：" + esc((e && e.message) || ""); });
+  }
   function loadSettings(){
     api("/api/settings").then(function(j){
       if (!j || !j.ok){ var m = $("setMsg"); if (m) m.textContent = "读取设置失败：" + esc(j && j.msg || "未知"); return; }
+      var efv = $("engFb");                            // 备用引擎回显已保存的选择
+      if (efv && j.config && j.config.engineFallback) efv.value = j.config.engineFallback;
       var mi = j.model || {};
       var mp = $("mApiProvider"); if (mp) mp.value = mi.provider || "deepseek";
       var ak = $("mApiKey"); if (ak) ak.value = "";
@@ -2187,7 +2223,8 @@
     var fab = $("r1Fab"), ava = $("r1Ava");
     if (fab){ fab.innerHTML = R1_SVG; fab.addEventListener("click", function(){ toggleR1Panel(); }); }
     if (ava) ava.innerHTML = R1_SVG;
-    var x = $("r1Close"); if (x) x.addEventListener("click", function(){ showR1Panel(false); });
+    // 右上角 × 直接关闭悬浮窗（不是只收面板）：与设置里的开关同源，关掉即写配置
+    var x = $("r1Close"); if (x) x.addEventListener("click", function(){ setDockOff(); });
     var s = $("r1Send"); if (s) s.addEventListener("click", askR1);
     var q = $("r1Q");
     if (q) q.addEventListener("keydown", function(e){
@@ -2195,12 +2232,6 @@
     });
     var on = $("dockOn");
     if (on) on.addEventListener("change", function(){ applyDock(on.checked, true); });
-    var off = $("r1Off");
-    if (off) off.addEventListener("click", function(){
-      applyDock(false, true);                       // 与设置里的开关同源：关掉即写配置
-      var cb = $("dockOn"); if (cb) cb.checked = false;
-      var m = $("dockMsg"); if (m) m.textContent = "已关闭 —— 可在「设置 → ⑦ R1 助理」重新开启";
-    });
     dockApplyPos();                                 // 恢复上次拖到的位置
     makeDockDraggable();
     // 初始状态以配置为准（跨浏览器一致，而不是只看本机 localStorage）
@@ -2267,6 +2298,13 @@
     if (fab) fab.addEventListener("click", function(e){
       if (st.moved){ e.preventDefault(); e.stopPropagation(); }
     }, true);
+  }
+
+  /* 关掉悬浮窗：与设置里的开关同源（写配置），两处不会各说各话 */
+  function setDockOff(){
+    applyDock(false, true);
+    var cb = $("dockOn"); if (cb) cb.checked = false;
+    var m = $("dockMsg"); if (m) m.textContent = "已关闭 —— 可在「设置 → ⑦ R1 助理」重新开启";
   }
 
   function applyDock(on, save){
@@ -2488,6 +2526,7 @@
     var bm = $("btnSaveModelApi"); if (bm) bm.addEventListener("click", saveModelApi);
     var bt = $("btnTestModelApi"); if (bt) bt.addEventListener("click", testModelApi);
     var mpv = $("mApiProvider"); if (mpv) mpv.addEventListener("change", modelProviderChanged);
+    var beng = $("btnSaveEngine"); if (beng) beng.addEventListener("click", saveEngine);
     var sa = $("btnSchedAdd"); if (sa) sa.addEventListener("click", addSched);
     var bb = $("btnBrowseDir"); if (bb) bb.addEventListener("click", dirOpen);
     var dcl = $("btnDirClose"); if (dcl) dcl.addEventListener("click", dirClose);
