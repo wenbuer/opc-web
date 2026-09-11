@@ -1263,11 +1263,18 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .tok-sum{margin-bottom:10px;font-size:12px;color:var(--txt)}
 .tok-sum b{color:var(--gold);font-family:var(--mono)}
 .tok-legend{display:flex;gap:14px;font-size:10.5px;color:var(--dim);margin-bottom:4px;align-items:center}
-.tok-legend .lg-in::before,.tok-legend .lg-out::before,.tok-legend .lg-alt::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.tok-legend .lg-cache::before,.tok-legend .lg-in::before,.tok-legend .lg-out::before,.tok-legend .lg-alt::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 .tok-legend .lg-in::before{background:var(--gold)}
 .tok-legend .lg-out::before{background:var(--ok)}
 .tok-legend .lg-alt{margin-left:auto;color:var(--faint)}
 .tok-legend .lg-alt::before{background:#8b5cf6}
+.tok-legend .lg-cache::before{background:#93c5fd}
+/* 输入柱拆两段：下=新输入（未命中），上=缓存命中。缓存单价低，这一段的比例才是成本的关键 */
+.tok-stack{display:flex;flex-direction:column-reverse;width:13px;gap:0}
+.tok-stack .tok-bar{width:13px;border-radius:0}
+.tok-bar.cache{background:linear-gradient(180deg,#bfdbfe,#7dabf8)}
+.tok-stack .tok-bar.cache{border-radius:3px 3px 0 0}
+.tok-bar.cache.alt{background:linear-gradient(180deg,#ddd6fe,#a78bfa)}
 .tok-zone{display:flex;align-items:flex-end;gap:14px;padding:6px 4px 0;height:250px;overflow-x:auto;overflow-y:hidden;border-bottom:1px solid var(--line2)}
 .tok-col{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;width:56px;height:100%}
 .tok-bars{display:flex;align-items:flex-end;gap:3px;height:200px}

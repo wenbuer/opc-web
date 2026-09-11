@@ -1200,6 +1200,8 @@ def token_rows() -> list:
                              "date": str(m.get("createdAt") or "")[:10],
                              "tokensIn": int(m.get("tokensIn") or 0),
                              "tokensOut": int(m.get("tokensOut") or 0),
+                             # tokensIn 已含缓存读取，这里单独给一份供界面拆「命中 / 未命中」
+                             "tokensCache": int(m.get("tokensCacheRead") or 0),
                              "archived": base.name == "已归档"})
     seen = {}
     for r in rows:

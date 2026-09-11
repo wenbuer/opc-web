@@ -2598,12 +2598,13 @@
         if (chart) chart.innerHTML = "<div class='placeholder'>暂无 token 数据 —— 启用 token 统计后执行的任务会写入 meta.json</div>";
         return;
       }
-      var byTask = {}, tIn = 0, tOut = 0;
+      var byTask = {}, tIn = 0, tOut = 0, tCache = 0;
       rows.forEach(function(x){
-        tIn += x.tokensIn || 0; tOut += x.tokensOut || 0;
+        tIn += x.tokensIn || 0; tOut += x.tokensOut || 0; tCache += x.tokensCache || 0;
         var t = x.task || "(无任务)";
-        if (!byTask[t]) byTask[t] = { inn: 0, out: 0, subs: 0 };
-        byTask[t].inn += x.tokensIn || 0; byTask[t].out += x.tokensOut || 0; byTask[t].subs++;
+        if (!byTask[t]) byTask[t] = { inn: 0, out: 0, cache: 0, subs: 0 };
+        byTask[t].inn += x.tokensIn || 0; byTask[t].out += x.tokensOut || 0;
+        byTask[t].cache += x.tokensCache || 0; byTask[t].subs++;
       });
       var names = Object.keys(byTask).sort(function(a, b){
         var ia = parseInt(a.slice(2), 10), ib = parseInt(b.slice(2), 10);
@@ -2612,27 +2613,39 @@
       var max = aIn + aOut;        // 临时会话与任务柱共用同一把尺子，否则高度没有可比性
       names.forEach(function(t){ max = Math.max(max, byTask[t].inn + byTask[t].out); });
       max = max || 1;
+      var cacheAll = tCache + (asst.cache || 0), inAll = (tIn + aIn) || 1;
       if (sum) sum.innerHTML = "共 <b>" + rows.length + "</b> 个子任务 + 临时会话 <b>" + aCnt + "</b> 次 · 总输入 <b>"
-        + fmtTok(tIn + aIn) + "</b> · 总输出 <b>" + fmtTok(tOut + aOut) + "</b> · 输入:输出 "
-        + Math.round((tOut + aOut) / ((tIn + aIn) || 1) * 100) + "%";
+        + fmtTok(tIn + aIn) + "</b>（其中缓存命中 <b>" + fmtTok(cacheAll) + "</b>，"
+        + Math.round(cacheAll / inAll * 100) + "%）· 总输出 <b>" + fmtTok(tOut + aOut) + "</b> · 输入:输出 "
+        + Math.round((tOut + aOut) / inAll * 100) + "%";
       var bars = names.map(function(t){
         var v = byTask[t];
-        var hIn = Math.max(2, Math.round(v.inn / max * 180));
+        var fresh = Math.max(0, v.inn - v.cache);
+        var hFresh = Math.max(2, Math.round(fresh / max * 180));
+        var hCache = Math.round(v.cache / max * 180);
         var hOut = Math.max(2, Math.round(v.out / max * 180));
         return "<div class='tok-col'><div class='tok-bars'>"
-          + "<span class='tok-bar in' style='height:" + hIn + "px' title='" + esc(t) + " 输入 " + fmtTok(v.inn) + "'></span>"
+          + "<span class='tok-stack'>"
+          + "<span class='tok-bar in' style='height:" + hFresh + "px' title='" + esc(t) + " 新输入 " + fmtTok(fresh) + "'></span>"
+          + (hCache ? "<span class='tok-bar cache' style='height:" + hCache + "px' title='" + esc(t) + " 缓存命中 " + fmtTok(v.cache) + "'></span>" : "")
+          + "</span>"
           + "<span class='tok-bar out' style='height:" + hOut + "px' title='" + esc(t) + " 输出 " + fmtTok(v.out) + "'></span>"
           + "</div><div class='tok-lab'>" + esc(t) + "</div><div class='tok-val'>" + fmtTok(v.inn + v.out) + "</div></div>";
       }).join("");
       if (aIn || aOut){
-        var ahIn = Math.max(2, Math.round(aIn / max * 180));
+        var aCache = asst.cache || 0, aFresh = Math.max(0, aIn - aCache);
+        var ahIn = Math.max(2, Math.round(aFresh / max * 180));
+        var ahCache = Math.round(aCache / max * 180);
         var ahOut = Math.max(2, Math.round(aOut / max * 180));
-        bars += "<div class='tok-col alt'><div class='tok-bars'>"
-          + "<span class='tok-bar in alt' style='height:" + ahIn + "px' title='临时会话 输入 " + fmtTok(aIn) + "'></span>"
+        bars += "<div class='tok-col alt'><div class='tok-bars'><span class='tok-stack'>"
+          + "<span class='tok-bar in alt' style='height:" + ahIn + "px' title='临时会话 新输入 " + fmtTok(aFresh) + "'></span>"
+          + (ahCache ? "<span class='tok-bar cache alt' style='height:" + ahCache + "px' title='临时会话 缓存命中 " + fmtTok(aCache) + "'></span>" : "")
+          + "</span>"
           + "<span class='tok-bar out alt' style='height:" + ahOut + "px' title='临时会话 输出 " + fmtTok(aOut) + "'></span>"
           + "</div><div class='tok-lab'>临时会话</div><div class='tok-val'>" + fmtTok(aIn + aOut) + "</div></div>";
       }
-      chart.innerHTML = "<div class='tok-legend'><span class='lg-in'>输入</span><span class='lg-out'>输出</span>"
+      chart.innerHTML = "<div class='tok-legend'><span class='lg-cache'>缓存命中</span><span class='lg-in'>新输入</span>"
+        + "<span class='lg-out'>输出</span>"
         + "<span class='lg-alt'>临时会话（单列一组，不进任务统计）</span></div>"
         + "<div class='tok-zone'>" + bars + "</div>";
     }).catch(function(e){ if (chart) chart.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });

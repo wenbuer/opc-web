@@ -49,11 +49,12 @@ def records(limit: int = 0) -> list:
 
 def totals() -> dict:
     """临时会话用量合计 —— Token 统计里的「临时会话」那一项。"""
-    t = {"in": 0, "out": 0, "count": 0}
+    t = {"in": 0, "out": 0, "count": 0, "cache": 0}
     for r in records():
         u = r.get("usage") or {}
         t["in"] += int(u.get("inputTokens") or 0) + int(u.get("cacheReadTokens") or 0)
         t["out"] += int(u.get("outputTokens") or 0)
+        t["cache"] += int(u.get("cacheReadTokens") or 0)   # 输入里命中缓存的那部分
         t["count"] += 1
     return t
 
