@@ -1413,23 +1413,64 @@ def build_timeline() -> dict:
     return {"ok": True, "events": events, "msg": "已生成（" + rel + "）"}
 
 
-def project_files() -> dict:
-    """公共项目区（项目/）文件清单：源码/工程性产出。全员可读；仅「工程」标签角色可写。
+def _skip_name(name: str) -> bool:
+    """公共项目区里不展示的条目（隐藏文件与跳过目录名）。"""
+    return name.startswith(".") or name in _WS_SKIP_PARTS
 
-    writers = 当前具备《项目/》写权限的角色（工程标签），供前端展示。"""
+
+def project_files(path: str = "", full: bool = False) -> dict:
+    """公共项目区（项目/）文件清单：**只列一层**。
+
+    path 为空 = 根层；给了 path = 该目录的直接子项。前端点开目录时再来要下一层 ——
+    原来是无脑 rglob 整棵树，项目一大首屏就被这次遍历拖住，而用户往往只看根层。
+    子目录带 dir/hasChildren，前端据此决定画不画展开箭头。
+
+    writers = 当前具备《项目/》写权限的角色（工程标签），供前端展示（只在根层算）。"""
     from . import roles as _roles
+    root = config.PROJECT_ROOT.resolve()
+    if full:
+        # 「项目文件」页用的是平铺清单 + 客户端筛选，需要整棵树 —— 它只在切到该页时请求，
+        # 不像首页那样每次启动都付这笔遍历。首页走下面的懒加载分支。
+        out = []
+        if root.is_dir():
+            for p in sorted(root.rglob("*")):
+                if not p.is_file() or any(_skip_name(seg) for seg in p.relative_to(root).parts):
+                    continue
+                try:
+                    st = p.stat()
+                except OSError:
+                    continue
+                out.append({"name": p.name, "rel": p.relative_to(config.ROOT).as_posix(),
+                            "ext": p.suffix.lower(), "size": st.st_size, "mtime": int(st.st_mtime)})
+        writers = [no for no, _ in _roles.role_files() if _roles.can_write_project(no)]
+        return {"files": out, "writers": writers, "path": ""}
+    base = root
+    if path:
+        base = (config.ROOT / path).resolve()
+        if base != root and root not in base.parents:      # 防路径逃逸
+            raise ValueError("路径不在公共项目区内：" + path)
+        if not base.is_dir():
+            raise ValueError("不是目录：" + path)
     out = []
-    root = config.PROJECT_ROOT
-    if root.is_dir():
-        for p in sorted(root.rglob("*")):
-            if not p.is_file() or any(seg in _WS_SKIP_PARTS for seg in p.relative_to(root).parts):
+    if base.is_dir():
+        for p in sorted(base.iterdir()):
+            if _skip_name(p.name):
                 continue
             try:
                 st = p.stat()
             except OSError:
                 continue
-            out.append({"name": p.name, "rel": p.relative_to(config.ROOT).as_posix(),
-                        "ext": p.suffix.lower(), "size": st.st_size, "mtime": int(st.st_mtime)})
+            rel = p.relative_to(config.ROOT).as_posix()
+            if p.is_dir():
+                has = False
+                try:
+                    has = any(not _skip_name(c.name) for c in p.iterdir())
+                except OSError:
+                    pass
+                out.append({"name": p.name, "rel": rel, "dir": True, "hasChildren": has})
+            elif p.is_file():
+                out.append({"name": p.name, "rel": rel, "ext": p.suffix.lower(),
+                            "size": st.st_size, "mtime": int(st.st_mtime)})
     writers = [no for no, _ in _roles.role_files() if _roles.can_write_project(no)]
-    return {"files": out, "writers": writers}
+    return {"files": out, "writers": writers, "path": path}
 

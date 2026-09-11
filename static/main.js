@@ -1846,35 +1846,27 @@
       note.className = "proj-shared-note";
       note.textContent = "全员只读 · 可写：" + wtx;
       box.appendChild(note);
-      /* 文件多了平铺太长：按 rel 路径建树、目录可折叠；容器固定高度 + 滚动条（见 CSS） */
-      renderProjTree(projTree(files), box, 0);
+      /* 懒加载：根层只画一层，点开目录才去要下一层（容器固定高度 + 滚动条，见 CSS） */
+      var projRoot = projNode("项目");
+      projFill(projRoot, files);
+      renderProjTree(projRoot, box, 0);
     }).catch(function(e){ if (box) box.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
   }
-  /* ===== 公共项目区：文件夹树 ===== */
-  function projParts(f){
-    return String(f.rel || f.name || "").split("/").filter(function(x){ return x; });
-  }
-  function projTree(files){
-    /* 剥掉所有文件共有的公共前缀目录（公共项目区本就位于《项目/》下，不再白占一层） */
-    var lists = files.map(projParts);
-    var drop = 0;
-    if (lists.length){
-      var first = lists[0];
-      while (drop < first.length - 1 &&
-             lists.every(function(p){ return p.length > drop + 1 && p[drop] === first[drop]; })){
-        drop++;
+  /* ===== 公共项目区：文件夹树（懒加载） =====
+     接口一次只给一层，点开目录才去要下一层。原来首屏把整棵树 rglob 出来，
+     项目一大就白遍历一堆用户根本不展开的目录。 */
+  function projNode(rel){ return { dirs: {}, files: [], rel: rel, loaded: false }; }
+  function projFill(node, files){
+    files.forEach(function(f){
+      if (f.dir){
+        var sub = node.dirs[f.name] || projNode(f.rel);
+        sub.empty = !f.hasChildren;
+        node.dirs[f.name] = sub;
+      } else {
+        node.files.push({ f: f, name: f.name });
       }
-    }
-    var root = { dirs: {}, files: [] };
-    lists.forEach(function(parts, idx){
-      var segs = parts.slice(drop), node = root, i;
-      for (i = 0; i < segs.length - 1; i++){
-        node.dirs[segs[i]] = node.dirs[segs[i]] || { dirs: {}, files: [] };
-        node = node.dirs[segs[i]];
-      }
-      if (segs.length) node.files.push({ f: files[idx], name: segs[segs.length - 1] });
     });
-    return root;
+    node.loaded = true;
   }
   function projCount(node){
     var n = node.files.length;
@@ -1888,16 +1880,26 @@
       row.className = "pf-dir";
       row.style.paddingLeft = (6 + depth * 13) + "px";
       row.innerHTML = "<span class='pf-arrow'>▸</span>"
-        + "<span class='pf-name'>" + esc(name) + "</span><em>" + projCount(sub) + " 项</em>";
+        + "<span class='pf-name'>" + esc(name) + "</span><em class='pf-count'></em>";
       var kids = document.createElement("div");
       kids.className = "pf-kids";
       kids.style.display = "none";                        // 默认全部收起，点目录逐级展开
-      renderProjTree(sub, kids, depth + 1);
-      row.addEventListener("click", function(){
+      row.addEventListener("click", function(ev){
+        ev.stopPropagation();
         var open = kids.style.display !== "none";
         kids.style.display = open ? "none" : "";
         var a = row.querySelector(".pf-arrow");
         if (a) a.textContent = open ? "▸" : "▾";
+        if (open || sub.loaded) return;                   // 收起 / 已加载过 → 不发请求
+        kids.innerHTML = "<div class='placeholder'>加载中…</div>";
+        api("/api/project-files?path=" + encodeURIComponent(sub.rel)).then(function(j){
+          kids.innerHTML = "";
+          if (!j || !j.ok){ kids.innerHTML = "<div class='placeholder'>读取失败</div>"; return; }
+          projFill(sub, j.files || []);
+          renderProjTree(sub, kids, depth + 1);
+          var c = row.querySelector(".pf-count");
+          if (c) c.textContent = projCount(sub) + " 项";
+        }).catch(function(){ kids.innerHTML = "<div class='placeholder'>读取失败</div>"; });
       });
       box.appendChild(row);
       box.appendChild(kids);
@@ -1922,7 +1924,7 @@
     // 工作区文件 + 项目/（工程产出）一起取：项目/ 的以 role="项目" 并入，自动出现在角色筛选里
     Promise.all([
       api("/api/ws-files"),
-      api("/api/project-files").catch(function(){ return { ok: false }; })
+      api("/api/project-files?full=1").catch(function(){ return { ok: false }; })   // 平铺清单要整棵树，只在切到本页时请求
     ]).then(function(rs2){
       var j = rs2[0], pj = rs2[1];
       if (!j || !j.ok){ if (box) box.innerHTML = "<div class='placeholder'>清单加载失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
