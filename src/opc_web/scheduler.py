@@ -87,13 +87,16 @@ def schedule_due(j: dict, now=None) -> bool:
     if not j.get("enabled", True):
         return False
     mode = str(j.get("mode") or "daily")
-    last = _parse_ts(j.get("lastRun")) or _BOOT
+    # lastRun 为空＝从未跑过。**不能**拿进程启动时刻顶替它：进程今天启动、now 也是今天，
+    # 会被下面「今天已跑过」的判定误杀，任务照样不触发（修过一版就踩在这）。
+    last = _parse_ts(j.get("lastRun"))
     if mode == "interval":
+        base = last or _BOOT                 # 间隔模式才需要基准：没跑过就从进程启动起算
         try:
             mins = max(1, int(str(j.get("intervalMin") or "60")))
         except Exception:
             mins = 60
-        return (now - last).total_seconds() >= mins * 60
+        return (now - base).total_seconds() >= mins * 60
     if mode == "weekly":
         try:
             wd = int(str(j.get("weekday") or "0"))
@@ -108,7 +111,9 @@ def schedule_due(j: dict, now=None) -> bool:
                          second=0, microsecond=0)
     if now < target:
         return False
-    return last.date() != now.date()          # 今天还没跑过 → 到期
+    if last is None:
+        return True                          # 从未跑过：时点已过就该跑
+    return last.date() != now.date()         # 今天还没跑过 → 到期
 
 
 def schedule_once():
