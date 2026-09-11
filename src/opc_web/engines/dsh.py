@@ -10,6 +10,7 @@ runner 只保留事件缓冲与执行状态（两套引擎共用），不再含�
 
 本模块**不导入 runner**（那是反向依赖）。跨模块只依赖 config 与 base。
 """
+import codecs
 import json
 import os
 import shutil
@@ -46,6 +47,45 @@ def _ev_text(ev: dict) -> str:
         return blocks
     return " ".join(str(b.get("text") or "") for b in blocks
                     if isinstance(b, dict) and b.get("type") == "text")
+
+
+_REASON_MARK = "dsh: reasoning:" + chr(10)   # dsh 每段思考的起始标记（见 dsh-headless streamReasoning）
+
+
+def _trace(on_progress, t0: float, kind: str, text: str):
+    """外报一个完整轨迹块（心跳之外的「全文」通道）。"""
+    if on_progress is None or not str(text or "").strip():
+        return
+    on_progress(Progress(elapsed=int(time.monotonic() - t0),
+                         trace={"kind": kind, "text": str(text)}))
+
+
+def _decoder(first: bytes):
+    """按首块 BOM 定 stderr 的编码（dsh 在 Windows 下可能写 UTF-16LE），默认 UTF-8。
+
+    用**增量**解码器而不是逐块 decode：多字节字符会被块边界切开，
+    逐块解会在边界处产生替换字符。"""
+    if first[:2] == b"\xff\xfe":
+        return codecs.getincrementaldecoder("utf-16-le")(errors="replace")
+    if first[:2] == b"\xfe\xff":
+        return codecs.getincrementaldecoder("utf-16-be")(errors="replace")
+    return codecs.getincrementaldecoder("utf-8")(errors="replace")
+
+
+def _emit_reasoning(buf: str, on_progress, t0: float) -> str:
+    """把 buf 里**已封口**的思考段外报，返回还没封口的尾巴。
+
+    dsh 把 reasoning 增量写在 stderr 上，每段以 "dsh: reasoning:\n" 开头、
+    下一段开头之前就算一段结束（段内可含换行）。所以按这个标记切分即可 ——
+    切出来的每一段就是它的一次「思考块」，实时推给面板就能看到此刻在想什么。"""
+    while True:
+        i = buf.find(_REASON_MARK)
+        if i < 0:
+            return buf                      # 还没等到下一段开头：整段仍未封口
+        seg, buf = buf[:i], buf[i + len(_REASON_MARK):]
+        if seg.strip():
+            _trace(on_progress, t0, "reasoning", seg.rstrip())
+    return buf
 
 
 def _dsh_sessions_dir() -> Path:
@@ -297,10 +337,16 @@ def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float,
                         brief = _squeeze(str(dd.get("arguments") or ""), 110)
                         tools += 1
                         last_tool = (name + " " + brief).strip()
+                        # 轨迹给全文参数（心跳只给 110 字摘要）
+                        _trace(on_progress, t0, "tool",
+                               name + " " + _squeeze(str(dd.get("arguments") or ""), 800))
                     elif ev.get("type") == "assistant/message":
-                        txt = _squeeze(_ev_text(ev), 90)
+                        full = _ev_text(ev).strip()
+                        txt = _squeeze(full, 90)
                         if txt:
                             last_text = txt
+                        if full:
+                            _trace(on_progress, t0, "text", full)
                 seen = len(evs)
                 with _STATE_LOCK:
                     _LAST_SESSION[act] = d      # 抽 usage 时直接用这个会话，不再按 mtime 猜
@@ -341,23 +387,32 @@ def _spawn_headless(argv: list, timeout: float, act: str = "", on_progress=None)
     if act:
         with _STATE_LOCK:
             _ACTIVE_SPAWN[act] = p.pid
+    t0 = time.monotonic()
     out_chunks, err_chunks = [], []
 
-    def _drain(stream, sink):
+    def _drain(stream, sink, watch=False):
+        dec, buf = None, ""
         try:
             for blk in iter(lambda: stream.read(65536), b""):
                 sink.append(blk)
+                if not watch or on_progress is None:
+                    continue
+                if dec is None:
+                    dec = _decoder(blk)
+                buf += dec.decode(blk)
+                buf = _emit_reasoning(buf, on_progress, t0)
         except Exception:
             pass                # 两个流各排一个线程：任一个不读满都可能把子进程堵在写管道上
+        if watch and on_progress is not None and buf.strip():
+            _emit_reasoning(buf + chr(10), on_progress, t0)   # 收尾：最后一段没等到下一段开头也报
 
-    for _stream, _sink in ((p.stdout, out_chunks), (p.stderr, err_chunks)):
-        threading.Thread(target=_drain, args=(_stream, _sink), daemon=True).start()
+    for _stream, _sink, _watch in ((p.stdout, out_chunks, False), (p.stderr, err_chunks, True)):
+        threading.Thread(target=_drain, args=(_stream, _sink, _watch), daemon=True).start()
     if act:
         threading.Thread(target=_watch_session,
-                         args=(act, p, time.time(), time.monotonic(), pre_sessions,
+                         args=(act, p, time.time(), t0, pre_sessions,
                                argv[-1] if argv else "", on_progress),
                          daemon=True).start()
-    t0 = time.monotonic()
     t_first = None        # stdout 首帧时刻（headless 期末才打印，平时靠会话事件心跳）
 
     def _kill():
@@ -404,8 +459,8 @@ def _spawn_headless(argv: list, timeout: float, act: str = "", on_progress=None)
         with _STATE_LOCK:
             _ACTIVE_SPAWN.pop(act, None)
             _BEAT.pop(act, None)
-        if on_progress:                 # 跑完报一次，让上层清掉「执行中」状态
-            on_progress(Progress(finished=True, elapsed=int(time.monotonic() - t0)))
+    # 结束信号不在这里报：最终输出的轨迹块还在后面（_run_prompt_dsh 解出文本才报），
+    # 先报 finished 会被那条轨迹重新建出「执行中」状态，界面上永远停在进行中。
     return b"".join(out_chunks), b"".join(err_chunks)
 
 
@@ -443,11 +498,15 @@ def _run_prompt_dsh(task_text: str, timeout: float, act: str = "", on_progress=N
     用量从 DSH 会话日志（~/.dsh/sessions/<cwd>/session-<uuid>/session.jsonl.zstd）抽取，
     会话由 _watch_session 三重校验认领，避免并发下认领到别的会话。"""
     base = time.time()
+    tm0 = time.monotonic()
     raw, err = _spawn_headless([task_text], timeout, act, on_progress)
     text = _decode_stdout(raw).strip()
     if not text:
         # 没有产出：把 stderr 里的失败原因回传，别让上层只看到一片空白
         text = _stderr_errors(_decode_stdout(err))
+    _trace(on_progress, tm0, "final", text)   # 最终输出全文进轨迹（心跳只带 120 字）
+    if on_progress:                          # 结束信号放最后：上层据此清掉「执行中」状态
+        on_progress(Progress(finished=True, elapsed=int(time.monotonic() - tm0)))
     with _STATE_LOCK:
         claimed = _LAST_SESSION.pop(act, None) if act else None
     sess = Path(claimed).name[-12:] if claimed else ""

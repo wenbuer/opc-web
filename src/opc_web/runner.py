@@ -30,6 +30,47 @@ def _squeeze(s: str, limit: int = 90) -> str:
     return " ".join(str(s or "").split())[:limit]
 
 
+_LOG_DIR = "运行日志"     # 完整运行轨迹落盘处：《批阅台/运行日志/T-xxx-Sn.log》
+_TRACE_MAX = 20000        # 单个轨迹块进事件流的字符上限（超出只在落盘文件里留全文）
+
+
+def trace_path(act: str) -> "object":
+    """某子任务的运行日志路径。act 来自查询参数，所以要掐掉路径分隔符防逃逸。"""
+    safe = "".join(ch for ch in str(act or "") if ch.isalnum() or ch in "-_")
+    return config.BATCH_ROOT / _LOG_DIR / (safe + ".log")
+
+
+def read_trace(act: str, limit: int = 400000) -> str:
+    """读某子任务的完整运行日志（「查看完整日志」用）；没有则返回空串。"""
+    p = trace_path(act)
+    if not p.is_file():
+        return ""
+    try:
+        return p.read_text(encoding="utf-8", errors="replace")[-limit:]
+    except OSError:
+        return ""
+
+
+def _trace_emit(act: str, kind: str, text: str) -> None:
+    """完整轨迹：一条事件进事件流（面板实时看），同时追加落盘（事后回看）。
+
+    事件流常驻内存且有上限，所以过长的单块在事件里截断并标注；
+    落盘文件始终是全文 —— 面板里的「查看完整日志」读的就是它。"""
+    body = str(text or "")
+    cut = len(body) > _TRACE_MAX
+    _append({"type": "exec/trace",
+             "data": {"sub": act, "kind": str(kind or "text"),
+                      "text": body[:_TRACE_MAX] if cut else body, "truncated": cut}})
+    try:
+        p = trace_path(act)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "a", encoding="utf-8") as fh:
+            fh.write(chr(10) + "## [" + str(kind or "text") + "] "
+                     + time.strftime("%H:%M:%S") + chr(10) + body + chr(10))
+    except Exception:
+        pass
+
+
 def run_info(act: str) -> dict:
     """最近一次 act 运行的信息：{engine, session, elapsed}。
 
@@ -79,6 +120,16 @@ def _progress_sink(act: str):
         if getattr(p, "finished", False):
             with _EXEC_LOCK:
                 _EXEC_STATE.pop(act, None)
+            return
+        tr = getattr(p, "trace", None)          # 完整轨迹（心跳之外的全文通道）
+        if tr and str(tr.get("text") or "").strip():
+            _trace_emit(act, str(tr.get("kind") or "text"), str(tr["text"]))
+        # 只带轨迹、不带任何心跳字段的回调不能进心跳：它会把已累计的操作数清零
+        # （界面于是显示「操作 0 次」，明明跑了 57 次工具调用）。
+        if tr and not (int(getattr(p, "tools", 0) or 0)
+                       or str(getattr(p, "lastTool", "") or "")
+                       or str(getattr(p, "lastText", "") or "")
+                       or str(getattr(p, "session", "") or "")):
             return
         _exec_beat(act, int(getattr(p, "tools", 0) or 0),
                    str(getattr(p, "lastTool", "") or ""),

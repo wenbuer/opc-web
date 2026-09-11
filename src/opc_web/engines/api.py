@@ -311,6 +311,15 @@ class ApiEngine(Engine):
                 on_progress(Progress(elapsed=int(now - t0), tools=n_tools,
                                      lastTool=last_tool, lastText=last_text[:120]))
 
+        def trace(kind, text):
+            """完整轨迹（**不受 beat 的每秒节流**）：每轮输出、工具调用与其结果全文。
+
+            dsh 那边思考流走 stderr，这里没有思考流，等价物就是
+            「每轮说了什么 + 调了什么工具 + 工具返回了什么」——面板折叠块装的就是它。"""
+            if on_progress and str(text or "").strip():
+                on_progress(Progress(elapsed=int(time.monotonic() - t0),
+                                     trace={"kind": kind, "text": str(text)}))
+
         try:
             while steps < int(cfg["maxSteps"]):
                 if cancelled():
@@ -328,6 +337,7 @@ class ApiEngine(Engine):
                 text = r.get("text") or ""
                 if text.strip():
                     last_text = " ".join(text.split())[:200]
+                    trace("text", text)
                 if r.get("tool_calls"):
                     messages.append({"role": "assistant", "content": text or None,
                                      "tool_calls": [{"id": c["id"] or ("call_%d" % i), "type": "function",
@@ -341,11 +351,13 @@ class ApiEngine(Engine):
                             args = {}
                         n_tools += 1
                         beat((name + " " + json.dumps(args, ensure_ascii=False))[:130], "", force=True)
+                        trace("tool", name + " " + json.dumps(args, ensure_ascii=False))
                         impl = _TOOL_IMPL.get(name)
                         try:
                             result = impl(args) if impl else "未知工具：%s" % name
                         except Exception as e:
                             result = "工具执行失败：%s" % e
+                        trace("result", str(result)[:8000])
                         messages.append({"role": "tool", "tool_call_id": c["id"] or ("call_%d" % i),
                                          "content": str(result)[:12000]})
                     messages = trim_history(messages)

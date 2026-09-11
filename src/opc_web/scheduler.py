@@ -978,6 +978,15 @@ def clean_task_files(no: str) -> int:
                     removed += 1
                 except OSError:
                     pass
+    # 运行日志（《批阅台/运行日志/T-xxx-Sn.log》）：任务的痕迹，随任务一起走
+    logdir = config.BATCH_ROOT / "运行日志"
+    if logdir.is_dir():
+        for p in list(logdir.glob(no + "-*.log")):
+            try:
+                p.unlink()
+                removed += 1
+            except OSError:
+                pass
     return removed
 
 

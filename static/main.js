@@ -470,6 +470,13 @@
     document.querySelectorAll(".dq-row").forEach(function(r){ r.classList.remove("sel"); });
     if (row) row.classList.add("sel");
     var box = $("taskOut");
+    if (box && !box.dataset.logBound){       // 委托一次：执行历史里的子任务号点开完整运行日志
+      box.dataset.logBound = "1";
+      box.addEventListener("click", function(e){
+        var t = e.target;
+        if (t && t.classList && t.classList.contains("ex-log")) openRunLog(t.getAttribute("data-sub"));
+      });
+    }
     box.innerHTML = "<div class='placeholder'>加载任务 " + esc(no) + " 的输出…</div>";
     api("/api/task-output?no=" + encodeURIComponent(no)).then(function(j){
       if (!j || !j.ok){ box.innerHTML = "<div class='placeholder'>读取失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
@@ -482,7 +489,7 @@
             var done = !!e.result;
             var cls = !done ? "run" : (e.result === "完成" ? "ok" : (e.result === "部分" ? "warn" : "bad"));
             return "<div class='exec-row " + cls + "'>"
-              + "<span class='ex-id'>" + esc(e.id) + "</span>"
+              + "<span class='ex-id ex-log' data-sub='" + esc(e.id) + "' title='查看完整运行日志（思考 / 工具 / 输出全文）'>" + esc(e.id) + "</span>"
               + "<span class='ex-role'>" + esc(e.role) + "</span>"
               + "<span class='ex-time'>" + esc(fmtTs(e.started_at)) + (e.ended_at ? " → " + esc(fmtTs(e.ended_at)) : " → 进行中") + "</span>"
               + "<em class='ex-st'>" + esc(e.result || "执行中") + "</em>"
@@ -1278,6 +1285,52 @@
       if (detail) showTaskOutput(state.activeNo, null);   // 任务边界（启动/结束/退出）刷详情
     }
   }
+  /* ===== 子任务执行轨迹：完整思考 / 工具调用 / 输出 =====
+     心跳（exec/progress）只报「最近在干什么」，轨迹（exec/trace）报全文。
+     同屏只展开最新一块 —— 正在跑的那个看得见，历史块收起来，点块头可展开。 */
+  var RT_KIND = { reasoning: "思考", tool: "调用工具", result: "工具返回", text: "输出", final: "最终输出" };
+  function runTraceBlock(body, sub){
+    var el = body.querySelector(".run-trace[data-sub='" + sub + "']");
+    if (el) return el;
+    el = document.createElement("div");
+    el.className = "run-trace open";
+    el.setAttribute("data-sub", sub);
+    el.innerHTML = "<div class='run-trace-head'><span class='rt-arrow'>▾</span><b>" + esc(sub)
+      + "</b><em class='rt-meta'></em><button class='rt-log' title='在《批阅台/运行日志/》里看这一份的全文'>完整日志</button></div>"
+      + "<div class='run-trace-body'></div>";
+    el.querySelector(".run-trace-head").addEventListener("click", function(e){
+      if (e.target && e.target.className === "rt-log") return;
+      var on = el.classList.toggle("open");
+      el.querySelector(".rt-arrow").textContent = on ? "▾" : "▸";
+    });
+    el.querySelector(".rt-log").addEventListener("click", function(){ openRunLog(sub); });
+    Array.prototype.forEach.call(body.querySelectorAll(".run-trace.open"), function(x){
+      if (x === el) return;
+      x.classList.remove("open");
+      var a = x.querySelector(".rt-arrow"); if (a) a.textContent = "▸";
+    });
+    body.appendChild(el);
+    return el;
+  }
+  function runTraceMeta(el){
+    var n = el.querySelectorAll(".rt-item").length, chars = 0;
+    Array.prototype.forEach.call(el.querySelectorAll(".rt-item pre"), function(p){ chars += (p.textContent || "").length; });
+    var em = el.querySelector(".rt-meta");
+    if (em) em.textContent = n + " 块 · " + chars.toLocaleString() + " 字";
+  }
+  function openRunLog(sub){
+    var w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write("<title>" + sub + " 运行日志</title><pre style=\"white-space:pre-wrap;word-break:break-word;"
+      + "font:12px/1.6 ui-monospace,Consolas,monospace;padding:16px\">加载中…</pre>");
+    api("/api/runlog?sub=" + encodeURIComponent(sub)).then(function(j){
+      var pre = w.document.querySelector("pre");
+      if (pre) pre.textContent = (j && j.text) || ((j && j.msg) || "没有日志");
+    }).catch(function(e){
+      var pre = w.document.querySelector("pre");
+      if (pre) pre.textContent = "读取失败：" + ((e && e.message) || "");
+    });
+  }
   function runRender(ev){
     /* 事件源 = runner 缓冲（chain 只发 6 种合成事件）：run/start → 新建任务段；
        其余事件追加进当前段。 */
@@ -1312,6 +1365,8 @@
       body.appendChild(runStepEl(d.turn, d.step, "步骤完成"));
     } else if (type === "run/end"){
       /* 不截断：全文进 DOM，超长由 .run-out 折叠 + 「展开全部」承载 */
+      // 跑完把每块轨迹的块头从「运行中 [..]」改回「N 块 · M 字」
+      Array.prototype.forEach.call(body.querySelectorAll(".run-trace"), runTraceMeta);
       var e4 = document.createElement("div");
       e4.className = "run-banner end";
       e4.textContent = "执行结束 · " + String(ev.text || "");
@@ -1324,21 +1379,30 @@
       e5.textContent = "进程退出码：" + (d.code != null ? d.code : "?");
       body.appendChild(e5);
     } else if (type === "exec/progress"){
-      /* 执行心跳：同一子任务复用同一行原地更新（周期心跳否则会把面板堆满） */
-      var el = (d.elapsed || 0), mm = Math.floor(el / 60), ss = ("0" + (el % 60)).slice(-2);
+      /* 执行心跳：状态写进该子任务轨迹块的块头（原地更新，不堆行） */
       var sub = String(d.sub || "");
-      var inner = "<em>[" + mm + ":" + ss + "]</em> " + esc(sub) + " · 操作 " + (d.tools || 0) + " 次"
-        + (d.lastTool ? " · 最近：" + esc(d.lastTool) : "")
-        + (d.lastText ? "<div class='rp-text'>" + esc(d.lastText) + "</div>" : "");
-      var pr = sub ? body.querySelector(".run-prog[data-sub='" + sub + "']") : null;
-      if (pr){ pr.innerHTML = inner; }
-      else {
-        pr = document.createElement("div");
-        pr.className = "run-prog";
-        if (sub) pr.setAttribute("data-sub", sub);
-        pr.innerHTML = inner;
-        body.appendChild(pr);
-      }
+      if (!sub) return;
+      var el = (d.elapsed || 0), mm = Math.floor(el / 60), ss = ("0" + (el % 60)).slice(-2);
+      var tb0 = runTraceBlock(body, sub);
+      var head = tb0.querySelector(".rt-meta");
+      if (head) head.textContent = "运行中 [" + mm + ":" + ss + "] · 操作 " + (d.tools || 0) + " 次"
+        + (d.lastTool ? " · 最近：" + esc(d.lastTool) : "");
+    } else if (type === "exec/trace"){
+      /* 完整轨迹：思考 / 工具调用 / 工具返回 / 每轮输出 / 最终输出 */
+      var tsub = String(d.sub || "");
+      if (!tsub) return;
+      var tb = runTraceBlock(body, tsub);
+      var kind = String(d.kind || "text");
+      var item = document.createElement("div");
+      item.className = "rt-item " + kind.replace(/[^a-z]/g, "");
+      var lbl = document.createElement("div");
+      lbl.className = "rt-kind";
+      lbl.textContent = (RT_KIND[kind] || kind) + (d.truncated ? "（过长已截断，全文见完整日志）" : "");
+      var pre = document.createElement("pre");
+      pre.textContent = String(d.text || "");
+      item.appendChild(lbl); item.appendChild(pre);
+      tb.querySelector(".run-trace-body").appendChild(item);
+      runTraceMeta(tb);
     }
     runFoldCheck();
     lg.scrollTop = lg.scrollHeight;

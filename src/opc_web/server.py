@@ -211,6 +211,17 @@ class Handler(BaseHTTPRequestHandler):
     def _get_daily(self):
         return {"ok": True, "daily": knowledge.latest_daily()}
 
+    def _get_runlog(self):
+        """某子任务的完整运行轨迹（面板「查看完整日志」用）。
+
+        事件流里的轨迹块有内存上限，超过的部分只在落盘文件里 —— 这里读的就是文件全文。"""
+        sub = str(self._qs().get("sub", [""])[0] or "").strip()
+        if not sub:
+            raise ApiError(400, "缺少子任务编号 sub")
+        text = runner.read_trace(sub)
+        return {"ok": True, "sub": sub, "text": text, "size": len(text),
+                "msg": "" if text else "还没有这个子任务的运行日志"}
+
     def _get_events(self):
         since = int(self._qs().get("since", ["0"])[0] or 0)
         return runner.events(since)
@@ -228,6 +239,8 @@ class Handler(BaseHTTPRequestHandler):
                               "entries": knowledge.kb_entries()})
         elif url == "/api/md":
             self._ok(self._get_md, err=400)
+        elif url == "/api/runlog":
+            self._ok(self._get_runlog)
         elif url == "/api/pending":
             self._ok(self._get_pending)
         elif url == "/api/summary":

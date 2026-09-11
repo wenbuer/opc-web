@@ -833,9 +833,30 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
    所以首行「T-00x · 自动执行链」不会被退出按钮压住） */
 .run-log.fullscreen{position:fixed;inset:0;z-index:1200;max-height:none!important;height:auto;background:var(--panel,#fff);padding:56px 22px 22px;border-radius:0;overflow-y:auto!important}
 .run-log.fullscreen::before{content:"";position:fixed;top:0;left:0;right:0;height:52px;background:var(--panel,#fff);border-bottom:1px solid var(--line2);z-index:2}
-.run-prog{color:var(--faint);font-size:11.5px;line-height:1.55;padding:3px 0;border-bottom:1px dashed var(--line2)}
-.run-prog em{font-style:normal;font-variant-numeric:tabular-nums;color:var(--indigo,#4c6ef5)}
-.run-prog .rp-text{white-space:pre-wrap;word-break:break-word;margin-top:2px}
+/* ===== 子任务执行轨迹：完整思考 / 工具调用 / 输出（可折叠） =====
+   心跳只报「最近在干什么」，轨迹报全文；同屏只展开最新一块（正在跑的那个）。 */
+.run-trace{border:1px solid var(--line2);border-radius:9px;margin:8px 0;overflow:hidden;background:var(--panel2)}
+.run-trace-head{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;font-size:11px;color:var(--txt)}
+.run-trace-head b{font-family:var(--mono);font-size:11px}
+.run-trace-head em{font-style:normal;font-size:10px;color:var(--faint);flex:1;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.run-trace-head .rt-arrow{font-size:10px;color:var(--dim)}
+.run-trace .rt-log{font-size:9.5px;padding:2px 7px;border:1px solid var(--line2);border-radius:5px;background:transparent;
+  color:var(--dim);cursor:pointer;flex:none}
+.run-trace .rt-log:hover{color:var(--txt)}
+.run-trace-body{display:none;border-top:1px solid var(--line);max-height:420px;overflow:auto;padding:7px 10px}
+.run-trace.open .run-trace-body{display:block}
+.rt-item{margin:0 0 9px}
+.rt-item:last-child{margin-bottom:0}
+.rt-kind{font-size:9.5px;letter-spacing:.4px;color:var(--faint);margin-bottom:3px}
+.rt-item.reasoning .rt-kind{color:#8b5cf6}
+.rt-item.tool .rt-kind{color:var(--gold)}
+.rt-item.result .rt-kind,.rt-item.text .rt-kind,.rt-item.final .rt-kind{color:var(--ok)}
+.rt-item pre{margin:0;white-space:pre-wrap;word-break:break-word;
+  font:11px/1.6 ui-monospace,Consolas,monospace;color:var(--txt);background:transparent}
+.rt-item.reasoning pre{color:var(--dim);border-left:2px solid rgba(139,92,246,.45);padding-left:8px}
+.ex-log{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.ex-log:hover{color:var(--gold)}
 .run-out{position:relative}
 .run-out.folded{max-height:240px;overflow:hidden}
 .run-out.expanded{max-height:none}
