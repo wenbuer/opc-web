@@ -2690,7 +2690,6 @@
           + "<span class='tok-bar out' style='height:" + hOut + "px' title='" + esc(t) + " 输出 " + fmtTok(v.out) + "'></span>"
           + "</div><div class='tok-lab'>" + esc(t) + "</div><div class='tok-val'>" + fmtTok(v.inn + v.out) + "</div></div>";
       }).join("");
-      var bars = altBars + tCol;                   // 临时会话排最前：它是唯一特殊的一组
       if (aIn || aOut){
         var aCache = asst.cache || 0, aFresh = Math.max(0, aIn - aCache);
         var ahIn = Math.max(2, Math.round(aFresh / max * 180));
@@ -2703,6 +2702,7 @@
           + "<span class='tok-bar out alt' style='height:" + ahOut + "px' title='临时会话 输出 " + fmtTok(aOut) + "'></span>"
           + "</div><div class='tok-lab'>临时会话</div><div class='tok-val'>" + fmtTok(aIn + aOut) + "</div></div>";
       }
+      var bars = altBars + tCol;                   // 临时会话排最前：它是唯一特殊的一组
       chart.innerHTML = "<div class='tok-legend'><span class='lg-cache'>缓存命中</span><span class='lg-in'>新输入</span>"
         + "<span class='lg-out'>输出</span>"
         + "<span class='lg-alt'>临时会话（单列一组，不进任务统计）</span></div>"
