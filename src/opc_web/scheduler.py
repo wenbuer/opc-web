@@ -1418,7 +1418,7 @@ def _skip_name(name: str) -> bool:
     return name.startswith(".") or name in _WS_SKIP_PARTS
 
 
-def project_files(path: str = "", full: bool = False) -> dict:
+def project_files(path: str = "") -> dict:
     """公共项目区（项目/）文件清单：**只列一层**。
 
     path 为空 = 根层；给了 path = 该目录的直接子项。前端点开目录时再来要下一层 ——
@@ -1428,22 +1428,6 @@ def project_files(path: str = "", full: bool = False) -> dict:
     writers = 当前具备《项目/》写权限的角色（工程标签），供前端展示（只在根层算）。"""
     from . import roles as _roles
     root = config.PROJECT_ROOT.resolve()
-    if full:
-        # 「项目文件」页用的是平铺清单 + 客户端筛选，需要整棵树 —— 它只在切到该页时请求，
-        # 不像首页那样每次启动都付这笔遍历。首页走下面的懒加载分支。
-        out = []
-        if root.is_dir():
-            for p in sorted(root.rglob("*")):
-                if not p.is_file() or any(_skip_name(seg) for seg in p.relative_to(root).parts):
-                    continue
-                try:
-                    st = p.stat()
-                except OSError:
-                    continue
-                out.append({"name": p.name, "rel": p.relative_to(config.ROOT).as_posix(),
-                            "ext": p.suffix.lower(), "size": st.st_size, "mtime": int(st.st_mtime)})
-        writers = [no for no, _ in _roles.role_files() if _roles.can_write_project(no)]
-        return {"files": out, "writers": writers, "path": ""}
     base = root
     if path:
         base = (config.ROOT / path).resolve()

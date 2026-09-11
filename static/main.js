@@ -1923,17 +1923,13 @@
     if (box) box.innerHTML = "<div class='placeholder'>加载文件清单…</div>";
     // 工作区文件 + 项目/（工程产出）一起取：项目/ 的以 role="项目" 并入，自动出现在角色筛选里
     Promise.all([
-      api("/api/ws-files"),
-      api("/api/project-files?full=1").catch(function(){ return { ok: false }; })   // 平铺清单要整棵树，只在切到本页时请求
+      api("/api/ws-files")
     ]).then(function(rs2){
-      var j = rs2[0], pj = rs2[1];
+      var j = rs2[0];
       if (!j || !j.ok){ if (box) box.innerHTML = "<div class='placeholder'>清单加载失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
       wsFiles = (j.files || []).slice();
-      if (pj && pj.ok){
-        (pj.files || []).forEach(function(f){
-          if (f.rel) wsFiles.push({ name: f.name, rel: f.rel, size: f.size, role: "项目", task: "" });
-        });
-      }
+      // 公共项目区不在这里拉：它是唯一体量大的来源（上万文件），
+      // 选到「项目/（工程产出）」时才逐层要（见 wsProjTree）
       var roles = [], seenR = {}, tasks = [], seenT = {}, hasNone = false;
       wsFiles.forEach(function(f){
         if (!seenR[f.role]){ seenR[f.role] = 1; roles.push(f.role); }
@@ -1949,7 +1945,7 @@
         if (mb) return 1;
         return a < b ? -1 : a > b ? 1 : 0;
       });
-      var hasProj = roles.indexOf("项目") >= 0;
+      var hasProj = true;                        // 项目区永远是可选的一档：它是懒加载树，不依赖 wsFiles
       if (hasProj) roles = roles.filter(function(x){ return x !== "项目"; });
       tasks.sort(function(a, b){ return parseInt(a.slice(2), 10) - parseInt(b.slice(2), 10); });
       rs.innerHTML = "<option value=''>全部角色</option>"
@@ -2045,10 +2041,23 @@
       box.appendChild(el);
     });
   }
+  /* 项目文件页里的公共项目区：只加载根层，点开目录才要下一层。
+     和首页共用 projNode/projFill/renderProjTree —— 同一份数据、同一套懒加载。 */
+  function wsProjTree(box){
+    box.innerHTML = "<div class='placeholder'>加载项目区根层…</div>";
+    api("/api/project-files").then(function(j){
+      if (!j || !j.ok){ box.innerHTML = "<div class='placeholder'>读取失败：" + esc(j && j.msg || "") + "</div>"; return; }
+      box.innerHTML = "";
+      var root = projNode("项目");
+      projFill(root, j.files || []);
+      renderProjTree(root, box, 0);
+    }).catch(function(e){ box.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
+  }
   function renderWsList(){
     var box = $("wsList");
     if (!box) return;
     if (!wsRole && !wsTask){ box.innerHTML = "<div class='placeholder'>选择 角色 / 项目 / 任务 后，此处按文件夹树显示文件</div>"; return; }
+    if (wsRole === "项目"){ wsProjTree(box); return; }   // 项目区：懒加载树，不参与 wsFiles 平铺清单
     var rows = filteredWsFiles();
     if (!rows.length){
       box.innerHTML = "<div class='placeholder'>" + (wsFiles.length ? "没有匹配的文件（换个角色 / 项目 / 任务筛选）" : "暂无文件 —— 任务执行后各角色产出会落到《工作区/<角色>/》") + "</div>";

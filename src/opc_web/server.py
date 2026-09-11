@@ -259,10 +259,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(lambda: {"ok": True, "files": scheduler.ws_files()})
         elif url == "/api/project-files":
             # 懒加载：不带 path 只给根层，前端点开目录时带 path 来要下一层
-            q = self._qs()
             self._ok(lambda: {"ok": True, **scheduler.project_files(
-                unquote(q.get("path", [""])[0]).strip(),
-                full=bool(str(q.get("full", [""])[0] or "")))}, err=400)
+                unquote(self._qs().get("path", [""])[0]).strip())}, err=400)
         elif url == "/api/home-stats":
             self._ok(scheduler.home_stats)
         elif url == "/api/tokens":
