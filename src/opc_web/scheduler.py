@@ -536,7 +536,6 @@ def work_summary(task_no: str) -> str:
         return None
 
 
-
 def _headless_text(prompt: str, timeout: float = 600) -> str:
     """尝试用 dsh headless 让 R1 做文本类收尾（汇总/抽取）；失败返回空串。"""
     try:
@@ -800,29 +799,6 @@ def kb_digest(task_no: str) -> dict:
     return {"ok": True, "created": True, "action": action, "rel": rel,
             "msg": ("已合并补充到知识库「%s/%s」" % (cat, target.name)) if action == "merge"
                    else ("已沉淀到知识库「%s/%s」" % (cat, target.name))}
-
-def _advice_summary(reps, task_text: str) -> str:
-    """R1 按《模板-决策建议》把角色声明的待拍板事项提炼成「决策建议」栏正文。
-
-    只在 _pending_items 非空（确有需 R0 定的事项）时才被调用；模型不可用返回 "" 由调用方回退。"""
-    if not reps and not task_text:
-        return ""
-    digest = _digest_reps(reps, limit=2400) if reps else str(task_text or "")[:1600]
-    # _decision_items 收的是 (role, body) 元组列表；直接传整条记录会当场 ValueError
-    # （too many values to unpack），被上层 except 吞掉后永远走回退摘要 —— 「决策建议没按模板走」即此因。
-    ask = _decision_items([(r.get("role"), r.get("body")) for r in reps]) if reps else ""
-    prompt = (
-        "你是老板助理 R1。请按《模板-决策建议》为批阅台待决条目写「决策建议」栏："
-        "依次含小节 决策点（一句话问句）/ 现状背景（2~4 句）/ 建议（明确选哪个 + 一两句理由；"
-        "无可拍板事项就给下一步动作建议）/ 拍板后动作（批准/驳回/修改后 R1 分别怎么转）/ 附注（可省略）。\n"
-        "要求：完整、像人话，不搬运回报原文的零碎句，不写机制套话；**只围绕角色在"
-        "「需要 R0 拍板」小节里声明的事项提炼**，不要扩散到任务的其他部分。\n"
-        "只输出「决策建议」栏正文（各小节），不要多余解释。\n\n"
-        "《模板-决策建议》：\n%s\n\n任务原文：%s\n\n各角色回报：\n%s\n\n各角色「需要 R0 拍板」原文：\n%s"
-        % (templates.doc_template("决策建议"), str(task_text or "")[:900], digest, ask or "（无）"))
-    text = _headless_text(prompt, 600)
-    return (text or "").strip()
-
 
 def decision_context(task_text: str, limit: int = 2400) -> str:
     """从任务文本提取「待决 #N」引用 → 读批阅台对应条目的「决策建议」全文。
@@ -1515,4 +1491,3 @@ def project_files(path: str = "") -> dict:
                             "size": st.st_size, "mtime": int(st.st_mtime)})
     writers = [no for no, _ in _roles.role_files() if _roles.can_write_project(no)]
     return {"files": out, "writers": writers, "path": path}
-
