@@ -21,6 +21,31 @@ BASE = Path(__file__).resolve().parent.parent.parent
 CONFIG_FILE = Path(os.environ.get("OPC_CONFIG") or (BASE / "opc-config.json"))
 
 
+def decode_bytes(data: bytes) -> str:
+    """宽容解码文本字节：纯 UTF-8 直读；首个坏字节处切分 = 前半 UTF-8 + 后半 GBK。
+
+    旧版程序/外部工具可能用 Windows 默认 GBK 追加写过 md/日志，形成
+    「UTF-8 头 + GBK 尾」的混合文件；这里兜底，避免读取端抛 UnicodeDecodeError。
+    注意：不能整段按 GBK 试解 —— GBK 对 UTF-8 字节常能“解成功”但产出乱码。"""
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as e:
+        head = data[:e.start].decode("utf-8", errors="replace")
+        try:
+            tail = data[e.start:].decode("gbk")
+        except UnicodeDecodeError:
+            tail = data[e.start:].decode("gbk", errors="replace")
+        return head + tail
+
+
+def read_text(p: Path) -> str:
+    """按 UTF-8 读文件；遇非 UTF-8（如 GBK 旧文件）自动兜底。"""
+    try:
+        return p.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return decode_bytes(p.read_bytes())
+
+
 def _load_cfg() -> dict:
     """读取配置文件（不存在/损坏返回 {}）。"""
     if not CONFIG_FILE.exists():
@@ -93,6 +118,8 @@ TEMPLATES = BASE / "templates"
 STATIC = BASE / "static"
 # 角色阵容跟项目走；还没建项目时退回模板库，作战面板不至于空着（此时只读）
 AGENTS_DIR = (ROOT / "agents") if active_project() else AGENTS_SEED
+# 角色技能共享库（平铺共享）：agents/skills/<技能名>.md；角色卡「## 技能」段登记文件名即装配
+SKILLS_REL = "skills"
 LOG_FILE = ROOT / SCHED_LOG_REL
 
 HOST = "127.0.0.1"
