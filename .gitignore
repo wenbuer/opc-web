@@ -35,3 +35,7 @@ tests/
 .diag-regen.py
 server.out.log
 server.err.log
+
+# 本地探针与运行日志（截图/临时页/服务输出），不进仓库
+_*.png
+_*.html

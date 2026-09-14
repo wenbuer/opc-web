@@ -34,7 +34,7 @@ _LOG_DIR = "运行日志"     # 完整运行轨迹落盘处：《批阅台/运�
 _TRACE_MAX = 20000        # 单个轨迹块进事件流的字符上限（超出只在落盘文件里留全文）
 
 
-def trace_path(act: str) -> "object":
+def trace_path(act: str):
     """某子任务的运行日志路径。act 来自查询参数，所以要掐掉路径分隔符防逃逸。"""
     safe = "".join(ch for ch in str(act or "") if ch.isalnum() or ch in "-_")
     return config.BATCH_ROOT / _LOG_DIR / (safe + ".log")
