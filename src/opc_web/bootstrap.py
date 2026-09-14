@@ -62,6 +62,9 @@ def bootstrap():
         # 员工手册：全员唯一行为准则（OPC智能体角色架构.md / 知识库索引.md 已移除：不作为知识档案入库）
         config.HANDBOOK_REL: hb,
     }
+    # OPC 规范文书模板（回报产出 / 决策建议 / 每日简报）：随项目落知识库，与 scheduler 注入同源（doc_template）
+    for kind in ("回报产出", "决策建议", "每日简报"):
+        seeds["知识库/OPC 规范/模板-%s.md" % kind] = _tpl.doc_template(kind)
     for rel, text in seeds.items():
         p = config.ROOT / rel
         if not p.exists():
