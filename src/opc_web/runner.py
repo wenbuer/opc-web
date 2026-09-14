@@ -12,11 +12,13 @@ import shutil
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 from . import config
 
 _LOCK = threading.RLock()
 _ACTIVE = {"events": [], "seq": 0}
+_ACTIVE_SPAWN = {}   # act(key: 子任务号) -> 运行中 headless 子进程 pid，供删除任务时终止
 
 
 def _child_env() -> dict:
@@ -50,12 +52,13 @@ def events(since: int = 0) -> dict:
                 "events": [e for e in _ACTIVE["events"] if e["seq"] > since]}
 
 
-def _spawn_headless(argv: list, timeout: float) -> bytes:
+def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
     """启动 dsh headless 子进程并收尾，返回其原始 stdout（stderr 合并）字节。
 
-    超时语义（v1.14，来自实测）：headless 只在 turn 结束后一次性打印 final 文本，
-    因此一旦收到任何输出即视为任务存活、放弃强杀、等待自然结束；
-    仅当全程无输出且超时才强杀（防 headless 静默挂死泄漏进程树）。
+    超时语义：headless 只在 turn 结束后一次性打印 final 文本；因此无输出即任务未启动，
+    超 timeout 强杀（防静默挂死泄漏进程树）。但执行路径用 --events-jsonl 时会边生成边输出，
+    所以「有输出」并不代表即将结束 —— 若生成过长或挂死，无限等待会卡死调度（SCHED_STATE.busy 永不回 False）。
+    故统一：无输出超 timeout 强杀；有输出后再给 timeout*3 的硬上限，超过也强杀（判为阻塞）。
     spawn 失败返回 b""。"""
     exe = shutil.which("dsh") or "dsh"
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -69,6 +72,8 @@ def _spawn_headless(argv: list, timeout: float) -> bytes:
                              creationflags=flags, startupinfo=si, env=_child_env())
     except Exception:
         return b""
+    if act:
+        _ACTIVE_SPAWN[act] = p.pid
     chunks = []
 
     def _drain():
@@ -80,32 +85,40 @@ def _spawn_headless(argv: list, timeout: float) -> bytes:
 
     threading.Thread(target=_drain, daemon=True).start()
     t0 = time.monotonic()
+    t_first = None        # 首个输出时刻（有输出 = 任务在活动，但不等同即将结束）
+
+    def _kill():
+        try:
+            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
+                           capture_output=True, text=True)
+        except Exception:
+            pass
+        try:
+            p.wait(timeout=3)
+        except Exception:
+            try:
+                p.kill()
+            except Exception:
+                pass
+
+    hard = max(timeout * 3, 1800.0)     # 有输出后的硬上限，防长生成/挂死卡住调度
     while True:
         if p.poll() is not None:
             break                       # 自然结束
-        if chunks:
-            # 有输出 → 任务在推进：等自然结束（不设超时上限）
-            try:
-                p.wait()
-            except Exception:
-                pass
-            break
-        if time.monotonic() - t0 > timeout:
-            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
-                           capture_output=True, text=True)
-            try:
-                p.wait(timeout=3)
-            except Exception:
-                try:
-                    p.kill()
-                except Exception:
-                    pass
-            break
+        if chunks and t_first is None:
+            t_first = time.monotonic()  # 首帧输出：任务开始活动
+        now = time.monotonic()
+        if t_first is None and now - t0 > timeout:
+            _kill(); break              # 全程无输出且超时 → 判死
+        if t_first is not None and now - t_first > hard:
+            _kill(); break              # 有输出但迟迟不结束 → 判阻塞，防死锁
         time.sleep(0.5)
     try:
         p.stdout.close()
     except Exception:
         pass
+    if act:
+        _ACTIVE_SPAWN.pop(act, None)
     return b"".join(chunks)
 
 
@@ -121,32 +134,121 @@ def _decode_stdout(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def run_headless_task(task_text: str, timeout: float = 600):
-    """headless + --events-jsonl：返回 (最终文本, 用量 dict|None)。
+def _dsh_sessions_dir() -> Path:
+    """DSH 会话事件日志根：~/.dsh/sessions（DSH_HOME 可覆盖）。"""
+    return Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh")) / "sessions"
 
-    用量来自事件流 assistant/chunk 的 data.usage（inputTokens/outputTokens 等），
-    供 chain 写回子任务 meta.json；最终文本取 run/end.text（无则拼 chunk）。"""
-    text = _decode_stdout(_spawn_headless([task_text, "--events-jsonl"], timeout))
-    usage = None
-    final = ""
+
+def _usage_from_session(session_dir: Path) -> dict:
+    """从一次会话的 session.jsonl.zstd 抽最终 token 用量。
+
+    语义同 dsh-tokenledger 的 sampleOf：取最后一条 assistant/message 的 data.usage，
+    兜底 assistant/chunk 里 data.chunk.type === 'usage' 的 usage。缺 zstandard / 无日志返回 None。"""
+    zf = session_dir / "session.jsonl.zstd"
+    if not zf.is_file():
+        return None
+    try:
+        import zstandard as zstd
+    except Exception:
+        return None
+    try:
+        with zstd.ZstdDecompressor().stream_reader(open(zf, "rb")) as _s:
+            text = _s.read().decode("utf-8", "replace")
+    except Exception:
+        return None
+    last = None
     for ln in text.splitlines():
-        line = ln.strip()
-        if not line:
+        ln = ln.strip()
+        if not ln:
             continue
         try:
-            ev = json.loads(line)
+            ev = json.loads(ln)
         except Exception:
             continue
-        d = ev.get("data") or {}
-        if ev.get("type") == "assistant/chunk" and isinstance(d.get("usage"), dict):
-            u = d["usage"]
-            if u.get("inputTokens") is not None or u.get("outputTokens") is not None:
-                usage = {"inputTokens": int(u.get("inputTokens") or 0),
-                         "outputTokens": int(u.get("outputTokens") or 0),
-                         "cacheReadTokens": int(u.get("cacheReadTokens") or 0),
-                         "reasoningTokens": int(u.get("reasoningTokens") or 0)}
-        elif ev.get("type") == "run/end" and ev.get("text"):
-            final = ev["text"]
-    if not final:
-        final = text
-    return final.strip(), usage
+        data = ev.get("data")
+        if not isinstance(data, dict):
+            continue
+        u = None
+        if ev.get("type") == "assistant/message" and isinstance(data.get("usage"), dict):
+            u = data["usage"]
+        elif (ev.get("type") == "assistant/chunk" and isinstance(data.get("chunk"), dict)
+              and data["chunk"].get("type") == "usage" and isinstance(data["chunk"].get("usage"), dict)):
+            u = data["chunk"]["usage"]
+        if u:
+            last = {"inputTokens": int(u.get("inputTokens") or 0),
+                    "outputTokens": int(u.get("outputTokens") or 0),
+                    "cacheReadTokens": int(u.get("cacheReadTokens") or 0),
+                    "reasoningTokens": int(u.get("reasoningTokens") or 0)}
+    return last
+
+
+def read_session_usage(since: float = 0.0) -> dict:
+    """定位本次 headless 调用最新写入的会话日志并抽取 token 用量。
+
+    位置：~/.dsh/sessions/<cwd片段>/session-<uuid>/session.jsonl.zstd。
+    优先取目录名含项目根 basename 的会话（避免与同机其它 dsh 会话混淆），按 mtime 最新。
+    since 由 run_headless_task 传入「本次 headless 开始前的时刻」，据此排除那些在本次调用
+    开始之前就已落盘的旧会话——因为多通道/并发执行时（拆解+各角色 headless+R1 判断派发）
+    会同时写入多个会话，若只按全局最新 mtime 取，极易读到「另一条还在写/尚无 usage」的会话，
+    导致 usage 读到 None 而不写 token。带 since 过滤后，本次 headless 的会话必然在 since 之后，
+    可精确锁定本次调用。cwd = config.ROOT（headless 子进程 cwd）。无会话/无 zstandard/无 usage 返回 None。"""
+    sess = _dsh_sessions_dir()
+    if not sess.is_dir():
+        return None
+    try:
+        dirs = [d for d in sess.glob("*/session-*") if d.is_dir()]
+    except OSError:
+        return None
+    cwdkey = Path(str(config.ROOT)).name
+    if cwdkey:
+        prefer = [d for d in dirs if cwdkey in str(d)]
+        if prefer:
+            dirs = prefer
+    if not dirs:
+        return None
+
+    def _ztime(d):
+        zf = d / "session.jsonl.zstd"
+        try:
+            return zf.stat().st_mtime if zf.is_file() else 0.0
+        except OSError:
+            return 0.0
+
+    if since:
+        now = [d for d in dirs if _ztime(d) >= since]     # 本次 headless 会话必然在 since 之后落盘
+        if now:
+            dirs = now
+    try:
+        latest = max(dirs, key=_ztime)
+    except OSError:
+        return None
+    return _usage_from_session(latest)
+
+
+def run_headless_task(task_text: str, timeout: float = 600, act: str = ""):
+    """headless 最终文本模式：返回 (最终文本, 用量 dict|None)。
+
+    dsh 0.1.1-rc.2 的 headless profile 不再提供 --events-jsonl；用量改从 DSH
+    持久化的会话日志（~/.dsh/sessions/<cwd>/session-<uuid>/session.jsonl.zstd）抽取，
+    语义同 dsh-tokenledger（assistant/message.data.usage）。无日志或无 zstandard → usage None。
+    act=子任务号时把运行中 headless 的 pid 注册到 _ACTIVE_SPAWN，供删除任务时 kill_spawn 终止。
+    base=下次调用 read_session_usage 的 since 锚点（当前时刻，早于本次 headless 会话落盘）。"""
+    base = time.time()
+    text = _decode_stdout(_spawn_headless([task_text], timeout, act)).strip()
+    return text, read_session_usage(base)
+
+
+def kill_spawn(act: str) -> bool:
+    """终止由 act 对应的运行中 headless 子进程（连同其子进程树）。
+
+    删除任务前调用：若有执行中/待派/已派子任务，先 taskkill 掉 headless，再删任务，
+    避免运行中产出在删除后被重建（孤儿执行与残留文件）。返回是否真的终止了进程。"""
+    pid = _ACTIVE_SPAWN.pop(act, None)
+    if not pid:
+        return False
+    try:
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                       capture_output=True, text=True)
+        return True
+    except Exception:
+        return False

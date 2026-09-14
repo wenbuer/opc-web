@@ -11,6 +11,39 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from opc_web import agent, config  # noqa: E402
 
 
+# 测试使用固定 7 角色阵容，避免受当前激活项目（模板可变）影响 —— 项目无关
+STD_ROSTER = [
+        ("R1","老板助理（枢纽）","枢纽","接收任务→拆解派发→汇总回报→呈报决策",["任务派发、调度与回报校验"],("枢纽",)),
+        ("R2","需求研究员","业务","持续挖掘用户原声、维护需求假设清单",["用户原声挖掘、需求与假设清单维护"],("业务",)),
+        ("R3","内容工厂","业务","生产内容稿、选题与话术语料",["生产内容稿、选题与话术语料"],("业务",)),
+        ("R4","增长与数据","业务","增长实验落地 + 数据验证复盘",["增长实验落地与数据验证复盘"],("业务",)),
+        ("R5","用户洞察官","业务","用户洞察与真实需求研究",["用户洞察与真实需求研究"],("业务",)),
+        ("R6","产品设计师","业务","需求→功能/场景设计 + 前端实现编码",["产品设计 + 前端实现编码"],("业务",)),
+        ("R7","技术评估与实现","技术","技术路径评估 + 实现编码",["技术路径评估与实现编码"],("工程",)),
+]
+_STD_AGENTS_TMP = Path(__file__).resolve().parent.parent / ".roster-agents"
+
+
+def setUpModule():
+    global _OLD_AGENTS
+    _OLD_AGENTS = config.AGENTS_DIR
+    import shutil as _sh
+    _sh.rmtree(_STD_AGENTS_TMP, ignore_errors=True)
+    _STD_AGENTS_TMP.mkdir(parents=True, exist_ok=True)
+    from opc_web import roles as _r
+    for no, name, type_, pos, duties, tags in STD_ROSTER:
+        (_STD_AGENTS_TMP / (no + ".role.md")).write_text(
+            _r.role_card(no, name, duties, pos, type_, (), tags=tags), encoding="utf-8")
+    config.AGENTS_DIR = _STD_AGENTS_TMP
+
+
+def tearDownModule():
+    global _OLD_AGENTS
+    config.AGENTS_DIR = _OLD_AGENTS
+    import shutil as _sh
+    _sh.rmtree(_STD_AGENTS_TMP, ignore_errors=True)
+
+
 class TestNoHeadless(unittest.TestCase):
     def test_no_headless_channel(self):
         self.assertFalse(hasattr(agent, "run_headless"), "agent 模块不应再有 run_headless")
