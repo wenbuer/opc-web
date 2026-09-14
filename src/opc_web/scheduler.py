@@ -332,13 +332,19 @@ def _pending_items(reps) -> str:
         if nxt:
             seg = seg[:nxt.start()]
         seg = seg.strip()
-        if len(seg) > 8 and seg.replace("。", "").strip() not in ("无", "没有", "暂无"):
-            # 兜底：流程性事项不算决策点。角色偶尔会把「归档口径 / 是否结案 / 状态确认」
-            # 写进这一节，那类事控制台自己会处理，不该占 R0 的待决位（T-022 就这么白占了一条）。
-            head = seg.splitlines()[0] if seg else ""
-            if any(k in head for k in _PROCEDURAL_ASK):
-                continue
-            out.append("【%s】\n%s" % ((r or {}).get("role") or "?", seg))
+        if len(seg) <= 8:
+            continue
+        # 判「无」只看**第一句**：角色写「无。」之后补一句解释「为什么无」是好事，
+        # 不能因此判定「有拍板事项」。原先要求整节去掉句号后恰好等于「无」，
+        # 于是「无。（本轮无方向取舍…）」被当成有决策点 —— T-022/T-023 白占两条待决位，
+        # 而这段解释没有决策点结构，R1 提炼不出建议，只能把原文塞进「决策建议」栏。
+        first = re.split(r"[。；;\n]", seg, 1)[0].strip().strip("（）()：: ")
+        if first in ("无", "没有", "暂无", "无需", "不需要", "无需要", "none", "None"):
+            continue
+        # 兜底：流程性事项不算决策点（归档口径 / 是否结案这类控制台自己会处理）。
+        if any(k in first for k in _PROCEDURAL_ASK):
+            continue
+        out.append("【%s】\n%s" % ((r or {}).get("role") or "?", seg))
     return "\n\n".join(out)
 
 
