@@ -538,8 +538,13 @@ class Handler(BaseHTTPRequestHandler):
         action = str(body.get("action") or "add")
         jobs = config.load_schedules()
         if action == "add":
+            # id 不能拿 len(jobs)+1 生成：删掉中间一条后再加会拿到已存在的号
+            # （sched-1/2/3 → 删 2 → len=2 → 新加的又叫 sched-3），
+            # 之后 toggle / update / delete 按 id 找就会误伤另一条。取现有最大号 +1。
+            _nums = [int(m.group(1)) for m in
+                     (re.match(r"sched-(\d+)$", str(j.get("id") or "")) for j in jobs) if m]
             jobs.append({
-                "id": "sched-%d" % (len(jobs) + 1),
+                "id": "sched-%d" % ((max(_nums) + 1) if _nums else 1),
                 "task": str(body.get("task") or "").strip(),
                 "mode": str(body.get("mode") or "daily").strip(),
                 "time": str(body.get("time") or "").strip(),
