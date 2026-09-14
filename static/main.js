@@ -2641,16 +2641,60 @@
       if (m) m.textContent = "";
     }).then(function(){ r1State("busy", false); if (s) s.disabled = false; });
   }
-  // 柱状图 hover 文案：三档用量 + 缓存命中率（缓存读取单价低，这一段比例才是成本的关键）。
-  // 挂在整列上而不是每段柱上 —— 每段各自的 title 会盖住列上的，hover 永远只看得到一段。
-  function tokTip(label, fresh, cache, out){
+  /* Token 柱状图的自定义 hover 提示（原生 title 延迟约 1 秒、样式不可控，做不了色块与对齐）。
+     一个共享节点挂在 body 上：.tok-zone 是 overflow 容器，提示放它里面会被裁掉。
+     内容按需现从列的 data-* 拼，DOM 里不用预先塞一份 HTML。 */
+  var TOK_TIP = null;
+  function tokTipHide(){ if (TOK_TIP) TOK_TIP.hidden = true; }
+  function tokTipFill(col){
+    if (!TOK_TIP){
+      TOK_TIP = document.createElement("div");
+      TOK_TIP.className = "tok-tip";
+      TOK_TIP.hidden = true;
+      document.body.appendChild(TOK_TIP);
+    }
+    var fresh = Number(col.getAttribute("data-fresh")) || 0;
+    var cache = Number(col.getAttribute("data-cache")) || 0;
+    var out   = Number(col.getAttribute("data-out")) || 0;
+    var sw = col.getAttribute("data-alt") === "1" ? " alt" : "";
     var tin = fresh + cache;
     var rate = tin ? Math.round(cache / tin * 100) : 0;
-    return label + "　新输入 " + fmtTok(fresh) + " · 缓存命中 " + fmtTok(cache)
-         + " · 输出 " + fmtTok(out) + "　缓存命中率 " + rate + "%";
+    function row(cls, name, v){
+      return "<div class='tt-row'><i class='sw-" + cls + sw + "'></i><span class='tt-k'>" + name
+           + "</span><b>" + fmtTok(v) + "</b></div>";
+    }
+    TOK_TIP.innerHTML = "<div class='tt-h'>" + esc(col.getAttribute("data-lab") || "") + "</div>"
+      + row("in", "新输入", fresh) + row("cache", "缓存命中", cache) + row("out", "输出", out)
+      + "<div class='tt-f'><span>输入合计 " + fmtTok(tin) + "</span><b>命中 " + rate + "%</b></div>";
+    TOK_TIP.hidden = false;
+  }
+  function tokTipMove(e){
+    if (!TOK_TIP || TOK_TIP.hidden) return;
+    var pad = 14, w = TOK_TIP.offsetWidth, h = TOK_TIP.offsetHeight;
+    var x = e.clientX + pad, y = e.clientY + pad;
+    if (x + w > window.innerWidth - 8) x = e.clientX - w - pad;      // 右边放不下就翻到左边
+    if (y + h > window.innerHeight - 8) y = e.clientY - h - pad;     // 下面放不下就翻到上面
+    TOK_TIP.style.left = Math.max(8, x) + "px";
+    TOK_TIP.style.top = Math.max(8, y) + "px";
+  }
+  function tokTipBind(chart){
+    if (chart.__tipBound) return;               // 每次重绘都会走到这里，只能绑一次
+    chart.__tipBound = true;
+    var cur = null;
+    chart.addEventListener("mouseover", function(e){
+      var col = e.target && e.target.closest ? e.target.closest(".tok-col") : null;
+      if (!col) return;
+      if (col !== cur){ cur = col; tokTipFill(col); }   // 同列内换段不重绘，免得闪
+      tokTipMove(e);
+    });
+    chart.addEventListener("mousemove", tokTipMove);
+    chart.addEventListener("mouseleave", function(){ cur = null; tokTipHide(); });
+    // 横向滚动时列会从鼠标底下走开，提示留在原地就是错的
+    chart.addEventListener("scroll", function(){ cur = null; tokTipHide(); }, true);
   }
   function loadTokenStats(){
     var sum = $("tokSum"), chart = $("tokChart");
+    tokTipHide();                    // 重绘会把列换掉，旧提示不能留在屏幕上
     if (sum) sum.textContent = "";
     if (chart) chart.innerHTML = "<div class='placeholder'>加载中…</div>";
     api("/api/tokens").then(function(j){
@@ -2690,7 +2734,8 @@
         var hFresh = Math.max(2, Math.round(fresh / max * 180));
         var hCache = Math.round(v.cache / max * 180);
         var hOut = Math.max(2, Math.round(v.out / max * 180));
-        return "<div class='tok-col' title='" + esc(tokTip(t, fresh, v.cache, v.out)) + "'><div class='tok-bars'>"
+        return "<div class='tok-col' data-lab='" + esc(t) + "' data-fresh='" + fresh
+          + "' data-cache='" + (v.cache || 0) + "' data-out='" + (v.out || 0) + "'><div class='tok-bars'>"
           + "<span class='tok-stack'>"
           + "<span class='tok-bar in' style='height:" + hFresh + "px'></span>"
           + (hCache ? "<span class='tok-bar cache' style='height:" + hCache + "px'></span>" : "")
@@ -2703,7 +2748,8 @@
         var ahIn = Math.max(2, Math.round(aFresh / max * 180));
         var ahCache = Math.round(aCache / max * 180);
         var ahOut = Math.max(2, Math.round(aOut / max * 180));
-        altBars = "<div class='tok-col alt' title='" + esc(tokTip("临时会话", aFresh, aCache, aOut)) + "'><div class='tok-bars'><span class='tok-stack'>"
+        altBars = "<div class='tok-col alt' data-lab='临时会话' data-alt='1' data-fresh='" + aFresh
+          + "' data-cache='" + aCache + "' data-out='" + aOut + "'><div class='tok-bars'><span class='tok-stack'>"
           + "<span class='tok-bar in alt' style='height:" + ahIn + "px'></span>"
           + (ahCache ? "<span class='tok-bar cache alt' style='height:" + ahCache + "px'></span>" : "")
           + "</span>"
@@ -2715,6 +2761,7 @@
         + "<span class='lg-out'>输出</span>"
         + "<span class='lg-alt'>临时会话（单列一组，不进任务统计）</span></div>"
         + "<div class='tok-zone'>" + bars + "</div>";
+      tokTipBind(chart);
     }).catch(function(e){ if (chart) chart.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
   }
 
