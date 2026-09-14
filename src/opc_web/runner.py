@@ -1,34 +1,94 @@
 # -*- coding: utf-8 -*-
-"""执行事件流：自动执行链把阶段事件写进内存缓冲，工作台详情面板轮询显示。
+"""执行事件流与执行状态：自动执行链把阶段事件写进内存缓冲，工作台轮询显示。
+
+本模块只剩两件事：
+
+1. **事件与状态**：阶段事件缓冲（emit / events）与执行实时状态（exec_state）——
+   两套执行引擎共用的**唯一进度出口**；
+2. **对外入口**：run_headless_task / run_headless_sync / kill_spawn，按配置把活交给
+   engines/ 里的实现（dsh 的细节全在 engines/dsh.py：命令、子进程、会话日志、强杀、技能）。
 
 v1.16 精简：控制台不再自己 spawn 观测进程（原「直跑观测」），也不再读主会话遥测
 JSONL——两条通道都从未产生过数据（《批阅台/运行监控/》与 ~/.dsh/opc-telemetry.jsonl
-均不存在），UI 入口随「agent 执行监听」面板一并下线。本模块现在只做两件事：
-接收 chain 写入的阶段事件，以及为任务拆解同步直跑一次 dsh headless。
+均不存在），UI 入口随「agent 执行监听」面板一并下线。
 """
-import json
-import os
-import shutil
-import subprocess
 import threading
 import time
-from pathlib import Path
 
 from . import config
 
 _LOCK = threading.RLock()
 _ACTIVE = {"events": [], "seq": 0}
-_ACTIVE_SPAWN = {}   # act(key: 子任务号) -> 运行中 headless 子进程 pid，供删除任务时终止
+_EXEC_LOCK = threading.Lock()
+_EXEC_STATE = {}     # act -> {startedAt, tools, lastTool, lastText, beatMono, session}——执行实时状态值
+_ACT_ENGINE = {}     # act -> 正在执行它的引擎名（按用途路由后，kill 要精确找对引擎）
+_LAST_RUN = {}       # act -> 最近一次运行信息（引擎名 / 引擎侧会话标识 / 耗时），供事后追溯
 
 
-def _child_env() -> dict:
-    """dsh 子进程的环境：项目根 .env 打底 + 当前进程环境覆盖（环境变量优先于文件）。
+def _squeeze(s: str, limit: int = 90) -> str:
+    """压成单行短文本：进度行只放一句话，多行长文本（表格等）不进 UI。"""
+    return " ".join(str(s or "").split())[:limit]
 
-    dsh 自己不读项目 .env，子进程只继承父进程环境；而控制台启动时并不加载 .env
-    （只有「设置→模型接入」保存那一刻会往 os.environ 塞一次）。结果是手改 .env 或
-    重启之后，界面显示「已配置 ✓」而 headless 实际拿不到密钥。这里每次 spawn 现读，
-    顺带让改完 .env 无需重启。"""
-    return {**config.read_env_file(), **os.environ}
+
+def run_info(act: str) -> dict:
+    """最近一次 act 运行的信息：{engine, session, elapsed}。
+
+    用途：把「这次子任务是谁跑的、落在哪个引擎会话上」记进 meta.json。
+    用量或进度对不上时能直接回溯到具体会话 —— T-008-S2 到 T-013-S1 那批就是缺了这一环，
+    事后只能按时间与任务文本去猜，猜不准（同一会话会被安到多个子任务头上）。"""
+    with _EXEC_LOCK:
+        return dict(_LAST_RUN.get(act) or {})
+
+
+def exec_state() -> dict:
+    """各执行中子任务的实时状态值（工作台 /api/run/events 的 state.exec 透出）。"""
+    with _EXEC_LOCK:
+        return {k: dict(v) for k, v in _EXEC_STATE.items()}
+
+
+def _exec_beat(act: str, tools: int, last_tool: str, last_text: str, t0: float):
+    """刷新心跳与状态值，并 emit 一条 exec/progress 进度事件。"""
+    now = time.monotonic()
+    with _EXEC_LOCK:
+        st = _EXEC_STATE.setdefault(act, {"startedAt": time.strftime("%H:%M:%S", time.localtime()),
+                                          "tools": 0, "lastTool": "", "lastText": "",
+                                          "beatMono": now - 999, "session": ""})
+        st["tools"] = tools
+        if last_tool:
+            st["lastTool"] = last_tool
+        if last_text:
+            st["lastText"] = last_text
+        st["beatMono"] = now
+        st["elapsed"] = int(now - t0)      # 已运行秒数（首页「调度与用量」直接读）
+    _append({"type": "exec/progress",
+             "data": {"sub": act, "elapsed": int(now - t0), "tools": tools,
+                      "lastTool": _squeeze(last_tool, 130), "lastText": _squeeze(last_text, 120)}})
+
+
+def _progress_sink(act: str):
+    """引擎进度回调：把引擎报来的 Progress 落到执行状态与事件流。
+
+    dsh 与 api 共用这一条路：引擎只管报 Progress，落到什么状态、发什么事件由本函数决定。
+    收到 finished=True（引擎跑完）时清掉该 act 的执行中状态 —— 引擎不直接碰本模块的状态。
+    act 为空（没有子任务号的同步直跑）时不记录状态。"""
+    if not act:
+        return None
+    t0 = time.monotonic()
+
+    def _on_progress(p):
+        if getattr(p, "finished", False):
+            with _EXEC_LOCK:
+                _EXEC_STATE.pop(act, None)
+            return
+        _exec_beat(act, int(getattr(p, "tools", 0) or 0),
+                   str(getattr(p, "lastTool", "") or ""),
+                   str(getattr(p, "lastText", "") or ""), t0)
+        sess = str(getattr(p, "session", "") or "")
+        if sess:
+            with _EXEC_LOCK:
+                _EXEC_STATE.setdefault(act, {})["session"] = sess
+
+    return _on_progress
 
 
 def _append(ev: dict) -> int:
@@ -48,224 +108,101 @@ def emit(ev: dict) -> int:
 def events(since: int = 0) -> dict:
     """自 since 之后的新事件（前端用返回的 state.seq 作为下次游标）。"""
     with _LOCK:
-        return {"ok": True, "state": {"seq": _ACTIVE["seq"]},
+        return {"ok": True, "state": {"seq": _ACTIVE["seq"], "exec": exec_state()},
                 "events": [e for e in _ACTIVE["events"] if e["seq"] > since]}
 
 
-def _dsh_command() -> list:
-    """dsh 启动命令：优先 node 直跑包内 bin.js。
+def _engine_failed(res) -> bool:
+    """这次是「引擎没跑起来」还是「任务本身没做完」——只有前者值得回退重跑。
 
-    npm 的 dsh.cmd shim 经 cmd.exe 中转，命令行上限仅 8191 字符 —— 长 prompt
-    （角色卡全文 + 决策上下文轻松过万）会被系统以「命令行太长。」秒杀，
-    GBK 错误文本再被 stdout 解码固化成一串乱码（T-006 两次秒退的真凶）。
-    node 直跑 lib/bin.js 走 CreateProcessW 原生上限 32767 字符，余量充足。"""
-    exe = shutil.which("dsh")
-    if exe:
-        js = Path(exe).parent / "node_modules" / "@deepseek-ai" / "dsh" / "lib" / "bin.js"
-        node = shutil.which("node")
-        if js.is_file() and node:
-            return [node, str(js)]
-    return ["dsh"]
+    - 取消（killed）不回退：用户/超时主动停的，重跑等于把它又拉起来；
+    - 报错回退：没装 dsh、鉴权失败、启动异常，换引擎确实能救；
+    - 秒退无产出回退：dsh 秒退（T-006 那种）属于引擎侧问题；
+    - 跑了很久还是没产出**不回退**：那是任务的问题，两个引擎都会跑同样久，
+      重跑只会重复劳动 + 重复烧钱，交回上层按「无产出」处理。"""
+    if getattr(res, "killed", False):
+        return False
+    if getattr(res, "error", ""):
+        return True
+    if not str(getattr(res, "text", "") or "").strip():
+        return float(getattr(res, "elapsed", 0.0) or 0.0) < float(config.tune("fallbackMaxElapsed"))
+    return False
 
 
-def _spawn_headless(argv: list, timeout: float, act: str = "") -> bytes:
-    """启动 dsh headless 子进程并收尾，返回其原始 stdout（stderr 合并）字节。
+def _run_engine(task_text: str, timeout: float, act: str = "", purpose: str = ""):
+    """跑一次任务：主引擎失败时按配置回退到备用引擎（默认 api 兜底 dsh）。
 
-    超时语义：headless 只在 turn 结束后一次性打印 final 文本；因此无输出即任务未启动，
-    超 timeout 强杀（防静默挂死泄漏进程树）。但执行路径用 --events-jsonl 时会边生成边输出，
-    所以「有输出」并不代表即将结束 —— 若生成过长或挂死，无限等待会卡死调度（SCHED_STATE.busy 永不回 False）。
-    故统一：无输出超 timeout 强杀；有输出后再给 timeout*3 的硬上限，超过也强杀（判为阻塞）。
-    spawn 失败返回 b""。"""
-    base = _dsh_command()
-    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-    si = subprocess.STARTUPINFO() if hasattr(subprocess, "STARTUPINFO") else None
-    if si is not None:
-        si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-        si.wShowWindow = 0
-    try:
-        p = subprocess.Popen(base + ["--profile", "headless"] + argv,
-                             cwd=str(config.ROOT), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                             creationflags=flags, startupinfo=si, env=_child_env())
-    except Exception:
-        return b""
+    回退会留痕（engine/fallback 事件），工作台详情能看到「谁失败了、换了谁、为什么」。"""
+    from .engines import get_engine
+    name = config.engine_for(purpose)
+    res = _invoke(get_engine(name), name, task_text, timeout, act)
+    alt = config.engine_fallback(name)
+    if not alt or not _engine_failed(res):
+        return res
+    emit({"type": "engine/fallback",
+          "data": {"purpose": purpose or "main", "from": name, "to": alt,
+                   "reason": res.error or ("%s 秒退无产出" % int(res.elapsed or 0))}})
+    return _invoke(get_engine(alt), alt, task_text, timeout, act)
+
+
+def _invoke(eng, name: str, task_text: str, timeout: float, act: str):
+    """调一次引擎：登记 act → 引擎名（kill 用），跑完留下运行信息（追溯用）。"""
     if act:
-        _ACTIVE_SPAWN[act] = p.pid
-    chunks = []
-
-    def _drain():
-        try:
-            for blk in iter(lambda: p.stdout.read(65536), b""):
-                chunks.append(blk)
-        except Exception:
-            pass
-
-    threading.Thread(target=_drain, daemon=True).start()
-    t0 = time.monotonic()
-    t_first = None        # 首个输出时刻（有输出 = 任务在活动，但不等同即将结束）
-
-    def _kill():
-        try:
-            subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
-                           capture_output=True, text=True)
-        except Exception:
-            pass
-        try:
-            p.wait(timeout=3)
-        except Exception:
-            try:
-                p.kill()
-            except Exception:
-                pass
-
-    hard = max(timeout * 3, 1800.0)     # 有输出后的硬上限，防长生成/挂死卡住调度
-    while True:
-        if p.poll() is not None:
-            break                       # 自然结束
-        if chunks and t_first is None:
-            t_first = time.monotonic()  # 首帧输出：任务开始活动
-        now = time.monotonic()
-        if t_first is None and now - t0 > timeout:
-            _kill(); break              # 全程无输出且超时 → 判死
-        if t_first is not None and now - t_first > hard:
-            _kill(); break              # 有输出但迟迟不结束 → 判阻塞，防死锁
-        time.sleep(0.5)
+        with _EXEC_LOCK:
+            _ACT_ENGINE[act] = name
     try:
-        p.stdout.close()
-    except Exception:
-        pass
+        res = eng.run(task_text, timeout=timeout, act=act, on_progress=_progress_sink(act))
+    finally:
+        if act and _ACT_ENGINE.get(act) == name:
+            with _EXEC_LOCK:
+                _ACT_ENGINE.pop(act, None)
     if act:
-        _ACTIVE_SPAWN.pop(act, None)
-    return b"".join(chunks)
+        with _EXEC_LOCK:
+            _LAST_RUN[act] = {"engine": name,
+                              "session": str(getattr(res, "session", "") or ""),
+                              "elapsed": round(float(getattr(res, "elapsed", 0.0) or 0.0), 1)}
+            if len(_LAST_RUN) > 200:            # 只留最近 200 条：够追溯，不涨内存
+                for k in list(_LAST_RUN)[:100]:
+                    _LAST_RUN.pop(k, None)
+    return res
 
 
-def run_headless_sync(task_text: str, timeout: float = 600) -> str:
-    """同步直跑 dsh headless（最终文本模式），返回 stdout。"""
-    return _spawn_headless([task_text], timeout).decode("utf-8", "replace").strip()
+def run_headless_sync(task_text: str, timeout: float = 600, purpose: str = "") -> str:
+    """同步直跑一次（最终文本模式），返回文本。
+
+    走配置的执行引擎；purpose 非空时按用途路由（config.engine_for），如 "prompt"。"""
+    return _run_engine(task_text, timeout, act="", purpose=purpose).text
 
 
-def _decode_stdout(data: bytes) -> str:
-    """dsh 在 Windows 下把 --events-jsonl 写成了 UTF-16LE（带 BOM）；按 BOM 解，否则 UTF-8。"""
-    if data[:2] in (b"\xff\xfe", b"\xfe\xff"):
-        return data.decode("utf-16-le" if data[:2] == b"\xff\xfe" else "utf-16-be", errors="replace")
-    return data.decode("utf-8", errors="replace")
-
-
-def _dsh_sessions_dir() -> Path:
-    """DSH 会话事件日志根：~/.dsh/sessions（DSH_HOME 可覆盖）。"""
-    return Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh")) / "sessions"
-
-
-def _usage_from_session(session_dir: Path) -> dict:
-    """从一次会话的 session.jsonl.zstd 抽最终 token 用量。
-
-    语义同 dsh-tokenledger 的 sampleOf：取最后一条 assistant/message 的 data.usage，
-    兜底 assistant/chunk 里 data.chunk.type === 'usage' 的 usage。缺 zstandard / 无日志返回 None。"""
-    zf = session_dir / "session.jsonl.zstd"
-    if not zf.is_file():
-        return None
-    try:
-        import zstandard as zstd
-    except Exception:
-        return None
-    try:
-        with zstd.ZstdDecompressor().stream_reader(open(zf, "rb")) as _s:
-            text = _s.read().decode("utf-8", "replace")
-    except Exception:
-        return None
-    last = None
-    for ln in text.splitlines():
-        ln = ln.strip()
-        if not ln:
-            continue
-        try:
-            ev = json.loads(ln)
-        except Exception:
-            continue
-        data = ev.get("data")
-        if not isinstance(data, dict):
-            continue
-        u = None
-        if ev.get("type") == "assistant/message" and isinstance(data.get("usage"), dict):
-            u = data["usage"]
-        elif (ev.get("type") == "assistant/chunk" and isinstance(data.get("chunk"), dict)
-              and data["chunk"].get("type") == "usage" and isinstance(data["chunk"].get("usage"), dict)):
-            u = data["chunk"]["usage"]
-        if u:
-            last = {"inputTokens": int(u.get("inputTokens") or 0),
-                    "outputTokens": int(u.get("outputTokens") or 0),
-                    "cacheReadTokens": int(u.get("cacheReadTokens") or 0),
-                    "reasoningTokens": int(u.get("reasoningTokens") or 0)}
-    return last
-
-
-def read_session_usage(since: float = 0.0) -> dict:
-    """定位本次 headless 调用最新写入的会话日志并抽取 token 用量。
-
-    位置：~/.dsh/sessions/<cwd片段>/session-<uuid>/session.jsonl.zstd。
-    优先取目录名含项目根 basename 的会话（避免与同机其它 dsh 会话混淆），按 mtime 最新。
-    since 由 run_headless_task 传入「本次 headless 开始前的时刻」，据此排除那些在本次调用
-    开始之前就已落盘的旧会话——因为多通道/并发执行时（拆解+各角色 headless+R1 判断派发）
-    会同时写入多个会话，若只按全局最新 mtime 取，极易读到「另一条还在写/尚无 usage」的会话，
-    导致 usage 读到 None 而不写 token。带 since 过滤后，本次 headless 的会话必然在 since 之后，
-    可精确锁定本次调用。cwd = config.ROOT（headless 子进程 cwd）。无会话/无 zstandard/无 usage 返回 None。"""
-    sess = _dsh_sessions_dir()
-    if not sess.is_dir():
-        return None
-    try:
-        dirs = [d for d in sess.glob("*/session-*") if d.is_dir()]
-    except OSError:
-        return None
-    cwdkey = Path(str(config.ROOT)).name
-    if cwdkey:
-        prefer = [d for d in dirs if cwdkey in str(d)]
-        if prefer:
-            dirs = prefer
-    if not dirs:
-        return None
-
-    def _ztime(d):
-        zf = d / "session.jsonl.zstd"
-        try:
-            return zf.stat().st_mtime if zf.is_file() else 0.0
-        except OSError:
-            return 0.0
-
-    if since:
-        now = [d for d in dirs if _ztime(d) >= since]     # 本次 headless 会话必然在 since 之后落盘
-        if not now:
-            return None        # 本次调用没有留下会话日志（如 headless 秒退）—— 宁缺勿错，
-        dirs = now             #   绝不拿旧会话的 usage 冒充（T-006：R3 秒退未落日志，读到了拆解会话的 token）
-    try:
-        latest = max(dirs, key=_ztime)
-    except OSError:
-        return None
-    return _usage_from_session(latest)
-
-
-def run_headless_task(task_text: str, timeout: float = 600, act: str = ""):
+def run_headless_task(task_text: str, timeout: float = 600, act: str = "", purpose: str = ""):
     """headless 最终文本模式：返回 (最终文本, 用量 dict|None)。
 
-    dsh 0.1.1-rc.2 的 headless profile 不再提供 --events-jsonl；用量改从 DSH
-    持久化的会话日志（~/.dsh/sessions/<cwd>/session-<uuid>/session.jsonl.zstd）抽取，
-    语义同 dsh-tokenledger（assistant/message.data.usage）。无日志或无 zstandard → usage None。
-    act=子任务号时把运行中 headless 的 pid 注册到 _ACTIVE_SPAWN，供删除任务时 kill_spawn 终止。
-    base=下次调用 read_session_usage 的 since 锚点（当前时刻，早于本次 headless 会话落盘）。"""
-    base = time.time()
-    text = _decode_stdout(_spawn_headless([task_text], timeout, act)).strip()
-    return text, read_session_usage(base)
+    走配置的执行引擎（purpose 非空时按用途路由，如 "execute"）。签名与语义与解耦前一致，
+    chain / scheduler / server 无需改动；同时登记 act → 引擎名，供 kill_spawn 精确找对引擎。"""
+    res = _run_engine(task_text, timeout, act=act, purpose=purpose)
+    return res.text, res.usage
 
 
 def kill_spawn(act: str) -> bool:
-    """终止由 act 对应的运行中 headless 子进程（连同其子进程树）。
+    """终止 act 对应的运行（删除任务前调用）。
 
-    删除任务前调用：若有执行中/待派/已派子任务，先 taskkill 掉 headless，再删任务，
-    避免运行中产出在删除后被重建（孤儿执行与残留文件）。返回是否真的终止了进程。"""
-    pid = _ACTIVE_SPAWN.pop(act, None)
-    if not pid:
-        return False
-    try:
-        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                       capture_output=True, text=True)
-        return True
-    except Exception:
-        return False
+    引擎可按用途路由，同一个 act 由哪个引擎在跑只有 run_headless_task 知道：先查登记表，
+    查不到（进程重启、表已清）再逐个引擎问，谁认领谁终止。"""
+    from .engines import available, get_engine
+    with _EXEC_LOCK:
+        name = _ACT_ENGINE.get(act)
+    if name:
+        try:
+            if get_engine(name).kill(act):
+                return True
+        except Exception:
+            pass
+    for other in available():
+        if other == name:
+            continue
+        try:
+            if get_engine(other).kill(act):
+                return True
+        except Exception:
+            continue
+    return False

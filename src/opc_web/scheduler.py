@@ -16,7 +16,7 @@ import subprocess
 import threading
 import time
 
-from . import agent, config, runner, store, templates
+from . import agent, config, knowledge, runner, store, templates
 
 
 def _wb_role_dirs():
@@ -213,9 +213,11 @@ def _piyue_next_no(text: str) -> int:
     return (max(nums) + 1) if nums else 1
 
 
-_DECIDE_WORDS = ("拍板", "决策", "决定", "取舍", "是否", "要不要", "可不可以", "选哪个", "方案选择",
-                "定价", "预算", "批准", "驳回", "上线", "启动", "方向", "首包", "双包", "放大", "止损",
-                "请 R0", "需要 R0", "请R0", "需要R0")
+# 「该不该进决策裁决」的唯一判据：角色在回报里按模板的「准入清单」自己声明。
+# 早先用宽关键词（「是否 / 决定 / 方向 / 启动」）判——回报里到处都有这些词，
+# 例行汇报被整片推成待决；改扫「需要拍板」字样又会把角色正文的泛指句子抓成声明
+# （T-007 把 UI 描述当成待拍板内容）。所以只认这个小节，别的都不算。
+_PENDING_HEAD = re.compile(r"(?m)^#{2,3}\s*需要\s*R0\s*拍板")
 
 
 def _field_lines(key: str, value: str) -> list:
@@ -230,10 +232,26 @@ def _field_lines(key: str, value: str) -> list:
     return out
 
 
-def _needs_decision(task_text: str, brief: str) -> bool:
-    """启发式：任务/回报含明确决策信号（拍板/定价/是否…/请 R0 等）→ 进「决策裁决」，否则进「工作内容」。"""
-    hay = "%s %s" % ((task_text or ""), (brief or "")[:2000])
-    return any(w in hay for w in _DECIDE_WORDS)
+def _pending_items(reps) -> str:
+    """回报里「## 需要 R0 拍板」小节的实质内容（多角色拼接）。
+
+    这是**唯一**的「该进决策裁决」判据：角色按《模板-回报产出》的准入清单（方向取舍 /
+    花钱对外 / 例外授权 / 验收定稿，每任务最多 2 条）自行声明；没写这节或写「无」即例行汇报。
+    返回空串表示无待拍板事项。"""
+    out = []
+    for r in reps or []:
+        body = str((r or {}).get("body") or "")
+        m = _PENDING_HEAD.search(body)
+        if not m:
+            continue
+        seg = body[m.end():]
+        nxt = re.search(r"(?m)^##\s", seg)
+        if nxt:
+            seg = seg[:nxt.start()]
+        seg = seg.strip()
+        if len(seg) > 8 and seg.replace("。", "").strip() not in ("无", "没有", "暂无"):
+            out.append("【%s】\n%s" % ((r or {}).get("role") or "?", seg))
+    return "\n\n".join(out)
 
 
 def _tree_text(root, max_depth=3):
@@ -361,7 +379,7 @@ def _decision_items(reps: list) -> str:
 
 
 def work_summary(task_no: str) -> str:
-    """R1 汇总任务全部 subagent 产出 →《工作区/老板助理（枢纽）/T-xxx-工作汇总.md》。
+    """R1 汇总任务全部 subagent 产出 →《工作区/老板助理/T-xxx-工作汇总.md》。
 
     内容：各角色工作与产出全文；代码类工作附「改动/产出文件 + 当前目录结构」。
     返回 rel（供工作内容条目挂载，UI 直接查看）；失败返回 None。"""
@@ -416,7 +434,7 @@ def work_summary(task_no: str) -> str:
             lines.append(_TRIPLE_BT)
             lines.append(_tree_text(config.ROOT))
             lines.append(_TRIPLE_BT)
-        out_p = config.WORKSPACE_ROOT / config.sanitize_dir(config.role_name("R1")) / (task_no + "-summary.md")
+        out_p = config.WORKSPACE_ROOT / config.role_dir("R1") / (task_no + "-summary.md")
         out_p.parent.mkdir(parents=True, exist_ok=True)
         out_p.write_text("\n".join(lines), encoding="utf-8")
         return out_p.relative_to(config.ROOT).as_posix()
@@ -428,7 +446,7 @@ def work_summary(task_no: str) -> str:
 def _headless_text(prompt: str, timeout: float = 600) -> str:
     """尝试用 dsh headless 让 R1 做文本类收尾（汇总/抽取）；失败返回空串。"""
     try:
-        text, _ = runner.run_headless_task(prompt, timeout)
+        text, _ = runner.run_headless_task(prompt, timeout, purpose="prompt")
         return (text or "").strip()
     except Exception:
         return ""
@@ -442,12 +460,12 @@ def _digest_reps(reps, limit: int = 900) -> str:
         out.append("【%s｜%s】（%s）：%s" % (r.get("task_no") or "?", r.get("role") or "?", r.get("status") or "?", one))
     return "\n".join(out)
 
-_DAILY_TASK_SECTION = "## 按任务分组的进展与结论"
-_TASK_HEAD_RE = re.compile(r"^###\s+(T-[0-9A-Za-z-]+)")
+_DAILY_TASK_SECTION = "## 完成任务"
+_TASK_HEAD_RE = re.compile(r"^-\s+(T-[0-9A-Za-z-]+)\s*[｜|]")
 
 
 def _daily_task_blocks(text: str) -> dict:
-    """简报文本 → {任务号: 任务段落}（「按任务分组的进展与结论」节内按 ### T-xxx 切）。"""
+    """简报文本 -> {任务号: 清单行}（「## 完成任务」节里的「- T-xxx｜一句话」）。"""
     blocks = {}
     m = re.search(r"^" + re.escape(_DAILY_TASK_SECTION) + r"\s*$", text, re.M)
     if not m:
@@ -456,29 +474,25 @@ def _daily_task_blocks(text: str) -> dict:
     nxt = re.search(r"^## ", seg, re.M)
     if nxt:
         seg = seg[:nxt.start()]
-    for part in re.split(r"(?=^###\s+T-)", seg, flags=re.M):
-        hm = _TASK_HEAD_RE.match(part.strip())
+    for ln in seg.split(chr(10)):
+        hm = _TASK_HEAD_RE.match(ln.strip())
         if hm:
-            blocks[hm.group(1)] = part.strip("\n")
+            blocks[hm.group(1)] = ln.strip()
     return blocks
 
 
 def _merge_daily(old_text: str, new_text: str, task_no: str) -> str:
-    """模型合并稿的强制校验：除本次任务外，旧简报每个任务段落必须在新稿中原样存在。
+    """模型合并稿的校验：旧稿出现过的任务号，新稿必须一个不少。
 
-    逐字保留历史（防盲目追加 / 改写既有日报内容）；本次任务段落以新稿为准（同任务重跑 = 更新）。
-    新稿丢失任一历史任务段落 → 返回 ""（调用方回退代码级合并）。"""
+    不再要求逐字保留旧段落——那会让简报只增不减（历史简报曾膨胀到 51 KB，
+    每条任务都带着执行细节滚下去）。现在允许压缩改写，只守住「任务不丢」；
+    缺任务号 → 返回 ""，调用方走代码级合并。"""
     old_blocks = _daily_task_blocks(old_text)
     new_blocks = _daily_task_blocks(new_text)
-    out = new_text
-    for tno, blk in old_blocks.items():
-        if tno == task_no:
-            continue
-        if tno not in new_blocks:
-            return ""
-        if new_blocks[tno].strip() != blk.strip():
-            out = out.replace(new_blocks[tno], blk)
-    return out
+    missing = [tno for tno in old_blocks if tno not in new_blocks]
+    if missing:
+        return ""
+    return new_text
 
 
 def _insert_into_section(text: str, section: str, block: str) -> str:
@@ -495,37 +509,32 @@ def _insert_into_section(text: str, section: str, block: str) -> str:
 
 
 def _daily_fallback(old_text: str, reps: list, task_no: str, datestr: str) -> str:
-    """模型不可用时的代码级合并：本任务段落按回报直接拼，插入对应节；已有内容一律不动。"""
+    """模型不可用时的代码级合并：每个任务压成一行插进「完成任务」清单，其余内容不动。"""
     tnos = sorted({str(r.get("task_no") or "T-?") for r in reps})
-    tn_label = "、".join(tnos)
     roles = "、".join(sorted({str(r.get("role") or "?") for r in reps}))
-    parts = ["### %s｜自动合并" % tn_label,
-             "**结论**：%d 条角色回报已归档（模型收尾不可用，本段为降级合并）。" % len(reps)]
-    for r in reps:
-        one = _one_line_digest(str(r.get("body") or ""), limit=160) or "（无正文）"
-        parts.append("- %s（%s）：%s" % (r.get("role") or "?", r.get("status") or "?", one))
-    blk = "\n".join(parts)
+    lines = []
+    for tno in tnos:
+        rs = [r for r in reps if str(r.get("task_no") or "") == tno]
+        one = _one_line_digest(str(rs[0].get("body") or ""), limit=60) if rs else ""
+        lines.append("- %s｜%s（%s）" % (tno, one or "已完成并归档", roles))
     if not old_text.strip():
-        return "\n".join([
+        return chr(10).join([
             "# 每日简报 · " + datestr, "",
-            "## 当日概况",
-            "- 任务：今日 " + tn_label + "（" + roles + "）", "",
-            "## 按任务分组的进展与结论", blk, "",
-            "## 知识库沉淀",
-            "- 今日无新增沉淀", "",
-            "## 待办 / 风险提示",
-            "**风险**：无", "**待办**：无",
-        ])
-    text = old_text.rstrip() + "\n"
+            "## 今天干了什么",
+            "_模型收尾不可用，本节为代码级降级合并：今日完成 " + "、".join(tnos) + "。_", "",
+            _DAILY_TASK_SECTION] + lines + [
+            "", "## 待 R0 拍板", "无", "",
+            "## 风险与待办", "**风险**：无", "**待办**：无", ""])
+    text = old_text.rstrip() + chr(10)
     blocks = _daily_task_blocks(text)
-    hit = next((t for t in tnos if t in blocks), None)
-    if hit:
-        text = text.replace(blocks[hit], blk)          # 同任务重跑：更新该段，不另起一段
-    else:
-        text = _insert_into_section(text, _DAILY_TASK_SECTION, blk)
-    line = "- 任务：合并 %s（%d 条回报，%s）" % (tn_label, len(reps), roles)
-    if line not in text:
-        text = _insert_into_section(text, "## 当日概况", line)
+    rest = []
+    for tno, ln in zip(tnos, lines):
+        if tno in blocks:
+            text = text.replace(blocks[tno], ln)          # 同任务重跑：更新那一行
+        else:
+            rest.append(ln)
+    if rest:
+        text = _insert_into_section(text, _DAILY_TASK_SECTION, chr(10).join(rest))
     return text
 
 
@@ -552,16 +561,18 @@ def build_daily_report(task_no: str = None, datestr: str = None) -> dict:
     has_old = bool(old_text.strip())
     prompt = (
         "你是老板助理 R1。请按《模板-每日简报》把任务 %s 的回报%s每日简报：\n"
-        "- %s。只输出合并后的完整简报 markdown（# 每日简报 · %s 标题 + 当日概况 / "
-        "按任务分组的进展与结论 / 知识库沉淀 / 待办 / 风险提示 四节）。\n"
-        "纪律：除本次任务（%s）外，已有简报里的 ### T-xxx 任务段落必须逐字保留、不得改写删除；"
-        "「当日概况」「知识库沉淀」「待办 / 风险提示」在现有内容基础上合并补充本次任务信息，"
-        "不得删除已有条目、不得重复堆叠同一事项；结尾禁止对话性收尾。\n\n"
+        "- %s。输出合并后的完整简报 markdown（# 每日简报 · %s 标题 + 今天干了什么 / "
+        "完成任务 / 待 R0 拍板 / 风险与待办 四节）。\n"
+        "纪律——简洁优先：「今天干了什么」2~4 句讲清主线；「完成任务」每个任务只占一行（≤40 字）；\n"
+        "待拍板只列「决策点标题 + 对应待决编号」；风险与待办各不超过 3 条；全篇 ≤ 50 行。\n"
+        "禁止搬运回报原文、罗列文件路径 / 测试项数 / 自检项数 / git 快照号 / 沙箱限制；\n"
+        "已有任务的旧细节可以大幅压缩（只要任务号仍出现在「完成任务」节即可），本次任务也在同一行内收口。\n"
+        "结尾禁止对话性收尾。\n\n"
         "《模板-每日简报》：\n%s\n\n现有简报：\n%s\n\n本次任务回报：\n%s"
         % (task_no or "（当日全部）",
            ("增量合并进" if has_old else "生成当天首份"),
-           ("已有简报 → 在其基础上合并本次任务段落与各节增量" if has_old else "当天尚无简报 → 全新生成"),
-           datestr, task_no or "全部",
+           ("已有简报 → 按上面纪律重写为简洁版" if has_old else "当天尚无简报 → 全新生成"),
+           datestr,
            templates.doc_template("每日简报"),
            old_text.strip() or "（当天尚无简报）", digest))
     text = _headless_text(prompt, 600)
@@ -619,6 +630,8 @@ def kb_digest(task_no: str) -> dict:
         "知识库按主题分类，已有档案如下：\n%s\n\n"
         "只沉淀真正有价值、可复用的知识（结论 / 方法 / 数据 / 教训 / 决策）；"
         "流水账、一次性过程记录、只是把回报换个说法，都不要沉淀。\n"
+        "归类硬规则：type=lesson 的教训一律归「经验教训」分类，标题用「教训-<一句话结论>」格式；"
+        "type=decision 归「决策」，type=method 归「方法」，type=data 归「数据」。\n"
         "输出 JSON（不要多余文字，body 用简洁 markdown）：\n"
         '{"action":"none|create|merge","category":"<分类名，取自上面主题列表>",'
         '"title":"<档案标题(≤40字)>","type":"concept|decision|method|data|lesson|problem",'
@@ -658,7 +671,16 @@ def kb_digest(task_no: str) -> dict:
     _tp = str(d.get("type") or "concept").strip().lower()
     if _tp not in _kb_types:
         _tp = "concept"
-    front = "---\ntype: %s\ncreated: %s\n---\n" % (_tp, datetime.date.today().isoformat())
+    # merge 到已有档案时沿用它的建档时间，只把 updated 与来源任务刷成本次的
+    today = datetime.date.today().isoformat()
+    old = {}
+    if action == "merge" and target.is_file():
+        try:
+            old = knowledge.front_meta(target.read_text(encoding="utf-8"))
+        except Exception:
+            old = {}
+    front = ("---\ntype: %s\ncreated: %s\nupdated: %s\ntask: %s\n---\n"
+             % (_tp, old.get("created") or today, today, task_no))
     target.write_text(front + body.strip() + "\n", encoding="utf-8")
     rel = target.relative_to(config.ROOT).as_posix()
     return {"ok": True, "created": True, "action": action, "rel": rel,
@@ -666,25 +688,26 @@ def kb_digest(task_no: str) -> dict:
                    else ("已沉淀到知识库「%s/%s」" % (cat, target.name))}
 
 def _advice_summary(reps, task_text: str) -> str:
-    """R1 按《模板-决策建议》提炼待决条目「决策建议」栏：决策点 / 现状背景 / 建议 / 拍板后动作 / 附注。
+    """R1 按《模板-决策建议》把角色声明的待拍板事项提炼成「决策建议」栏正文。
 
-    各角色回报里「需要 R0 拍板」的原文作为重点素材附给模型，要求如实提炼、不得声称缺少上下文。
-    失败返回 ""（由调用方回退）。"""
+    只在 _pending_items 非空（确有需 R0 定的事项）时才被调用；模型不可用返回 "" 由调用方回退。"""
     if not reps and not task_text:
         return ""
     digest = _digest_reps(reps, limit=2400) if reps else str(task_text or "")[:1600]
-    ask = _decision_items(reps) if reps else ""
+    # _decision_items 收的是 (role, body) 元组列表；直接传整条记录会当场 ValueError
+    # （too many values to unpack），被上层 except 吞掉后永远走回退摘要 —— 「决策建议没按模板走」即此因。
+    ask = _decision_items([(r.get("role"), r.get("body")) for r in reps]) if reps else ""
     prompt = (
         "你是老板助理 R1。请按《模板-决策建议》为批阅台待决条目写「决策建议」栏："
         "依次含小节 决策点（一句话问句）/ 现状背景（2~4 句）/ 建议（明确选哪个 + 一两句理由；"
         "无可拍板事项就给下一步动作建议）/ 拍板后动作（批准/驳回/修改后 R1 分别怎么转）/ 附注（可省略）。\n"
-        "要求：完整、像人话，不搬运回报原文的零碎句，不写机制套话；"
-        "角色回报里已写明的「需要 R0 拍板」内容是重点素材（附后），如实提炼，不得声称缺少上下文。\n"
+        "要求：完整、像人话，不搬运回报原文的零碎句，不写机制套话；**只围绕角色在"
+        "「需要 R0 拍板」小节里声明的事项提炼**，不要扩散到任务的其他部分。\n"
         "只输出「决策建议」栏正文（各小节），不要多余解释。\n\n"
         "《模板-决策建议》：\n%s\n\n任务原文：%s\n\n各角色回报：\n%s\n\n各角色「需要 R0 拍板」原文：\n%s"
         % (templates.doc_template("决策建议"), str(task_text or "")[:900], digest, ask or "（无）"))
-    text = _headless_text(prompt, 480)
-    return (text or "").strip() if text else ""
+    text = _headless_text(prompt, 600)
+    return (text or "").strip()
 
 
 def decision_context(task_text: str, limit: int = 2400) -> str:
@@ -759,8 +782,6 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
         text = config.read_text(p) if p.exists() else ""
         n = _piyue_next_no(text)          # 现有条目最大编号 +1（无则从 1 起）
         brief = "无回报正文"
-        brief_hay = ""          # 决策信号检测用全文
-        decisions = ""         # 回报里抽出的「需要 R0 拍板」原文（决策项）
         reps = []
         try:
             reps = store.reports(task_no)
@@ -768,8 +789,6 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
             reps = []
         try:
             if reps:
-                raw_last = str(reps[-1].get("body") or "")
-                brief_hay = _digest_body(raw_last, limit=3000)
                 # R 建议：逐角色给一段摘要（每人一行续行），不再是只取最后一份的 130 字压缩
                 parts = []
                 for rp in reps:
@@ -777,7 +796,6 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
                     one = _one_line_digest(rb, limit=170) or "无正文内容"
                     parts.append("%s（%s）：%s" % (rp.get("role") or "?", rp.get("status") or "?", one))
                 brief = "\n".join(parts)
-                decisions = _decision_items([(rp.get("role"), rp.get("body")) for rp in reps])
         except Exception:
             pass
         task_s = (task_text or "").replace(chr(10), " ").replace("|", "／")
@@ -789,15 +807,21 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
             sum_rel = work_summary(task_no)      # R1 汇总全部 subagent 产出（代码类附变更与目录树）
         except Exception:
             sum_rel = ""
-        # 决策建议：R1 按《模板-决策建议》提炼（决策点/现状背景/建议/拍板后动作/附注）；失败回退逐角色摘要
+        # 分界线（结构化判定）：只有角色在回报「## 需要 R0 拍板」小节里声明的事项才进决策裁决，
+        # 其余一律「工作内容」；角色已有建议、R1 能直接派发的按模板写在「## 后续动作」。
+        pending = _pending_items(reps)
+        need = bool(pending)
         advice = ""
-        try:
-            advice = _advice_summary(reps, task_text)
-        except Exception:
-            advice = ""
-        if not advice:
-            advice = decisions or brief
-        if _needs_decision(task_text, brief_hay or brief):
+        if need:
+            try:
+                advice = _advice_summary(reps, task_text)
+            except Exception:
+                advice = ""
+        if need and not advice:
+            # 判定要拍板但正文没写出来：摘要必须自报身份，不能冒充「决策建议」正文
+            # （否则界面上看到的是各角色产出原文，读者以为就是模板化的建议）。
+            advice = "（R1 按《模板-决策建议》提炼未完成，以下为角色声明原文，仅供 R0 参考）\n" + pending
+        if need:
             lines_b = ["### 待决 %d｜任务 %s" % (n, task_no)]
             lines_b += _field_lines("任务", task_s[:160])
             lines_b += _field_lines("进展", prog)
@@ -817,15 +841,7 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
                 lines_b += ["- **汇总文件**：" + sum_rel]
             blk = chr(10) + chr(10).join(lines_b) + chr(10)
             section = "## 工作内容"
-        idx = text.find(section)
-        if idx >= 0:
-            nxt = text.find("## ", idx + len(section))     # 插到该区段末尾（下一个 ## 之前）
-            if nxt < 0:
-                text = text.rstrip() + "\n" + blk
-            else:
-                text = text[:nxt] + blk + "\n" + text[nxt:]
-        else:
-            text = text.rstrip() + "\n\n" + section + "\n" + blk if text.strip() else section + "\n" + blk
+        text = insert_block(text, section, blk)
         p.write_text(text, encoding="utf-8")
         return n
     except Exception:
@@ -912,6 +928,11 @@ def ws_files() -> list:
     只收人读产物：md 交付物（-report / -output / -summary / 其它 .md）与普通文本；
     .meta.json 是机器状态文件不进产物列表。同角色同名文件同时存在于当前与 已归档/ 时只留当前副本。"""
     raw = []
+    try:
+        from . import roles as _roles
+        _no_of = {config.sanitize_dir(n): no for no, n in _roles.role_files()}
+    except Exception:
+        _no_of = {}
     ws = config.WORKSPACE_ROOT
     if not ws.is_dir():
         return []
@@ -929,7 +950,7 @@ def ws_files() -> list:
                 continue
             m = re.search(r"T-\d+", p.name)
             rel = p.relative_to(config.ROOT).as_posix()
-            raw.append({"role": d.name, "name": p.name, "rel": rel,
+            raw.append({"role": d.name, "roleNo": _no_of.get(d.name, ""), "name": p.name, "rel": rel,
                         "ext": p.suffix.lower(), "task": m.group(0) if m else "",
                         "archived": "已归档" in p.relative_to(d).parts,
                         "size": st.st_size, "mtime": int(st.st_mtime)})
@@ -940,6 +961,101 @@ def ws_files() -> list:
         if cur is None or (cur["archived"] and not f["archived"]):
             seen[key] = f
     return sorted(seen.values(), key=lambda f: (f["role"], f["name"], f["rel"]))
+
+
+def home_stats() -> dict:
+    """首页两块新面板的数据聚合：调度与用量（D）+ 项目进度（C）。
+
+    一次请求拿全，避免首页开多个接口。全部从现有落盘数据推导，不引入新模型：
+    调度状态与运行中执行取自 SCHED_STATE / _EXEC_STATE，用量取自各 meta.json，
+    进度取自任务台账 + 项目/知识库/简报的文件统计。"""
+    # —— 调度与用量 ——
+    st = dict(SCHED_STATE)
+    running = []
+    try:
+        role_of = {}
+        for t in store.tasks():
+            for s in store.subtasks(t["no"]):
+                role_of[s["no"]] = s.get("role") or ""
+        for act, s in (runner.exec_state() or {}).items():
+            running.append({"sub": act, "role": role_of.get(act, ""),
+                            "elapsed": int(s.get("elapsed") or 0),
+                            "tools": int(s.get("tools") or 0)})
+        running.sort(key=lambda x: x["sub"])
+    except Exception:
+        running = []
+    rows = token_rows()
+    by_day = {}
+    for r in rows:
+        b = by_day.setdefault(str(r.get("date") or "")[:10], {"in": 0, "out": 0})
+        b["in"] += int(r.get("tokensIn") or 0)
+        b["out"] += int(r.get("tokensOut") or 0)
+    today = datetime.date.today().isoformat()
+    week = []
+    for i in range(6, -1, -1):
+        d = (datetime.date.today() - datetime.timedelta(days=i)).isoformat()
+        b = by_day.get(d) or {"in": 0, "out": 0}
+        week.append({"date": d[5:], "in": b["in"], "out": b["out"]})
+    tin = by_day.get(today, {}).get("in", 0)
+    tout = by_day.get(today, {}).get("out", 0)
+    cost_today = tin / 1e6 * config.TOKEN_PRICE_IN + tout / 1e6 * config.TOKEN_PRICE_OUT
+    tot_in = sum(b["in"] for b in by_day.values())
+    tot_out = sum(b["out"] for b in by_day.values())
+    # —— 项目进度 ——
+    tasks = store.tasks()
+    done = [t for t in tasks if "完成" in str(t.get("status") or "")]
+    subs_total = subs_done = blocked = 0
+    for t in tasks:
+        for s in store.subtasks(t["no"]):
+            subs_total += 1
+            stt = str(s.get("st") or "")
+            if "完成" in stt or "部分" in stt:
+                subs_done += 1
+            if "阻塞" in stt:
+                blocked += 1
+    proj = config.ROOT / "项目"
+    proj_files = 0
+    if proj.is_dir():
+        proj_files = sum(1 for p in proj.rglob("*") if p.is_file()
+                         and ".git" not in p.parts and "__pycache__" not in p.parts)
+    kb = 0
+    kbd = config.ROOT / "知识库"
+    if kbd.is_dir():
+        kb = sum(1 for p in kbd.rglob("*.md") if p.is_file())
+    daily = len(list((config.ROOT / "批阅台").glob("每日简报-*.md")))
+    recent = [{"no": t.get("no"), "title": str(t.get("task") or "")[:46]}
+              for t in done[-3:]]
+    return {
+        "ok": True,
+        "sched": {"busy": bool(st.get("busy")), "paused": bool(st.get("paused")),
+                  "tag": str(st.get("tag") or ""), "running": running},
+        "tokens": {"todayIn": tin, "todayOut": tout, "costToday": round(cost_today, 4),
+                   "totalIn": tot_in, "totalOut": tot_out, "week": week,
+                   "priceIn": config.TOKEN_PRICE_IN, "priceOut": config.TOKEN_PRICE_OUT},
+        "progress": {"tasksTotal": len(tasks), "tasksDone": len(done),
+                     "subsTotal": subs_total, "subsDone": subs_done, "blocked": blocked,
+                     "projFiles": proj_files, "kbEntries": kb, "dailyReports": daily,
+                     "recent": recent},
+    }
+
+
+def insert_block(text: str, section: str, blk: str) -> str:
+    """把条目块插到 section 区段末尾（下一个「真正的」二级标题之前）。
+
+    不能用 text.find("## ") 找区段末尾：字符串 "### 待决 8" 的后三位恰好是 "## "
+    （## + 空格），会命中三级标题的第 1 个字符位置、把标题从中间劈开——原行被切成
+    "#" 与 "## 待决 8"，条目降级成二级标题，解析器（三级标题 + 待决）再也认不出，界面上
+    直接消失（T-007 待决插入时把 T-006 那条劈坏，就是这么丢的）。"""
+    idx = text.find(section)
+    if idx < 0:
+        if not text.strip():
+            return section + "\n" + blk
+        return text.rstrip() + "\n\n" + section + "\n" + blk
+    m2 = re.search(r"(?m)^## (?!#)", text[idx + len(section):])
+    if not m2:
+        return text.rstrip() + "\n" + blk
+    cut = idx + len(section) + m2.start()
+    return text[:cut] + blk + "\n" + text[cut:]
 
 
 def token_rows() -> list:
@@ -1152,13 +1268,19 @@ def build_timeline() -> dict:
     data = _timeline_input()
     if not data.strip():
         return {"ok": False, "msg": "暂无可提炼的项目数据（角色工作区 / 决策日志 / 任务台账均为空）"}
-    prompt = ("你是老板助理 R1，能看见所有角色工作区与项目状态。请从下面项目数据里提炼该项目的"
-              "「节点性 / 阶段性重要事件」，用于 OPC 时间轴。"
-              "只保留对项目有节点意义的事件：项目启动、重大决策 / 里程碑、标志性交付物完成、"
-              "阶段性复盘 / 上线 / 归档等；不要把每日简报、流水账、例行任务当成事件。\n"
-              "输出 JSON 数组，每项 {\"date\":\"YYYY-MM-DD\",\"title\":\"事件名（≤20字）\","
-              "\"detail\":\"一两句说明（作为时间轴的说明文字）\"}，按 date 升序；"
-              "没有符合的事件就输出 []。只输出 JSON，不要任何多余文字。\n\n项目数据：\n%s" % data)
+    prompt = ("你是老板助理 R1，能看见所有角色工作区与项目状态。请把项目数据提炼成 OPC 时间轴——"
+              "**按阶段归并**，不是把做过的事逐条列举。\n"
+              "归并规则（重要）：\n"
+              "- 同一主线、时间相邻的事合成一条：「设计稿交付」与「设计定稿（驳回后补写）」是一条；"
+              "「工程化重构」「冗余清理」「目录成型」也同属一条。\n"
+              "- 判据是「有没有改变项目所处阶段」：改变阶段才立条；同阶段内的执行、修改、补充都并进该阶段。\n"
+              "- **按大阶段归并**：一个阶段要能独立成章、一句话说清这段时间在干什么。阶段数量由项目实际进展决定，不预设条数；同一大阶段内的所有任务、设计与实现都并进该阶段——宁可少而准，不要多而碎。\n"
+              "输出 JSON 数组，每项：\n"
+              "- date：该阶段起始日期 YYYY-MM-DD\n"
+              "- title：阶段名，≤16 字，说清「完成了什么阶段」（如「设计定稿与开发启动」）\n"
+              "- detail：两三句，讲这个阶段解决了什么、留下什么标志性产出（可含多个交付物）\n"
+              "按 date 升序；没有符合的就输出 []。不要把每日简报、流水账、例行任务当成事件。"
+              "只输出 JSON，不要任何多余文字。\n\n项目数据：\n%s" % data)
     text = _headless_text(prompt, 300)
     if not text:
         return {"ok": False, "msg": "模型未返回结果（请确认 dsh 与模型 API 可用）"}

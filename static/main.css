@@ -81,7 +81,6 @@ main{flex:1;overflow:hidden}
   border-bottom:1px dashed var(--line2);padding-bottom:6px;
 }
 .shelf-head em{font-style:normal;color:var(--dim);font-family:var(--mono);font-size:11px}
-.shelf-head .shelf-tip{font-style:normal;font-weight:400;color:var(--faint);font-size:9px;letter-spacing:.3px;margin-left:auto;font-family:inherit}
 .shelf-head.dim{color:var(--faint);margin-top:22px;border-color:var(--line)}
 .card-list{display:flex;flex-direction:column;gap:9px}
 /* 工作内容卡片：例行进展（与决策卡片同形、左缘灰色调以示“查看级”） */
@@ -113,7 +112,6 @@ main{flex:1;overflow:hidden}
   background:rgba(15,30,50,.035);border:1px solid var(--line);border-radius:6px;
 }
 .a-item .n{font-family:var(--mono);color:var(--dim)}
-.a-item .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .piyue-main{flex:1;overflow-y:auto;padding:26px 30px;display:flex;flex-direction:column;gap:18px;min-width:0}
 
@@ -161,8 +159,6 @@ main{flex:1;overflow:hidden}
 .form-status{margin-top:12px;font-size:12.5px;min-height:18px;color:var(--dim)}
 .form-status.ok{color:var(--ok)}
 .form-status.err{color:var(--red-bright)}
-/* 工作内容详情：归档操作行 */
-.piyue-ops{display:flex;align-items:center;gap:10px;margin:4px 0 8px;flex-wrap:wrap}
 .piyue-ops .form-status{margin:0;font-size:11px}
 /* 工作内容卡片：紧凑（#小 + 任务号 + 已阅状态） */
 .p-card.compact{display:flex;align-items:center;gap:8px;padding:8px 10px 8px 12px;border-left-width:2px}
@@ -170,8 +166,6 @@ main{flex:1;overflow:hidden}
 .p-card.compact .name{font-size:12px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt)}
 .p-card.compact .wst{flex:none;font-size:9px;padding:1px 8px;border-radius:99px;border:1px solid rgba(2,132,199,.45);color:var(--gold);letter-spacing:.5px;white-space:nowrap}
 .p-card.compact .wst.seen{color:var(--ok);border-color:rgba(16,185,129,.5)}
-/* 工作内容详情：产物查看面板（点击按钮后展示） */
-.work-doc.to-doc{max-height:480px;overflow:auto;background:rgba(15,30,50,.05);border:1px dashed var(--line2);border-radius:8px;padding:10px 12px;margin-top:6px}
 /* 工作/已阅条目详情：右上角归档 + R1 汇总报告 + 执行角色产物 */
 .piyue-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:nowrap;margin-bottom:10px;min-width:0}
 .piyue-head h1{margin:0;font-size:14px;letter-spacing:1px;color:var(--gold);display:flex;align-items:baseline;gap:8px;flex:1;min-width:0;overflow:hidden}
@@ -183,14 +177,9 @@ main{flex:1;overflow:hidden}
 .doc-sec{margin-top:12px}
 .doc-sec-head{font-size:11px;letter-spacing:1.5px;color:var(--gold);border-bottom:1px dashed var(--line2);padding-bottom:6px;margin-bottom:8px}
 .doc-sec-head em{font-style:normal;color:var(--faint);font-size:9.5px;letter-spacing:.3px;margin-left:8px}
-.sec-btn{width:100%;display:flex;align-items:center;gap:8px;padding:0 12px;box-sizing:border-box;height:38px;line-height:1;background:rgba(2,132,199,.06);border:1px solid var(--line2);border-radius:8px;color:var(--gold);font-size:12px;font-weight:600;letter-spacing:.5px;cursor:pointer;text-align:left;transition:all .15s ease}
-.sec-btn:hover{background:rgba(2,132,199,.12);border-color:var(--gold)}
 .sec-btn .arr{color:var(--dim);font-size:10px;flex:none;width:12px;transition:transform .15s}
-.sec-btn em{font-style:normal;font-weight:400;color:var(--faint);font-size:10px;letter-spacing:.3px;margin-left:auto;flex:none;white-space:nowrap}
-.sec-btn:disabled{opacity:.5;cursor:not-allowed}
 .sec-body{margin-top:0}
 .prod-wrap{display:inline-block;vertical-align:top;margin:0 2px}
-.prod-item .arr{color:var(--dim);font-size:10px;flex:none;width:10px}
 .doc-sec .to-doc{max-height:420px;overflow:auto;background:rgba(15,30,50,.05);border:1px dashed var(--line2);border-radius:8px;padding:10px 12px}
 .prod-list{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
 .prod-item{display:inline-flex;align-items:center;gap:5px;padding:2px 11px;box-sizing:border-box;background:rgba(2,132,199,.06);border:1px solid var(--line2);border-radius:99px;cursor:pointer;font-size:11px;white-space:nowrap;transition:all .15s ease}
@@ -250,9 +239,30 @@ main{flex:1;overflow:hidden}
 .overview-bar{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch;padding:12px 20px 0;flex:none}
 .ov-item{flex:1;min-width:120px;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:11px;color:var(--dim)}
 .ov-item b{display:block;font-size:20px;font-weight:700;color:var(--gold);margin-top:3px}
-.home-grid{display:grid;grid-template-columns:1.12fr .88fr;gap:14px;flex:1 1 0;min-height:0;padding:14px 18px 8px;overflow:hidden}
-.panel-head{font-size:12px;letter-spacing:2px;color:var(--gold);margin-bottom:12px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.panel-head em{font-style:normal;color:var(--faint);font-size:10.5px;letter-spacing:.5px}
+/* ===== 首页第三列：项目进度 + 公共项目区（文件树） ===== */
+.prog-panel{display:flex;flex-direction:column;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-y:auto}
+.prog-body{display:flex;flex-direction:column;gap:1px;flex:none}
+.prog-panel .panel-head{flex:none}
+.hp-pg{margin:9px 0}
+/* 公共项目区挪进第三列后：去掉自带外框；由它独占滚动（上方进度区固定不动），
+   滚动条走主题色（浅色青蓝 / 深色金），并收窄缩进以适配窄列 */
+.prog-panel .proj-shared-list{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;margin-top:14px;padding:12px 0 0;border-top:1px dashed var(--line2);scrollbar-width:thin;scrollbar-color:rgba(2,132,199,.35) transparento}
+.prog-panel .proj-shared-list .proj-file-item,.prog-panel .pf-dir{padding-left:6px}
+.prog-panel .proj-shared-list .pf-dir .pf-name,.prog-panel .proj-shared-list .wsi-name{font-size:11px}
+.hp-pg-head{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim)}
+.hp-pg-head b{color:var(--txt);font-size:12px}
+.hp-pg-head em{font-style:normal;font-size:10px;color:var(--faint)}
+.hp-pg-head em.bad{color:var(--red-bright)}
+.hp-track{height:6px;border-radius:99px;background:rgba(15,30,50,.09);overflow:hidden;margin-top:5px}
+.hp-track i{display:block;height:100%;background:linear-gradient(90deg,var(--ok),var(--indigo));border-radius:99px}
+.hp-facts{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px;font-size:11px;color:var(--faint)}
+.hp-facts b{color:var(--txt)}
+:root[data-theme="dark"] .prog-panel{background:rgba(255,255,255,.02);border-color:var(--line2)}
+:root[data-theme="dark"] .prog-panel .proj-shared-list{scrollbar-color:rgba(232,183,61,.3) transparent}
+:root[data-theme="dark"] .hp-track{background:rgba(255,255,255,.08)}
+.home-grid{display:grid;grid-template-columns:.88fr 1fr 1.12fr;gap:14px;flex:1 1 0;min-height:0;padding:14px 18px 8px;overflow:hidden}
+.panel-head{margin-bottom:12px}
+.panel-head em{letter-spacing:.5px}
 .org-panel,.tl-panel,.task-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px}
 .org-panel{overflow-y:auto;min-height:0}
 
@@ -261,12 +271,11 @@ main{flex:1;overflow:hidden}
 .org-node{display:flex;align-items:center;gap:12px;padding:8px 12px;background:linear-gradient(90deg,rgba(15,30,50,.05),transparent);border:1px solid var(--line);border-radius:10px}
 .org-node.root{border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.06)}
 .org-node.hub{border-color:rgba(2,132,199,.45);background:rgba(2,132,199,.05)}
-.org-node.inactive{border-style:dashed;opacity:.55;filter:grayscale(.8)}
 .oid{font-family:var(--serif);font-style:italic;font-weight:800;font-size:15px;width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--panel2);border:1px solid var(--line2);color:var(--gold);flex:none}
 .org-node.root .oid{background:var(--red-bright);color:#fff;border-color:var(--red-bright)}
 .org-node.hub .oid{background:var(--gold);color:#fff;border-color:var(--gold)}
 .obody{flex:1;min-width:0}
-.obody b{display:block;font-size:13px}
+.obody b{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .obody i{display:block;font-style:normal;font-size:11px;color:var(--dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ostatus{padding:3px 10px;border-radius:20px;font-size:10px;letter-spacing:1px;border:1px solid;flex:none}
 .ostatus.red{color:var(--red-bright);border-color:rgba(239,68,68,.5)}
@@ -274,7 +283,8 @@ main{flex:1;overflow:hidden}
 .ostatus.off{color:var(--faint);border-color:var(--line)}
 .org-link{text-align:center;font-size:10px;color:var(--faint);letter-spacing:3px;padding:1px 0;line-height:1.6;position:relative}
 .org-link::after{content:"▼";display:inline-block;font-size:11px;color:var(--dim);margin-left:5px;letter-spacing:0;vertical-align:1px}
-.org-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:4px}
+/* 角色卡：宽了才并排两列，列宽不足 300px 就一行一个——硬挤两列会把卡片压变形 */
+.org-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(216px,1fr));gap:9px;margin-top:4px}
 .role-card{padding:9px 12px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;position:relative}
 .role-card .rc-top{display:flex;align-items:center;gap:8px}
 .role-card .rc-n{font-family:var(--serif);font-style:italic;font-weight:700;color:var(--gold);font-size:13px}
@@ -284,21 +294,9 @@ main{flex:1;overflow:hidden}
 .role-card .rc-st{position:absolute;top:7px;right:9px;font-size:9.5px;padding:2px 7px;border-radius:10px;border:1px solid;letter-spacing:.5px}
 .rc-st.on{color:var(--gold);border-color:rgba(2,132,199,.45);background:rgba(2,132,199,.08)}
 .rc-st.off{color:var(--faint);border-color:var(--line)}
-.rc-st.chief{color:var(--red-bright);border-color:rgba(239,68,68,.45)}
 
 /* OPC 时间线 */
 .timeline{display:flex;flex-direction:column;gap:0}
-.tl-item{position:relative;padding:0 0 16px 26px}
-.tl-item::before{content:"";position:absolute;left:7px;top:14px;bottom:-2px;width:2px;background:linear-gradient(180deg,rgba(2,132,199,.55),rgba(99,102,241,.3))}
-.tl-item:last-child::before{display:none}
-.tl-dot{position:absolute;left:0;top:2px;width:14px;height:14px;border-radius:50%;background:var(--bg2);border:2px solid var(--gold);box-shadow:0 0 9px rgba(2,132,199,.4)}
-.tl-date{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--gold);border:1px solid rgba(2,132,199,.35);padding:1px 8px;border-radius:4px;letter-spacing:1px}
-.tl-title{font-size:12.5px;font-weight:600;margin:5px 0 2px}
-.tl-detail{font-size:10.5px;color:var(--dim);line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-
-/* 当前任务与执行角色 */
-.task-table{display:flex;flex-direction:column;gap:6px}
-.t-row{display:grid;grid-template-columns:52px 110px 1fr 58px;gap:8px;align-items:center;padding:7px 10px;background:rgba(15,30,50,.035);border:1px solid var(--line);border-radius:8px;font-size:11px}
 .t-row .tt{font-size:10px;padding:2px 7px;border-radius:4px;letter-spacing:.5px;text-align:center}
 .t-row .tt.disp{color:var(--gold);border:1px solid rgba(2,132,199,.4)}
 .t-row .tt.wait{color:var(--red-bright);border:1px solid rgba(239,68,68,.4)}
@@ -308,10 +306,9 @@ main{flex:1;overflow:hidden}
 
 @media (max-width:1100px){.home-grid{grid-template-columns:1fr}}
 /* ===== 任务下达与 R1 调度面板 ===== */
-.dispatch-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin:16px 20px 0}
+.dispatch-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 18px}
 .panel-head{font-size:12px;letter-spacing:2px;color:var(--gold);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
 .panel-head em{font-style:normal;color:var(--faint);font-size:10.5px}
-.dq-form{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center}
 .launch-row{display:flex;gap:10px;margin-top:12px;align-items:center}
 .launch-row input{flex:1;min-width:220px;background:var(--panel2);border:1px solid var(--line2);color:var(--txt);padding:11px 14px;border-radius:8px;font-size:13px}
 /* 下达/暂停共用 .btn-gold（launch-btn 旧渐变规则已并入，删） */
@@ -319,37 +316,25 @@ main{flex:1;overflow:hidden}
 .launch-state .dq-state{background:rgba(99,102,241,.10);border:1px dashed rgba(99,102,241,.4);color:var(--txt);padding:7px 12px;border-radius:8px;display:inline-block;max-width:100%;line-height:1.5;vertical-align:middle}
 .launch-state .dq-state.busy{color:var(--gold);border-color:var(--gold)}
 .launch-state .dq-state.ok{color:var(--ok);border-color:var(--ok)}
-.dq-form input{flex:1;min-width:200px;background:var(--panel2);border:1px solid var(--line2);color:var(--txt);padding:8px 12px;border-radius:8px;font-size:12px}
 .dq-form .seal,.btn-gold{padding:8px 14px;border-radius:8px;font-size:12px;cursor:pointer;border:1px solid}
 .btn-gold{background:var(--gold);color:#fff;border-color:var(--gold);font-weight:600}
 .dq-state{font-size:10.5px;color:var(--faint)}
 .dq-state.busy{color:var(--gold);animation:blink 1.2s infinite}
 @keyframes blink{50%{opacity:.45}}
 .dq-table{display:flex;flex-direction:column;gap:5px;margin-top:10px}
-.dq-row{display:grid;grid-template-columns:64px 96px 1fr 90px 64px auto;gap:8px;align-items:center;padding:6px 10px;background:rgba(15,30,50,.035);border:1px solid var(--line);border-radius:7px;font-size:10.5px}
+.dq-row{display:grid;gap:8px;align-items:center;padding:6px 10px;background:rgba(15,30,50,.035);border:1px solid var(--line);border-radius:7px;font-size:10.5px}
 .dq-row.open{border-color:rgba(239,68,68,.45)}
 .dq-row.done{opacity:.6}
 .dq-row .dno{font-family:var(--mono);color:var(--gold)}
-.dq-row .dtime{color:var(--faint)}
-.dq-row .dtask{color:var(--txt);line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.dq-row .dexpect{color:var(--dim)}
 .dq-row .dstatus{font-size:9.5px}
 .dq-row.open .dstatus{color:var(--red-bright)}
-.dq-row .dreport{grid-column:1/-1;color:var(--faint);font-style:normal;font-size:9.5px}
-.r1-out{margin-top:10px;max-height:260px;overflow:auto;border:1px dashed var(--line2);border-radius:8px;background:rgba(15,30,50,.05)}
-.r1-out pre{white-space:pre-wrap;font-family:var(--mono);font-size:10.5px;color:var(--dim);padding:10px;margin:0}
 .rn-out{margin-top:10px;display:flex;flex-direction:column;gap:8px}
-.rno-group{border:1px solid var(--line);border-radius:8px;background:rgba(15,30,50,.035);padding:8px 10px}
-.rno-group>b{font-size:11px;letter-spacing:1px;color:var(--gold)}
-.rno-file{margin-top:6px;padding:6px 8px;border-left:2px solid var(--line2);font-size:10.5px}
-.rno-file span{color:var(--txt);font-family:var(--mono)}
-.rno-file em{display:block;margin-top:3px;color:var(--faint);font-style:normal;line-height:1.35}
 .rn-out .placeholder{color:var(--faint);font-size:10.5px}
 
 
 /* ===== 作战面板：角色工作区 ===== */
-.role-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow-y:auto;min-height:0}
-.role-detail{max-height:560px;overflow:auto;margin-top:10px;border:1px dashed var(--line2);border-radius:8px;background:rgba(15,30,50,.05);padding:12px 14px}
+.role-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0;overflow:hidden}
+.role-detail{margin-top:10px;border-radius:8px}
 .role-detail .placeholder{color:var(--faint);font-size:11px}
 .role-pane.skills .placeholder,.role-pane.files .placeholder{padding:2px 0;text-align:left;line-height:1.7}
 .role-card-doc h1{font-size:15px;color:var(--gold);margin:0 0 8px}
@@ -361,30 +346,21 @@ main{flex:1;overflow:hidden}
 .role-card-doc code{background:rgba(2,132,199,.12);color:var(--gold);padding:1px 4px;border-radius:4px;font-size:10.5px}
 .role-card-doc{overflow-wrap:break-word;word-break:break-word}
 .back-bar{margin-bottom:8px}
-.back-bar a{color:var(--gold);font-size:11px;cursor:pointer}
 .org-tree .role-card{cursor:pointer}
 .org-tree .role-card:hover{border-color:var(--gold);box-shadow:0 0 10px rgba(2,132,199,.25)}
-/* ===== 工作台 ===== */
-.wb-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:18px 20px 24px}
 @media (max-width:1100px){.wb-grid{grid-template-columns:1fr}}
-/* ===== 工作台：任务队列滚动与调度控制 ===== */
-.pane-ctl{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
-.sched-ctl{display:flex;align-items:center;gap:8px}
 .sched-ctl .dq-state{font-size:11px;color:var(--dim)}
 .btn-gold.small{padding:4px 10px;font-size:11px;border-radius:7px}
-.dq-state.paused{color:var(--gold)}
 .task-table,.dq-table,.r1-out,.rn-out,.timeline,.role-detail{max-height:340px;overflow-y:auto;overscroll-behavior:contain;padding-right:4px}
 .task-table::-webkit-scrollbar,.dq-table::-webkit-scrollbar,.r1-out::-webkit-scrollbar,.rn-out::-webkit-scrollbar,.timeline::-webkit-scrollbar,.role-detail::-webkit-scrollbar{width:6px}
 .task-table::-webkit-scrollbar-thumb,.dq-table::-webkit-scrollbar-thumb,.r1-out::-webkit-scrollbar-thumb,.rn-out::-webkit-scrollbar-thumb,.timeline::-webkit-scrollbar-thumb,.role-detail::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
 .task-table::-webkit-scrollbar-track,.dq-table::-webkit-scrollbar-track,.r1-out::-webkit-scrollbar-track,.rn-out::-webkit-scrollbar-track,.timeline::-webkit-scrollbar-track,.role-detail::-webkit-scrollbar-track{background:rgba(15,30,50,.06)}
 /* ===== 作战面板：角色卡 / 工作区产物 双框 ===== */
-.role-detail{display:flex;flex-direction:column;gap:8px;border:none;padding:0;background:transparent;max-height:none;overflow:visible}
+.role-detail{border:none;padding:0;background:transparent;max-height:none;overflow:visible}
 .role-pane{background:rgba(15,30,50,.05);border:1px solid var(--line2);border-radius:10px;padding:8px 11px}
-.role-pane.card{flex:none}
 .role-pane.skills,.role-pane.files{flex:none;display:flex;flex-direction:column}
 .role-pane .pane-title{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.12em;color:var(--gold);margin-bottom:6px;border-bottom:1px dashed var(--line2);padding-bottom:5px}
 .role-pane .pane-title em{flex:1}
-#btnEditRole{margin-left:auto;flex:none}
 .role-pane .pane-title em{color:var(--faint);font-style:normal;margin-left:6px;letter-spacing:0}
 .role-pane .pane-body{max-height:220px;overflow-y:auto;padding-right:4px}
 .role-pane.skills .pane-body,.role-pane.files .pane-body{min-height:21px}
@@ -392,7 +368,7 @@ main{flex:1;overflow:hidden}
 .role-pane .pane-body::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
 .role-pane .pane-body::-webkit-scrollbar-track{background:rgba(15,30,50,.06)}
 /* 角色卡：完整显示全文、随内容增高、最低为默认高度、不出现内部滚动条 */
-.role-pane.card .pane-body{max-height:340px;min-height:0;overflow-y:auto;padding-right:0}
+.role-pane.card .pane-body{padding-right:0}
 /* 就地编辑角色：角色卡面板内联表单（复用弹窗表单观感，字体 inherit） */
 .role-edit-form label{display:block;font-size:10px;color:var(--dim);letter-spacing:.3px;margin-bottom:3px;font-family:inherit}
 .role-edit-form input,.role-edit-form textarea{width:100%;box-sizing:border-box;background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:7px 10px;font-size:11.5px;outline:none;margin-bottom:8px;font-family:inherit;transition:border-color .15s ease, box-shadow .15s ease}
@@ -405,11 +381,22 @@ main{flex:1;overflow:hidden}
 .role-edit-form .role-edit-actions #ieMsg{font-size:11px;color:var(--dim);margin-left:2px}
 
 /* 挂载技能胶囊（角色卡下方、工作区产物上方） */
-.role-pane.skills .pane-body.skill-caps{display:flex;flex-wrap:wrap;gap:6px;padding-right:0}
-.skill-cap{display:inline-flex;align-items:center;background:rgba(2,132,199,.10);color:var(--gold);border:1px solid rgba(2,132,199,.45);border-radius:999px;padding:2px 10px;font-size:10.5px;line-height:1.6;white-space:nowrap;cursor:default}
-.skill-cap.add{background:transparent;border:1px dashed var(--gold);color:var(--gold);cursor:pointer}
+.role-pane.skills .pane-body.skill-caps{display:flex;flex-wrap:nowrap;overflow:hidden;align-items:center;gap:6px;padding-right:0}
+.skill-cap{display:inline-flex;align-items:center;flex:none;max-width:100%;padding:3px 11px;border-radius:99px;border:1px solid var(--line2);background:rgba(2,132,199,.08);color:var(--txt);font-size:10.5px;font-family:var(--mono);border-radius:999px;padding:2px 10px;font-size:10.5px;line-height:1.6;white-space:nowrap;cursor:default}
+.skill-cap.add{background:none;border:1px dashed var(--line2);color:var(--gold);cursor:pointer}
 .skill-cap.add:hover{background:rgba(2,132,199,.10);border-style:solid}
-.rno-file{display:flex;flex-direction:column;gap:2px;padding:6px 8px;margin:4px 0;border:1px solid var(--line2);border-radius:6px;cursor:pointer;background:rgba(2,132,199,.05)}
+/* 工作区产物：胶囊 chip（文件名一行一个，摘要走 tooltip）——深色下用亮字与描边保证可读 */
+/* 「查看全部产物」：虚线胶囊按钮，点击跳「项目文件」按该角色看全量 */
+.rno-more{display:inline-flex;align-items:center;margin:2px 0 7px;padding:3px 11px;border:1px dashed var(--line2);border-radius:99px;background:none;color:var(--gold);font-size:10.5px;cursor:pointer;transition:all .12s ease}
+.rno-more:hover{border-style:solid;border-color:var(--gold);background:rgba(2,132,199,.12)}
+:root[data-theme="dark"] .rno-more:hover{background:rgba(232,183,61,.14)}
+.rno-cap{display:inline-flex;align-items:center;max-width:100%;margin:3px 6px 3px 0;padding:3px 11px;border:1px solid var(--line2);border-radius:99px;background:rgba(2,132,199,.08);cursor:pointer;transition:all .12s ease}
+.rno-cap:hover{border-color:var(--gold);background:rgba(2,132,199,.18)}
+.rno-cap .rc-name{font-family:var(--mono);font-size:10.5px;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rno-cap:hover .rc-name{color:var(--gold)}
+:root[data-theme="dark"] .rno-cap{background:rgba(232,183,61,.08);border-color:rgba(232,183,61,.28)}
+:root[data-theme="dark"] .rno-cap:hover{background:rgba(232,183,61,.16);border-color:var(--gold)}
+:root[data-theme="dark"] .rno-cap .rc-name{color:#e6ecf7}
 /* ===== 知识库：档案卡片（R1 管理 · 全体共同维护） ===== */
 #view-kb.active{display:flex;flex-direction:column}
 .kb-section{margin-bottom:14px;border:1px solid var(--line2);border-radius:12px;background:rgba(15,30,50,.03);overflow:hidden}
@@ -445,9 +432,6 @@ main{flex:1;overflow:hidden}
 .run-log::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
 
 
-.rno-file:hover{border-color:var(--gold);background:rgba(2,132,199,.12)}
-.rno-file span{color:var(--ink);font-size:11.5px}
-.rno-file em{color:var(--faint);font-size:10.5px;font-style:normal;line-height:1.5}
 .back-bar{margin:0 0 8px}
 .back-bar a{color:var(--gold);font-size:11px;cursor:pointer}
 
@@ -466,10 +450,6 @@ main{flex:1;overflow:hidden}
 .task-out .sub-line.sub-expect{color:var(--faint)}
 .task-out .to-sec .empty{color:var(--faint)}
 .task-out .to-rows{color:var(--dim);line-height:1.7;margin-top:2px;font-family:var(--mono);font-size:10px}
-.task-out .to-file{display:flex;flex-direction:column;gap:2px;padding:6px 9px;margin:5px 0;border:1px solid var(--line2);border-radius:6px;cursor:pointer;background:rgba(2,132,199,.07)}
-.task-out .to-file:hover{border-color:var(--gold);background:rgba(2,132,199,.14)}
-.task-out .to-file span{color:var(--txt);font-family:var(--mono);font-size:10.5px}
-.task-out .to-file em{color:var(--faint);font-style:normal;font-size:10px;line-height:1.4}
 .task-out .to-doc{font-size:11.5px}
 .task-out .to-doc h1{font-size:14px;color:var(--gold)}
 .task-out .to-doc h2{font-size:12.5px}
@@ -485,10 +465,8 @@ main{flex:1;overflow:hidden}
 .a-item.active .t{color:var(--gold)}
 
 /* ===== 工作台：按钮下方左右两栏（左=任务/展开，右=调度记录） ===== */
-.wb-cols{display:grid;grid-template-columns:1fr 1.12fr .95fr;gap:14px;margin-top:12px;align-items:stretch}
 @media (max-width:1100px){.wb-cols{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}}
-.wb-col{display:flex;flex-direction:column;gap:8px;min-width:0}
-.wb-col{display:flex;flex-direction:column;min-width:0}
+.wb-col{min-width:0}
 .wb-left .dq-table{max-height:280px;overflow-y:auto}
 .wb-col .run-log{max-height:300px}
 .dq-state.on{color:var(--ok);border-color:var(--ok)}
@@ -514,84 +492,53 @@ main{flex:1;overflow:hidden}
 
 /* ===== 首页：角色 → R1 派发任务（跟随角色卡片点击） ===== */
 .role-pane.plan{border-left-color:var(--indigo)}
-.plan-item{margin:5px 0;padding:7px 9px;background:rgba(99,102,241,.06);border:1px solid var(--line);border-left:3px solid var(--indigo);border-radius:6px}
 .plan-item .pno{font-family:var(--mono);font-size:9.5px;color:var(--indigo);letter-spacing:1px}
-.plan-item .psub{font-size:11px;color:var(--txt);line-height:1.45;margin-top:2px}
-.plan-item .pexpect{font-size:9.5px;color:var(--dim);margin-top:2px}
 .plan-item .pst{display:inline-block;font-size:9px;color:var(--dim);border:1px solid var(--line);padding:1px 7px;border-radius:3px;margin-top:4px}
 .plan-item .pst.done{color:var(--ok);border-color:rgba(16,185,129,.4)}
-.plan-item .psub em{font-style:normal;color:var(--faint);font-size:9px;margin-left:6px}
 
 /* ===== 工作台：一页压缩（列内限高，不再整页溢出） ===== */
 /* ===== 工作台：当前任务与执行角色（右列顶部，跟随任务点击高亮） ===== */
 .act-panel{max-height:200px;overflow-y:auto;border:1px dashed var(--line2);border-radius:8px;background:rgba(99,102,241,.05);padding:6px 8px}
 .act-panel .placeholder{color:var(--faint);font-size:10.5px;padding:8px 0}
-.act-item{display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:5px 8px;margin:4px 0;border:1px solid var(--line);border-radius:6px;cursor:pointer;background:rgba(15,30,50,.035)}
-.act-item:hover{border-color:var(--gold)}
-.act-item.on{border-color:var(--gold);background:rgba(2,132,199,.10)}
 .act-item .ano{font-family:var(--mono);font-size:9.5px;color:var(--gold)}
-.act-item .arole{font-family:var(--mono);font-size:9.5px;color:var(--indigo);border:1px solid rgba(99,102,241,.4);padding:0 5px;border-radius:3px}
 .act-item .ast{font-size:8.5px;color:var(--faint);margin-left:auto}
 .act-item.on .ast{color:var(--ok)}
-.act-item .asub{flex-basis:100%;font-size:9.5px;color:var(--dim);line-height:1.4}
-.wb-col .dq-table{max-height:320px}
-.wb-col .task-out{max-height:240px}
-.wb-col .r1-out{max-height:240px}
 .wb-col .rn-out{max-height:200px}
 /* ===== 工作台：两列填满视口，无底部留白；列内按比例分配、各自滚动 ===== */
 .dispatch-panel{display:flex;flex-direction:column;height:calc(100% - 16px);margin:16px 20px 0;box-sizing:border-box}
-.wb-cols{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr;gap:14px;margin-top:10px;min-height:0}
 /* 两列均填满容器高：内容超高时列内竖向滚动条，不再整页溢出 */
-.wb-col{min-height:0;overflow:hidden}
 .wb-col .dq-table,.wb-col .act-panel,.wb-col .task-out{overflow-y:auto}
 .wb-col{display:flex;flex-direction:column;gap:6px;min-height:0;overflow:hidden}
 .wb-col .wb-col-head{flex:none}
 /* 左列：任务队列(上 flex 1.6) + 当前任务与执行角色(左下 flex 1，默认空、点击筛选)；右列整列 = 任务输出聚合(内部滚动) */
 .wb-col .dq-table{flex:1.6;max-height:none;overflow-y:auto;min-height:0}
-.wb-col .act-panel{flex:1;max-height:none;min-height:0;overflow-y:auto}
-.wb-col .task-out{flex:none;max-height:calc(100vh - 400px);min-height:0;overflow-y:scroll;overscroll-behavior:contain;scrollbar-width:thin}
+.wb-col .act-panel{min-height:0;overflow-y:auto}
+.wb-col .task-out{scrollbar-width:thin}
 /* 任务输出聚合：任何长行（回报全文/调度日志/报告段落）强制换行，杜绝横向超屏 */
 .task-out pre,.task-out .to-doc,.task-out .to-rows div,.task-out .to-file em{white-space:pre-wrap;word-break:break-all;overflow-wrap:anywhere}
 .act-ctx{font-size:10px;color:var(--dim);padding:3px 2px 2px;letter-spacing:.3px}
 .act-ctx b{font-family:var(--mono);color:var(--gold)}
 /* 工作台：整视图禁止滚动（页面本身不出滚动条），超高一律进列内竖滚 */
 #view-workbench{overflow-y:auto}
-/* ===== 设置视图：角色创建 + 目录选择（v1.9） ===== */
-.settings-grid{display:grid;grid-template-columns:1.05fr .95fr;gap:16px;margin:16px 20px 20px;align-items:start}
 @media (max-width:1100px){.settings-grid{grid-template-columns:1fr}}
-.set-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;min-width:0}
 .set-head{font-size:11px;letter-spacing:1.5px;color:var(--gold);border-bottom:1px dashed var(--line2);padding-bottom:6px;margin-bottom:10px}
 .set-head em{font-style:normal;color:var(--faint);font-size:10px;letter-spacing:.3px;margin-left:8px}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media (max-width:1100px){.row{grid-template-columns:1fr}}
 .row h3{font-size:11px;color:var(--dim);letter-spacing:1px;margin:0 0 8px}
-.role-list{max-height:300px;overflow-y:auto;border:1px dashed var(--line2);border-radius:8px;padding:6px;background:rgba(15,30,50,.05)}
-.role-list::-webkit-scrollbar{width:6px}
-.role-list::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
 .r-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;margin:4px 0}
 .r-item .r-name{font-size:11.5px;color:var(--txt);font-weight:600}
 .r-item .r-no{font-style:normal;font-family:var(--mono);font-size:9px;color:var(--faint);border:1px solid var(--line);padding:0 5px;border-radius:3px}
 .r-item button{margin-left:auto;padding:3px 9px;font-size:10px;border-radius:5px}
 .form input,.form textarea,.set-fields input,.dir-row>input,.dir-head input{width:100%;box-sizing:border-box}
-.preset-row{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
-.preset-info{font-size:10px;color:var(--dim);font-family:var(--mono)}
-.dir-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
-.dir-status{font-size:10px;color:var(--faint);font-family:var(--mono)}
-.set-msg{font-size:10.5px;color:var(--gold)}
-.dir-browser{border:1px dashed var(--line2);border-radius:8px;background:rgba(15,30,50,.05);padding:8px}
-.dir-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:10.5px;color:var(--dim);margin-bottom:6px}
-.dir-path{font-family:var(--mono);font-size:9.5px;color:var(--faint);word-break:break-all}
-.dir-list{max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+.set-msg{color:var(--gold)}
+.dir-list{display:flex;flex-direction:column;gap:4px}
 .dir-list::-webkit-scrollbar{width:6px}
 .dir-list::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
-.dir-item{display:flex;align-items:center;gap:8px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;font-size:11px;color:var(--txt)}
-.dir-item:hover{border-color:var(--gold);background:rgba(2,132,199,.08)}
-.dir-item .dname{word-break:break-all}
+.dir-item{border:1px solid var(--line);border-radius:6px}
+.dir-item:hover{border-color:var(--gold)}
 .dir-item .mini{margin-left:auto}
 button.mini{padding:2px 8px;font-size:10px;border-radius:5px}
-.set-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-top:10px}
-.set-fields label{font-size:10px;color:var(--dim);display:flex;flex-direction:column;gap:3px;font-family:var(--mono)}
-.set-fields input{padding:4px 7px;font-size:10.5px}
 .skill-import-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
 .skill-search{flex:1;min-width:220px;background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:8px 12px;font-size:12px;outline:none}
 .skill-search:focus{border-color:var(--gold)}
@@ -614,7 +561,6 @@ button.mini{padding:2px 8px;font-size:10px;border-radius:5px}
 .org-tree .rc-top{display:flex;align-items:baseline;gap:6px}
 .org-tree .rc-name{font-size:12.5px;font-weight:600}
 .org-tree .rc-n{font-family:var(--mono);font-size:8.5px;color:var(--faint);border:1px solid var(--line);padding:0 4px;border-radius:3px}
-.act-item .arole em{font-style:normal;font-family:var(--mono);font-size:8px;color:var(--faint)}
 /* ===== 设置界面按钮美化（v1.9.1） ===== */
 /* 主按钮：金色实心渐变（保存配置 / 保存角色） */
 .set-panel .btn-primary,
@@ -664,10 +610,7 @@ button.mini:active,.r-item button:active{transform:scale(.95)}
 .form input:focus,.form textarea:focus,.set-fields input:focus,.dir-row>input:focus,.dir-head input:focus{
   border-color:var(--gold);box-shadow:0 0 0 2px rgba(2,132,199,.15);
 }
-.set-fields input{padding:5px 8px;font-size:10.5px}
 .form textarea{min-height:96px;resize:vertical}
-/* 目录行保存按钮与状态提示垂直居中 */
-.dir-row{align-items:center}
 #btnSaveSettings{flex:none}
 .set-msg{font-size:11px;font-weight:600;letter-spacing:.3px}
 /* ===== Markdown 表格渲染（v1.9.1） ===== */
@@ -687,7 +630,8 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 /* ===== 新增角色弹窗（作战面板：未激活位 → 「＋ 新增角色」，v1.10.1） ===== */
 .org-node.add{opacity:1;filter:none;cursor:pointer;border-style:dashed;border-color:rgba(2,132,199,.5);background:rgba(2,132,199,.05);transition:all .18s ease}
 .org-node.add:hover{border-color:var(--gold);background:rgba(2,132,199,.12);box-shadow:0 0 12px rgba(2,132,199,.25);transform:translateY(-1px)}
-.org-node.add .oid{background:rgba(2,132,199,.14);color:var(--gold);border-color:rgba(2,132,199,.5)}
+/* 加号不做斜体：.oid 基样式是斜体编号字体，圆圈里的「＋」用它就显得歪 */
+.org-node.add .oid{background:rgba(2,132,199,.14);color:var(--gold);border-color:rgba(2,132,199,.5);font-style:normal;font-family:var(--sans,system-ui,sans-serif)}
 .org-node.add .obody b{color:var(--gold)}
 .modal-mask{position:fixed;inset:0;z-index:99;background:rgba(15,23,42,.48);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center}
 .modal-mask[hidden]{display:none}
@@ -711,17 +655,14 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 .skill-opt{display:inline-flex;align-items:center;cursor:pointer;background:rgba(2,132,199,.06);color:var(--dim);border:1px solid var(--line2);border-radius:999px;padding:2px 10px;font-size:11px;line-height:1.6;transition:all .15s ease;user-select:none}
 .skill-opt:hover{border-color:var(--gold);color:var(--gold)}
 .skill-opt.sel{background:var(--gold);color:#fff;border-color:var(--gold);font-weight:600}
-/* ===== 设置：大模型 API 面板（模型接入，同 dsh 模型 API 接入惯例，v1.11） ===== */
-.model-api-panel{grid-column:1 / -1}
 .mapi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px 14px;margin-bottom:12px}
 .mapi-row label{display:flex;flex-direction:column;gap:4px;font-size:10px;color:var(--dim);letter-spacing:.5px;font-family:var(--mono);min-width:0}
 .mapi-row select,.mapi-row input{padding:7px 10px;font-size:11.5px;background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:8px;outline:none;transition:border-color .15s ease, box-shadow .15s ease}
 .mapi-row select:focus,.mapi-row input:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(2,132,199,.15)}
 .mapi-row input[type="password"]{letter-spacing:2px}
-.mapi-row.map-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-#btnSaveModelApi,#btnTestModelApi,#btnSchedAdd{background:rgba(2,132,199,.06);color:var(--gold);border:1px solid rgba(2,132,199,.55);border-radius:8px;padding:8px 14px;font-size:11.5px;font-weight:600;letter-spacing:.5px;cursor:pointer;transition:all .18s ease}
-#btnSaveModelApi:hover,#btnTestModelApi:hover,#btnSchedAdd:hover{background:rgba(2,132,199,.16);border-color:var(--gold);box-shadow:0 0 14px rgba(2,132,199,.25);transform:translateY(-1px)}
-#btnSaveModelApi:active,#btnTestModelApi:active,#btnSchedAdd:active{transform:scale(.98)}
+#btnSaveModelApi,#btnTestModelApi,#btnSchedAdd,#btnSaveEngine{background:rgba(2,132,199,.06);color:var(--gold);border:1px solid rgba(2,132,199,.55);border-radius:8px;padding:8px 14px;font-size:11.5px;font-weight:600;letter-spacing:.5px;cursor:pointer;transition:all .18s ease}
+#btnSaveModelApi:hover,#btnTestModelApi:hover,#btnSchedAdd:hover,#btnSaveEngine:hover{background:rgba(2,132,199,.16);border-color:var(--gold);box-shadow:0 0 14px rgba(2,132,199,.25);transform:translateY(-1px)}
+#btnSaveModelApi:active,#btnTestModelApi:active,#btnSchedAdd:active,#btnSaveEngine:active{transform:scale(.98)}
 
 /* ===== 作战面板角色卡：删除按钮（右下角，避免与右上状态徽章重叠） ===== */
 .role-card .rc-folder{position:absolute;right:40px;top:50%;transform:translateY(calc(-50% + 30px));background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:7px;padding:3px 8px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;opacity:.85;transition:all .15s ease}
@@ -756,8 +697,6 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 .sched-badge.off{color:var(--faint);background:rgba(15,30,50,.06);border:1px solid var(--line)}
 .sched-mode{font-size:9.5px;font-family:var(--mono);color:var(--dim);background:rgba(15,30,50,.07);border:1px solid var(--line);border-radius:5px;padding:2px 7px}
 /* 工作台最终覆盖：三列 + 执行角色一行弹性标签 + 输出聚合填充剩余列高 */
-.wb-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.12fr) minmax(0,.95fr);grid-template-rows:minmax(0,1fr);gap:14px;margin-top:10px;flex:1;min-height:0}
-.wb-cols .wb-col{min-height:0;overflow:hidden}
 .wb-col .act-panel{flex:none;max-height:none;overflow:visible;margin-bottom:8px}
 .wb-col .task-out{flex:1;max-height:none;min-height:0;overflow-y:auto;overscroll-behavior:contain}
 .act-roles{display:flex;flex-wrap:wrap;gap:6px;padding:2px 0 4px}
@@ -765,16 +704,10 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 #btnEditRole{margin-left:auto;flex:none}
 
 /* 工作台高度链最终兜底（覆盖历史旧规则）：列高锁定容器、内部滚动 */
-.wb-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.12fr) minmax(0,.95fr);grid-template-rows:minmax(0,1fr);gap:14px;margin-top:10px;flex:1;min-height:0;max-height:100%;align-items:stretch}
-.wb-cols .wb-col{display:flex;flex-direction:column;gap:8px;min-height:0;overflow:hidden;height:100%}
-.wb-cols .wb-col-head{flex:none}
-.wb-cols .wb-left .dq-table{flex:1;min-height:0;max-height:none;overflow-y:auto}
-.wb-cols .wb-col .act-panel{flex:none;max-height:none;overflow:visible;margin-bottom:8px}
-.wb-cols .wb-col .task-out{flex:1;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain}
-.wb-cols .run-log{flex:1;min-height:0;max-height:none;overflow-y:auto}
+.wb-cols .wb-col .act-panel{overflow:visible}
 
 /* 铁规则（!important）：无论历史规则如何层叠，三列锁定容器高、列内各自滚动 */
-.wb-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.12fr) minmax(0,.95fr);grid-template-rows:minmax(0,1fr);gap:14px;margin-top:10px;flex:1;min-height:0;max-height:100%;align-items:stretch !important}
+.wb-cols{display:grid;grid-template-rows:minmax(0,1fr);gap:14px;margin-top:10px;flex:1;min-height:0;max-height:100%;align-items:stretch !important}
 .wb-cols .wb-col{display:flex;flex-direction:column;gap:8px;min-height:0 !important;overflow:hidden !important;height:100% !important}
 .wb-cols .wb-col-head{flex:none !important;max-height:none !important}
 .wb-cols .wb-col .act-panel{flex:none !important;max-height:180px !important;overflow-y:auto !important;margin-bottom:8px !important;overscroll-behavior:contain !important}
@@ -788,8 +721,7 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 .act-roles .act-role-tag em{font-style:normal;font-size:9.5px;color:var(--faint);border-left:1px solid var(--line2);padding-left:6px;margin-left:2px}
 
 /* 阻塞任务行：↻ 重试按钮（行尾，警示金） */
-.dq-row .dretry{margin-left:12px;flex:none;align-self:center;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.5);color:#ef4444;border-radius:6px;padding:2px 9px;font-size:10px;cursor:pointer;line-height:1.5;font-weight:600;transition:all .15s ease}
-.dq-row .dretry:hover{background:rgba(239,68,68,.25);color:#fca5a5;box-shadow:0 2px 8px rgba(239,68,68,.3)}
+.dq-row .dretry{margin-left:12px;flex:none;align-self:center;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.5);border-radius:6px;padding:2px 9px;font-size:10px;cursor:pointer;line-height:1.5;font-weight:600;transition:all .15s ease}
 .dq-row .dretry:disabled{opacity:.6;cursor:default}
 
 /* 阻塞行重试按钮：grid 第 6 列 auto（同排行尾，不换行） */
@@ -862,7 +794,7 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 
 .board{flex:1 1 0;min-height:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;overflow:hidden}
 .board .placeholder{grid-column:1/-1}
-.bd-col{display:flex;flex-direction:column;min-height:0;background:rgba(15,30,50,.05);border:1px solid var(--line);border-radius:9px;overflow:hidden}
+.bd-col{display:flex;flex-direction:column;min-height:0;border:1px solid var(--line);border-radius:9px;overflow:hidden}
 .bd-col::before{content:"";display:block;height:2px;flex:none;background:var(--faint)}
 .bd-col.wait::before{background:var(--gold)}
 .bd-col.run::before{background:var(--indigo)}
@@ -893,6 +825,30 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 .bc-foot em{font-style:normal;font-family:var(--mono);font-size:9px;color:var(--faint);flex:none}
 
 /* 详情：执行历史（一次派发一条；重试追加新行，不覆盖上一次） */
+/* ===== 实时事件：全屏、执行心跳进度行、长输出折叠（限高不限文） ===== */
+.live-head{justify-content:space-between}
+.run-fs-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;background:none;border:1px solid var(--line2);border-radius:6px;color:var(--faint);cursor:pointer}
+.run-fs-btn:hover{color:var(--gold);border-color:var(--gold)}
+/* 满屏 + 顶部 52px 遮罩带（::before 固定定位、不随滚动，滚动内容从它下方经过被遮住，
+   所以首行「T-00x · 自动执行链」不会被退出按钮压住） */
+.run-log.fullscreen{position:fixed;inset:0;z-index:1200;max-height:none!important;height:auto;background:var(--panel,#fff);padding:56px 22px 22px;border-radius:0;overflow-y:auto!important}
+.run-log.fullscreen::before{content:"";position:fixed;top:0;left:0;right:0;height:52px;background:var(--panel,#fff);border-bottom:1px solid var(--line2);z-index:2}
+.run-prog{color:var(--faint);font-size:11.5px;line-height:1.55;padding:3px 0;border-bottom:1px dashed var(--line2)}
+.run-prog em{font-style:normal;font-variant-numeric:tabular-nums;color:var(--indigo,#4c6ef5)}
+.run-prog .rp-text{white-space:pre-wrap;word-break:break-word;margin-top:2px}
+.run-out{position:relative}
+.run-out.folded{max-height:240px;overflow:hidden}
+.run-out.expanded{max-height:none}
+.run-out.folded::after{content:"";position:absolute;left:0;right:0;bottom:0;height:36px;background:linear-gradient(transparent,var(--panel,#fff));pointer-events:none}
+:root[data-theme="dark"] .run-out.folded::after{background:linear-gradient(transparent,var(--panel2,#131b2b))}
+:root[data-theme="dark"] .run-log.fullscreen{background:var(--panel2,#131b2b)}
+:root[data-theme="dark"] .run-log.fullscreen::before{background:var(--panel2,#131b2b)}
+.run-fs-exit{position:fixed;top:9px;right:18px;z-index:1202;display:inline-flex;align-items:center;gap:7px;padding:8px 14px;border:1px solid var(--line2);border-radius:9px;background:var(--panel2);color:var(--gold);font-size:12.5px;letter-spacing:.04em;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.22)}
+.run-fs-exit:hover{border-color:var(--gold)}
+.run-fs-exit:active{transform:scale(.97)}
+.run-fs-exit svg{display:block}
+.run-fold-btn{position:absolute;right:6px;bottom:6px;z-index:1;font-size:11px;padding:2px 10px;border:1px solid var(--line2);border-radius:99px;background:var(--panel2);color:var(--gold);cursor:pointer}
+.run-fold-btn:hover{border-color:var(--gold)}
 .live-head{flex:none;font-size:10.5px;letter-spacing:.14em;color:var(--gold);margin:8px 0 4px;display:flex;gap:8px;align-items:baseline}
 .live-head em{font-style:normal;color:var(--faint);font-size:9.5px;letter-spacing:.04em}
 .exec-list{display:flex;flex-direction:column;gap:5px;margin-top:6px}
@@ -963,7 +919,7 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 :root[data-theme="dark"]{--bg0:#0a0e15; --bg1:#0e1420; --bg2:#131b2b; --panel:#17203a; --panel2:#1d2847;
   --line:rgba(210,222,255,.10); --line2:rgba(232,183,61,.35);
   --txt:#e6ecf7; --dim:#93a5c4; --faint:#5d6f92;
-  --gold:#e8b73d; --red:#c0392b; --red-bright:#e74c3c; --ink:#111; --indigo:#4c6ef5;
+  --gold:#e8b73d; --red:#c0392b; --red-bright:#e74c3c; --ink:#e6ecf7; --indigo:#4c6ef5;
   --ok:#35b97c;
   --rad:10px;
   --serif:"Georgia","Songti SC","SimSun","Noto Serif SC",serif;
@@ -1008,11 +964,6 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .ostatus.red{border-color:rgba(231,76,60,.5)}
 :root[data-theme="dark"] .ostatus.gold{border-color:rgba(232,183,61,.5)}
 :root[data-theme="dark"] .rc-st.on{border-color:rgba(232,183,61,.45);background:rgba(232,183,61,.08)}
-:root[data-theme="dark"] .rc-st.chief{border-color:rgba(231,76,60,.45)}
-:root[data-theme="dark"] .tl-item::before{background:linear-gradient(180deg,rgba(232,183,61,.55),rgba(76,110,245,.3))}
-:root[data-theme="dark"] .tl-dot{box-shadow:0 0 9px rgba(232,183,61,.4)}
-:root[data-theme="dark"] .tl-date{border:1px solid rgba(232,183,61,.35)}
-:root[data-theme="dark"] .t-row{background:rgba(255,255,255,.02)}
 :root[data-theme="dark"] .t-row .tt.disp{border:1px solid rgba(232,183,61,.4)}
 :root[data-theme="dark"] .t-row .tt.wait{border:1px solid rgba(231,76,60,.4)}
 :root[data-theme="dark"] .launch-state .dq-state{background:rgba(76,110,245,.10);border:1px dashed rgba(76,110,245,.4);color:var(--txt)}
@@ -1022,8 +973,6 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .dq-state{color:var(--faint)}
 :root[data-theme="dark"] .dq-row{background:rgba(255,255,255,.02)}
 :root[data-theme="dark"] .dq-row.open{border-color:rgba(231,76,60,.45)}
-:root[data-theme="dark"] .r1-out{background:rgba(0,0,0,.25)}
-:root[data-theme="dark"] .rno-group{background:rgba(255,255,255,.02)}
 :root[data-theme="dark"] .role-card-doc code{background:rgba(232,183,61,.12)}
 :root[data-theme="dark"] .org-tree .role-card:hover{box-shadow:0 0 10px rgba(232,183,61,.25)}
 :root[data-theme="dark"] .sched-ctl .dq-state{color:var(--dim)}
@@ -1033,16 +982,17 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .role-pane{background:rgba(0,0,0,.22)}
 :root[data-theme="dark"] .role-pane .pane-body::-webkit-scrollbar-thumb{background:rgba(232,183,61,.4)}
 :root[data-theme="dark"] .role-pane .pane-body::-webkit-scrollbar-track{background:rgba(0,0,0,.25)}
-:root[data-theme="dark"] .rno-file{background:rgba(232,183,61,.05)}
 :root[data-theme="dark"] .kb-card{background:rgba(0,0,0,.22)}
 :root[data-theme="dark"] .kb-card:hover{box-shadow:0 0 12px rgba(232,183,61,.28)}
+/* 知识卡片的 OKF 元数据行：型别标签 + 建档 / 更新 / 来源任务 */
+.kb-card-okf{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:5px;font-size:9.5px;color:var(--faint);letter-spacing:.3px}
+.kb-card-okf b{color:var(--gold);font-family:var(--mono);font-weight:700}
+.kb-okf-tag{font-size:9px;padding:1px 7px;border-radius:99px;border:1px solid var(--line2);color:var(--gold);background:rgba(2,132,199,.06)}
+:root[data-theme="dark"] .kb-okf-tag{background:rgba(232,183,61,.08);border-color:rgba(232,183,61,.35)}
 :root[data-theme="dark"] .kb-doc .markdown-body{background:rgba(0,0,0,.22)}
 :root[data-theme="dark"] .run-log{background:rgba(0,0,0,.25)}
 :root[data-theme="dark"] .run-log::-webkit-scrollbar-thumb{background:rgba(232,183,61,.4)}
-:root[data-theme="dark"] .rno-file:hover{background:rgba(232,183,61,.12)}
 :root[data-theme="dark"] .task-out{background:rgba(232,183,61,.04)}
-:root[data-theme="dark"] .task-out .to-file{background:rgba(232,183,61,.07)}
-:root[data-theme="dark"] .task-out .to-file:hover{background:rgba(232,183,61,.14)}
 :root[data-theme="dark"] .dq-row:hover{background:rgba(232,183,61,.06)}
 :root[data-theme="dark"] .dq-row.sel{background:rgba(232,183,61,.12)}
 :root[data-theme="dark"] .a-item:hover{background:rgba(232,183,61,.07);color:var(--txt)}
@@ -1053,15 +1003,8 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .tl-h-item .tl-h-date{border:1px solid rgba(232,183,61,.35)}
 :root[data-theme="dark"] .timeline-h::-webkit-scrollbar-thumb{background:rgba(232,183,61,.4)}
 :root[data-theme="dark"] .timeline-h::-webkit-scrollbar-track{background:rgba(0,0,0,.25)}
-:root[data-theme="dark"] .plan-item{background:rgba(76,110,245,.06)}
 :root[data-theme="dark"] .plan-item .pst.done{border-color:rgba(53,185,124,.4)}
 :root[data-theme="dark"] .act-panel{background:rgba(76,110,245,.05)}
-:root[data-theme="dark"] .act-item{background:rgba(255,255,255,.02)}
-:root[data-theme="dark"] .act-item.on{background:rgba(232,183,61,.10)}
-:root[data-theme="dark"] .act-item .arole{border:1px solid rgba(76,110,245,.4)}
-:root[data-theme="dark"] .role-list{background:rgba(0,0,0,.2)}
-:root[data-theme="dark"] .role-list::-webkit-scrollbar-thumb{background:rgba(232,183,61,.4)}
-:root[data-theme="dark"] .dir-browser{background:rgba(0,0,0,.2)}
 :root[data-theme="dark"] .dir-list::-webkit-scrollbar-thumb{background:rgba(232,183,61,.4)}
 :root[data-theme="dark"] .set-note{border:1px solid rgba(76,110,245,.35);background:rgba(76,110,245,.05)}
 :root[data-theme="dark"] .set-note code{background:rgba(232,183,61,.1)}
@@ -1084,7 +1027,10 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .org-node.add .oid{background:rgba(232,183,61,.14);border-color:rgba(232,183,61,.5)}
 :root[data-theme="dark"] .modal-mask{background:rgba(3,6,12,.72)}
 :root[data-theme="dark"] .skill-opt.sel{color:#1a1206}
-:root[data-theme="dark"] .skill-cap{background:rgba(232,183,61,.14);border-color:rgba(232,183,61,.5)}
+:root[data-theme="dark"] .skill-cap{background:rgba(232,183,61,.08);border-color:rgba(232,183,61,.28);color:#e6ecf7}
+:root[data-theme="dark"] .skill-cap:hover{background:rgba(232,183,61,.16);border-color:var(--gold)}
+.skill-cap:hover{border-color:var(--gold);background:rgba(2,132,199,.18);color:var(--gold)}
+:root[data-theme="dark"] .skill-cap.add{background:none;border-color:rgba(232,183,61,.35);color:var(--gold)}
 :root[data-theme="dark"] .skills-pick{background:rgba(0,0,0,.25);border-color:rgba(232,183,61,.25)}
 :root[data-theme="dark"] .modal-box{box-shadow:0 18px 60px rgba(0,0,0,.55),0 0 0 1px rgba(232,183,61,.15)}
 :root[data-theme="dark"] .modal-box .form input:focus,.modal-box .form textarea:focus{box-shadow:0 0 0 2px rgba(232,183,61,.15)}
@@ -1093,8 +1039,8 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .mapi-row select:focus,.mapi-row input:focus{box-shadow:0 0 0 2px rgba(232,183,61,.15)}
 :root[data-theme="dark"] .sched-ops button{background:rgba(232,183,61,.08);border-color:rgba(232,183,61,.4)}
 :root[data-theme="dark"] .sched-ops button:hover{box-shadow:0 0 10px rgba(232,183,61,.35)}
-:root[data-theme="dark"] #btnSaveModelApi,#btnTestModelApi,#btnSchedAdd{background:rgba(232,183,61,.06);border:1px solid rgba(232,183,61,.55)}
-:root[data-theme="dark"] #btnSaveModelApi:hover,#btnTestModelApi:hover,#btnSchedAdd:hover{background:rgba(232,183,61,.16);box-shadow:0 0 14px rgba(232,183,61,.25)}
+:root[data-theme="dark"] #btnSaveModelApi,#btnTestModelApi,#btnSchedAdd,#btnSaveEngine{background:rgba(232,183,61,.06);border:1px solid rgba(232,183,61,.55)}
+:root[data-theme="dark"] #btnSaveModelApi:hover,#btnTestModelApi:hover,#btnSchedAdd:hover,#btnSaveEngine:hover{background:rgba(232,183,61,.16);box-shadow:0 0 14px rgba(232,183,61,.25)}
 :root[data-theme="dark"] .role-card .rc-folder:hover{border-color:rgba(232,183,61,.6);background:rgba(232,183,61,.1);box-shadow:0 2px 10px rgba(232,183,61,.25)}
 :root[data-theme="dark"] .role-card .rc-del:hover{border-color:rgba(231,76,60,.6);background:rgba(231,76,60,.1);box-shadow:0 2px 10px rgba(231,76,60,.25)}
 :root[data-theme="dark"] .del-role-info{border:1px dashed rgba(231,76,60,.45);background:rgba(231,76,60,.05)}
@@ -1118,7 +1064,7 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] .board-bar{display:flex;gap:8px;align-items:center;flex:none;margin-bottom:2px}
 :root[data-theme="dark"] .board-search{background:rgba(10,14,21,.8);color:var(--txt)}
 :root[data-theme="dark"] .board-search::placeholder{color:var(--faint)}
-:root[data-theme="dark"] .bd-col{display:flex;background:rgba(0,0,0,.18)}
+:root[data-theme="dark"] .bd-col{display:flex}
 :root[data-theme="dark"] .bd-col::before{display:block;background:var(--faint)}
 :root[data-theme="dark"] .bd-col.wait::before{background:var(--gold)}
 :root[data-theme="dark"] .bd-col.run::before{background:var(--indigo)}
@@ -1141,13 +1087,7 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 :root[data-theme="dark"] #btnDirPick{color:#1a1206;box-shadow:0 2px 10px rgba(232,183,61,.25)}
 :root[data-theme="dark"] #btnDirUp:hover{background:var(--gold);color:#1a1206;box-shadow:0 0 10px rgba(232,183,61,.3)}
 :root[data-theme="dark"] #btnDirPick:hover{filter:brightness(1.1);box-shadow:0 4px 14px rgba(232,183,61,.4)}
-
-/* 批阅台「折叠 / 产物行」深色金系适配 */
-:root[data-theme="dark"] .work-doc.to-doc{background:rgba(255,255,255,.03)}
 :root[data-theme="dark"] .doc-sec .to-doc{background:rgba(255,255,255,.03)}
-/* 折叠按钮 / 产物行：深色主题适配（金色系，保证对比度） */
-:root[data-theme="dark"] .sec-btn{background:rgba(232,183,61,.08);border-color:var(--line2)}
-:root[data-theme="dark"] .sec-btn:hover{background:rgba(232,183,61,.16)}
 :root[data-theme="dark"] .sec-btn .arr{color:var(--gold)}
 :root[data-theme="dark"] .prod-item{background:rgba(255,255,255,.04);color:var(--txt)}
 :root[data-theme="dark"] .prod-item:hover{background:rgba(232,183,61,.1)}
@@ -1163,11 +1103,39 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
    ③ 批阅台决策项：只留 项目进展 / 待决内容全文 / R1 建议 的精简排版本。
    ================================================================ */
 
-/* ① 简报归档 —— 不再用灰色底 */
-.daily-list{background:linear-gradient(180deg,rgba(2,132,199,.13),rgba(2,132,199,.03)),var(--panel)}
-:root[data-theme="dark"] .daily-list{background:linear-gradient(180deg,rgba(232,183,61,.14),rgba(232,183,61,.04)),var(--panel)}
-.daily-main{background:linear-gradient(180deg,rgba(250,252,254,.75),rgba(236,241,248,.35))}
-:root[data-theme="dark"] .daily-main{background:linear-gradient(180deg,rgba(13,18,30,.6),rgba(10,14,21,.35))}
+/* ① 简报归档 —— 与「项目进度」统一面板底（不再用独立渐变） */
+.daily-list,.daily-main{background:var(--panel);border:1px solid var(--line);border-radius:12px}
+:root[data-theme="dark"] .daily-list,:root[data-theme="dark"] .daily-main{background:rgba(255,255,255,.02);border-color:var(--line2)}
+
+/* ===== 面板底统一为半透明叠加层（浅色 = 透出底色的白，深色 = 微弱提亮） =====
+   浅色原先用不透明的 var(--panel)（#f8fafc），深色才用 rgba(255,255,255,.02)；
+   现在两套主题一致：都是叠加层，页面渐变能透出来。 */
+.prog-panel,
+.org-panel,
+.role-panel,
+.tl-strip,
+.wb-col,
+.daily-list,
+.daily-main{background:rgba(255,255,255,.38)}
+:root[data-theme="dark"] .prog-panel,
+:root[data-theme="dark"] .org-panel,
+:root[data-theme="dark"] .role-panel,
+:root[data-theme="dark"] .tl-strip,
+:root[data-theme="dark"] .wb-col,
+:root[data-theme="dark"] .daily-list,
+
+
+/* ===== 统一面板底：把「项目进度」的底色套到其余主区块 =====
+   浅色下组织架构/角色工作区/OPC 时间线本来就用 var(--panel)，差异主要在深色主题
+   （原来只有 .prog-panel 有轻微提亮 rgba(255,255,255,.02)）；工作台三列与简报页
+   则是另一套底，这里一并归到同一张面板上。*/
+.wb-col{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+:root[data-theme="dark"] .org-panel,
+:root[data-theme="dark"] .role-panel,
+:root[data-theme="dark"] .tl-strip,
+:root[data-theme="dark"] .wb-col,
+:root[data-theme="dark"] .daily-list,
+:root[data-theme="dark"] .daily-main{background:rgba(255,255,255,.02);border-color:var(--line2)}
 
 /* ② 工作台：三列固定（左列收成 ~250px 缩略栏，看板/详情分到剩余宽度；点任务与子任务不改版式） */
 .wb-cols{grid-template-columns:250px minmax(0,1.25fr) minmax(0,1fr)}
@@ -1190,12 +1158,9 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .ws-list::-webkit-scrollbar{width:6px}
 .ws-list::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
 .ws-list::-webkit-scrollbar-track{background:rgba(15,30,50,.06)}
-.ws-group{font-size:10.5px;letter-spacing:1px;color:var(--gold);margin-top:8px;border-bottom:1px dashed var(--line2);padding-bottom:3px}
-.ws-group:first-child{margin-top:0}
 .ws-item{display:flex;align-items:baseline;gap:6px;padding:5px 8px;border:1px solid var(--line);border-radius:6px;cursor:pointer;font-size:11.5px;color:var(--txt);background:rgba(15,30,50,.03);transition:all .12s ease;min-width:0}
 .ws-item:hover{border-color:var(--line2);background:rgba(2,132,199,.08)}
 .ws-item.active{border-color:var(--gold);background:rgba(2,132,199,.14)}
-.wsi-role{flex:none;font-size:9.5px;padding:1px 6px;border-radius:99px;border:1px solid rgba(99,102,241,.45);color:var(--indigo);letter-spacing:.3px;white-space:nowrap}
 .wsi-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:10.5px;color:var(--txt)}
 .wsi-meta{flex:none;font-size:9px;color:var(--faint);font-family:var(--mono);white-space:nowrap}
 .wsi-meta.arch{color:var(--gold);border:1px solid rgba(2,132,199,.4);border-radius:4px;padding:0 4px}
@@ -1232,10 +1197,6 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .wb-cols .wb-left .dq-row .dsub{grid-area:sub;font-size:9px;color:var(--faint);font-family:var(--mono);white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .wb-cols .wb-left .dq-row .dops{grid-area:ops;justify-self:end;display:flex;gap:3px;align-items:center;min-width:0}
 .wb-cols .wb-left .dq-row .dops .dretry,.wb-cols .wb-left .dq-row .dops .ddel{padding:1px 6px;font-size:9px;margin:0;border-radius:5px}
-.wb-cols .wb-left .dq-row .dtask,
-.wb-cols .wb-left .dq-row .dtime,
-.wb-cols .wb-left .dq-row .dexpect,
-.wb-cols .wb-left .dq-row .dreport{display:none!important}
 
 /* ③ 批阅台：决策项精简版（任务行摘要 / 项目进展 / 待决全文 / R1 建议） */
 .pending-lean .dec-sub{font-size:12px;color:var(--dim);margin:2px 0 10px;line-height:1.6;word-break:break-word}
@@ -1292,12 +1253,12 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 
 
 /* ===== 修正右列空隙与 runLog 内部排版：行轨道内元素填满轨道，去掉残留的 44% 上限空隙 ===== */
-.wb-cols .wb-right{display:grid!important;grid-template-rows:auto auto minmax(0,2fr) auto minmax(0,1fr);gap:4px;overflow:hidden;min-height:0;height:100%}
-.wb-cols .wb-right .wb-col-head{grid-row:1;min-height:0;height:auto}
-.wb-cols .wb-right .act-panel{grid-row:2;flex:none!important;max-height:130px!important;min-height:0!important;overflow:hidden!important;overflow-y:auto!important;margin:0!important;align-self:stretch}
-.wb-cols .wb-right .task-out{grid-row:3;height:100%;max-height:none!important;min-height:0!important;flex:none;overflow:hidden!important;overflow-y:auto!important;overflow-x:hidden;margin:0!important;align-self:stretch}
-.wb-cols .wb-right .live-head{grid-row:4;height:auto;margin:4px 0 0;padding-bottom:2px}
-.wb-cols .wb-right .run-log{grid-row:5;height:100%;max-height:none!important;min-height:0!important;flex:none;overflow:hidden!important;overflow-y:auto!important;overflow-x:hidden;margin:0!important;align-self:stretch}
+.wb-cols .wb-right{display:grid!important}
+.wb-cols .wb-right .wb-col-head{height:auto}
+.wb-cols .wb-right .act-panel{flex:none!important;max-height:130px!important;min-height:0!important;overflow:hidden!important;overflow-y:auto!important;margin:0!important;align-self:stretch}
+.wb-cols .wb-right .task-out{height:100%;max-height:none!important;min-height:0!important;flex:none;overflow:hidden!important;overflow-y:auto!important;margin:0!important;align-self:stretch}
+.wb-cols .wb-right .live-head{height:auto;padding-bottom:2px}
+.wb-cols .wb-right .run-log{height:100%;max-height:none!important;min-height:0!important;flex:none;overflow:hidden!important;overflow-y:auto!important;margin:0!important;align-self:stretch}
 /* run-sec 内部高度：头部与正文各自内容高度，不再被外部撑开/压缩 */
 .wb-cols .wb-right .run-log .run-sec{flex:none;height:auto;min-height:0}
 .wb-cols .wb-right .run-log .run-sec-head{height:auto;min-height:0;flex:none}
@@ -1371,15 +1332,29 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .rc-tags{display:inline-flex;align-items:center;gap:3px;margin-top:0;margin-left:2px}
 .rc-tags i{font-style:normal;font-size:9px;padding:1px 7px;border-radius:99px;border:1px solid var(--line2);color:var(--dim);background:rgba(2,132,199,.06);letter-spacing:.5px}
 :root[data-theme="dark"] .rc-tags i{background:rgba(232,183,61,.08);color:var(--gold)}
-
-/* ===== 公共项目区（项目/：工程可写 · 全员只读） ===== */
-.proj-shared{margin-bottom:10px;border:1px dashed var(--line2);border-radius:8px;padding:6px 8px;background:rgba(2,132,199,.05)}
-.proj-shared-head{font-size:11px;font-weight:700;color:var(--gold);display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
-.proj-shared-head em{font-style:normal;font-size:9.5px;color:var(--dim);font-weight:400}
 .proj-shared-note{font-size:10px;color:var(--dim);margin-bottom:4px}
 .proj-shared-list .proj-file-item{display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:6px;cursor:pointer;font-size:11px;color:var(--txt)}
 .proj-shared-list .proj-file-item:hover{background:rgba(2,132,199,.12)}
 .proj-shared-list .proj-file-item em{margin-left:auto;font-style:normal;font-size:9.5px;color:var(--faint)}
+/* 公共项目区文件树（首页第三列里由 .prog-panel .proj-shared-list 接管高度与滚动） */
+.proj-shared-list{overscroll-behavior:contain;padding-right:2px}
+/* 角色筛选：项目/ 置顶并用金色区分（工程产出，不属任何角色） */
+#wsRoleSel option[value="项目"]{color:var(--gold);font-weight:700}
+/* 项目文件列表的文件夹树：目录行与文件行共用一套缩进 */
+#wsList .pf-dir{padding:3px 6px;border-radius:6px}
+#wsList .pf-dir .pf-arrow{font-size:9px}
+#wsList .ws-item{min-width:0}
+
+.proj-shared-list::-webkit-scrollbar{width:6px}
+.proj-shared-list::-webkit-scrollbar-thumb{background:rgba(2,132,199,.4);border-radius:3px}
+.proj-shared-list::-webkit-scrollbar-track{background:transparent}
+.pf-dir{display:flex;align-items:center;gap:5px;padding:3px 6px;border-radius:6px;cursor:pointer;font-size:11px;color:var(--dim);user-select:none}
+.pf-dir:hover{background:rgba(2,132,199,.12);color:var(--txt)}
+.pf-dir .pf-arrow{flex:none;width:9px;font-size:9px;color:var(--gold)}
+.pf-dir .pf-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf-dir em{margin-left:auto;flex:none;font-style:normal;font-size:9.5px;color:var(--faint)}
+:root[data-theme="dark"] .pf-dir:hover{background:rgba(232,183,61,.1)}
+:root[data-theme="dark"] .proj-shared-list::-webkit-scrollbar-thumb{background:rgba(232,183,61,.35)}
 .ws-iframe{width:100%;height:72vh;border:1px solid var(--line2);border-radius:8px;background:#fff}
 .ws-preview{position:relative}
 .ws-fs-btn{position:absolute;top:8px;right:8px;z-index:6;display:inline-flex;align-items:center;justify-content:center;width:34px;height:30px;border:1px solid rgba(255,255,255,.38);border-radius:8px;background:rgba(0,0,0,.42);color:#fff;cursor:pointer;transition:background .15s,border-color .15s}
@@ -1392,9 +1367,150 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .ws-fs-exit:hover{background:rgba(0,0,0,.72);border-color:#fff}
 .ws-fs-exit:active{transform:scale(.95)}
 .ws-fs-exit svg{display:block}
-:root[data-theme="dark"] .proj-shared{background:rgba(232,183,61,.05)}
 :root[data-theme="dark"] .proj-shared-list .proj-file-item:hover{background:rgba(232,183,61,.1)}
 
+/* ===== 全局滚动条：跟随主题（浅色青蓝 / 深色金），覆盖所有面板与列表 ===== */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:rgba(2,132,199,.38);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:rgba(2,132,199,.6)}
+::-webkit-scrollbar-track{background:transparent}
+:root{scrollbar-width:thin;scrollbar-color:rgba(2,132,199,.38) transparent}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb{background:rgba(232,183,61,.32)}
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover{background:rgba(232,183,61,.5)}
+:root[data-theme="dark"]{scrollbar-color:rgba(232,183,61,.32) transparent}
 
+/* ===== 面板内自适应：列变窄时内部元素收缩/换行，而不是被挤变形 ===== */
+.org-node{min-width:0}
+.org-node .oid{flex:none}
+.org-node .ostatus{flex:none;white-space:nowrap}
+.org-grid .role-card{min-width:0}
+.home-grid > *{min-width:0}                 /* 三列各自允许内容收缩，不撑破栅格 */
 
+.role-panel,.role-detail,.role-pane{min-width:0}
+.role-pane .pane-title{flex-wrap:wrap;row-gap:4px}
+.role-pane .pane-title em{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.role-pane .pane-body,.role-pane .pane-body *{overflow-wrap:anywhere}
+.role-pane.card .pane-body{min-width:0}
+.role-card-doc h1,.role-card-doc h2,.role-card-doc h3{overflow-wrap:anywhere}
+.prog-panel .proj-shared-list .wsi-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* 角色卡内部自适应：右上角状态标签是绝对定位，卡片一窄就会盖住角色名 */
+.org-tree .role-card .rc-top{padding-right:58px}
+.org-tree .role-card .rc-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.org-tree .role-card .rc-n{flex:none}
+.org-tree .role-card .rc-duty,.org-tree .role-card .rc-cur{overflow-wrap:anywhere}
+
+/* ===== 角色工作区：按比例分配高度（角色卡 : 技能 : 产物 = 6 : 2 : 2，即 60% / 20% / 20%）
+   用 flex 份数而不是 height:60%——份数会自动扣掉 pane 之间的间距，不会把总高撑破。
+   滚动落在各 pane 内部，所以比例固定、内容多了也不变形。 ===== */
+.role-panel{display:flex;flex-direction:column;min-height:0}
+.role-detail{flex:1;min-height:0;display:flex;flex-direction:column;gap:8px}
+.role-pane.card{min-height:0;display:flex;flex-direction:column}
+.role-pane.skills,.role-pane.files{flex:2 1 0;min-height:0;display:flex;flex-direction:column}
+.role-pane.card .pane-body,
+.role-pane.skills .pane-body,
+.role-pane.files .pane-body{min-height:0;overflow-y:auto}
+.role-pane .pane-title{flex:none}
+
+/* ===== 角色工作区高度分配（覆盖此前的 6:2:2 比例）=====
+   技能与产物各只占「一行胶囊」的高度，剩下的全部给角色卡——默认不出滚动条，视觉最干净。
+   只有角色卡内容真的超长时，才在角色卡内部滚动。 */
+.role-pane.card{flex:1 1 auto}
+.role-pane.skills,.role-pane.files{flex:none}
+.role-pane.skills .pane-body,
+.role-pane.files .pane-body{flex:none;max-height:none;overflow:hidden;display:flex;flex-wrap:nowrap;align-items:center;gap:6px}
+.role-pane.card .pane-body{flex:1;min-height:0;max-height:none;overflow-y:auto}
+.role-pane.files .pane-body .rno-more{flex:none;margin:0 6px 0 0}
+
+/* 角色卡两列时的保护：右上状态标签（如「待命中」）不换行、不被挤压；
+   名称行已预留 58px 让位，所以两列也不会把标签压在文字上。 */
+.org-tree .role-card .rc-st{white-space:nowrap;pointer-events:none}
+.org-tree .role-card .rc-top{gap:6px}
+
+/* ===== 设置 · 执行引擎 ===== */
+.eng-list{display:flex;flex-direction:column;gap:9px}
+.eng-item{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;transition:border-color .15s ease}
+.eng-item.current{border-color:rgba(2,132,199,.55);background:rgba(2,132,199,.05)}
+.eng-head{display:flex;align-items:center;gap:8px}
+.eng-head b{font-size:12px;color:var(--txt)}
+.eng-cur{font-size:9.5px;letter-spacing:.08em;color:var(--gold);border:1px solid var(--line2);border-radius:5px;padding:1px 6px}
+.eng-st{margin-left:auto;font-size:9.5px;letter-spacing:.08em}
+.eng-st.ok{color:var(--ok)}
+.eng-st.bad{color:var(--red-bright)}
+.eng-desc{font-size:10.5px;color:var(--dim);line-height:1.55}
+.eng-note{font-family:var(--mono);font-size:10px;color:var(--faint);line-height:1.5}
+.eng-caps{display:flex;gap:6px;flex-wrap:wrap}
+.eng-caps i{font-style:normal;font-size:9.5px;color:var(--dim);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+:root[data-theme="dark"] .eng-item{background:rgba(255,255,255,.02)}
+:root[data-theme="dark"] .eng-item.current{border-color:rgba(232,183,61,.5);background:rgba(232,183,61,.06)}
+
+/* ===== 面板底色统一透明 =====
+   原来各个面板都有一层底（浅色 var(--panel)、深色 rgba(255,255,255,.02)），把页面底纹盖住了。
+   这里统一去掉底色，描边 / 圆角 / 内边距保留 —— 否则分栏与分区看不出来。
+   （同特异性 + 后定义，覆盖上面各面板自己的底色规则。）
+   不进这条的：模态框（.modal-box 要实底才看得清）、卡片与列表项（.bd-card / .dq-row /
+   .proj-item / .eng-item / .snav-item / .a-item / .p-card 等，靠底色区分层级）、输入框与按钮。*/
+.dispatch-panel,
+.wb-col,
+.act-panel,
+.task-out,
+.run-log,
+.bd-col,
+.prog-panel,
+.org-panel,
+.tl-panel,
+.role-panel,
+.tl-strip,
+.daily-list,
+.daily-main,
+.settings-nav,
+.settings-main,
+.ws-side,
+.ws-main,
+.role-pane,
+.kb-card,
+.kb-doc .markdown-body,
+.tl-h-item,
+.mdt-wrap,
+.ov-item{background:transparent}
+:root[data-theme="dark"] .dispatch-panel,
+:root[data-theme="dark"] .wb-col,
+:root[data-theme="dark"] .act-panel,
+:root[data-theme="dark"] .task-out,
+:root[data-theme="dark"] .run-log,
+:root[data-theme="dark"] .bd-col,
+:root[data-theme="dark"] .prog-panel,
+:root[data-theme="dark"] .org-panel,
+:root[data-theme="dark"] .tl-panel,
+:root[data-theme="dark"] .role-panel,
+:root[data-theme="dark"] .tl-strip,
+:root[data-theme="dark"] .daily-list,
+:root[data-theme="dark"] .daily-main,
+:root[data-theme="dark"] .settings-nav,
+:root[data-theme="dark"] .settings-main,
+:root[data-theme="dark"] .ws-side,
+:root[data-theme="dark"] .ws-main,
+:root[data-theme="dark"] .role-pane,
+:root[data-theme="dark"] .kb-card,
+:root[data-theme="dark"] .kb-doc .markdown-body,
+:root[data-theme="dark"] .tl-h-item,
+:root[data-theme="dark"] .mdt-wrap,
+:root[data-theme="dark"] .ov-item{background:transparent}
+/* 工作台里的两个输入框（下达任务 / 看板搜索）同样去底色，只留描边与占位符 —— 否则面板都透了、
+   就这两个框还顶着一块实色底，很突兀。不给所有输入框做全局透明：设置页表单与模型接入那些框
+   需要有底色才看得出「这儿能填」。
+   focus 时只变描边色（.board-search:focus），不会突然冒出一块底色。*/
+.launch-row input,
+.board-search{background:transparent}
+:root[data-theme="dark"] .launch-row input,
+:root[data-theme="dark"] .board-search{background:transparent}
+/* 组织架构里的角色卡片与节点：去底色，只留描边。
+   .org-node.root / .hub / .add 三种节点的淡色底**保留** —— 那是「谁是 R0 / R1 / 新增位」
+   的身份标识（特异性也高于这条：.org-node.root 优先），去掉就只剩文字，扫一眼分不出来。*/
+.role-card,
+.org-node{background:transparent}
+:root[data-theme="dark"] .role-card,
+:root[data-theme="dark"] .org-node{background:transparent}
+/* 不进上面淡底白名单的：列表项 / 卡片（.dq-row / .bd-card / .proj-item / .eng-item 等）
+   靠底色和 hover 区分层级，全透明会糊成一片；模态框 .modal-box 要实底才看得清；
+   全屏查看的 .run-log.fullscreen 规则特异性更高，不受影响。*/

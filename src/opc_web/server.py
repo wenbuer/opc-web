@@ -11,7 +11,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
-from . import bootstrap, chain, config, knowledge, parsers, review, roles, runner, scheduler, store, templates
+from . import (bootstrap, chain, config, engines, knowledge, parsers, review, roles, runner,
+               scheduler, skills, store, templates)
 
 
 def _strip_okf_frontmatter(text: str) -> str:
@@ -119,6 +120,13 @@ class Handler(BaseHTTPRequestHandler):
         rel = unquote(self._qs().get("rel", [""])[0])
         return {"ok": True, "rel": rel, "text": _strip_okf_frontmatter(knowledge.read_md(rel))}
 
+    def _queue_rows(self):
+        """任务队列（**最新在前**）：刚下达的任务排在最上面，不用翻到列表底部找。
+
+        台账仍按任务号升序存放（分配新号依赖这个顺序），这里只翻转展示顺序；
+        前端各处都是按 no 查找/计数，不依赖数组顺序。"""
+        return list(reversed(store.tasks()))
+
     def _get_pending(self):
         data = parsers.parse_piyuetai(knowledge.read_md(config.PIYUETAI_REL))
         return {"ok": True, "work": data["work"], "pending": data["pending"],
@@ -163,49 +171,24 @@ class Handler(BaseHTTPRequestHandler):
         names = sorted(p.name for p in d.glob("*.md")) if d.is_dir() else []
         return {"ok": True, "skills": names, "dir": str(d)}
 
-    def _dsh_skill_dirs(self):
-        home = Path(os.environ.get("DSH_HOME") or (Path.home() / ".dsh"))
-        dirs, seen = [], set()
-        def add(p):
-            if p.is_dir() and (p / "SKILL.md").exists() and p.name not in seen:
-                seen.add(p.name); dirs.append(p)
-        usr = home / "skills"
-        if usr.is_dir():
-            for p in sorted(usr.iterdir()):
-                add(p)
-        prof = home / "profiles"
-        if prof.is_dir():
-            for pd in sorted(prof.iterdir()):
-                nm = pd / "node_modules"
-                if nm.is_dir():
-                    for sk in sorted(nm.glob("**/skills/*/SKILL.md")):
-                        add(sk.parent)
-        return sorted(dirs, key=lambda p: p.name.lower())
+    def _get_skill_sources(self):
+        """可导入的技能（扫本机技能源）：**与当前引擎无关** —— 技能是项目资产，不是引擎能力。
 
-    def _skill_desc(self, sk):
-        try:
-            txt = sk.read_text(encoding="utf-8", errors="replace")
-        except Exception:
-            return ""
-        m = re.search(r"^---\s*\n([\s\S]*?)\n---", txt)
-        fm = m.group(1) if m else ""
-        dm = re.search(r"(?m)^description:\s*[>|]?\s*([\s\S]*?)(?=^---|\Z)", fm)
-        return " ".join((dm.group(1) or "").split())[:200] if dm else ""
-
-    def _get_dsh_skills(self):
-        dirs = self._dsh_skill_dirs()
-        if not dirs:
-            return {"ok": True, "skills": [], "dirs": [], "msg": "未找到 dsh 技能目录"}
+        技能 md 导入后进共享技能库 agents/skills/，角色卡登记装配，执行时由
+        agent_prompt() 拼进 prompt，所以两套引擎用的是同一份技能。引擎的差别只在
+        capabilities.skills：技能里那些「跑命令 / 读写文件」的步骤，dsh 自带工具沙箱能直接
+        执行，直连 API 引擎只有 4 个基础工具。"""
+        eng = engines.get_engine()
+        cap = bool((eng.capabilities() or {}).get("skills"))
         lib = config.AGENTS_DIR / config.SKILLS_REL
         lib_names = {p.name for p in lib.glob("*.md")} if lib.is_dir() else set()
-        skills = []
-        for p in dirs:
-            if not p.is_dir() or p.name.startswith("."):
-                continue
-            if (p / "SKILL.md").exists():
-                skills.append({"name": p.name, "desc": self._skill_desc(p / "SKILL.md"),
-                               "installed": (p.name + ".md") in lib_names, "path": str(p)})
-        return {"ok": True, "skills": skills, "dirs": [str(x) for x in dirs]}
+        rows = [{"name": p.name, "desc": skills.describe(p / "SKILL.md"), "path": str(p),
+                 "installed": (p.name + ".md") in lib_names}
+                for p in skills.sources()
+                if p.name and not p.name.startswith(".") and (p / "SKILL.md").exists()]
+        return {"ok": True, "skills": rows, "engine": eng.name, "engineLabel": eng.label,
+                "engineRunsSkills": cap,
+                "msg": "" if rows else "本机没找到技能源（~/.dsh/skills、~/.agents/skills、npm 插件包三处）"}
 
     def _import_skill(self):
         body = self._body() or {}
@@ -214,15 +197,15 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "缺少技能名 name")
         if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
             raise ApiError(400, "技能名非法")
-        src = next((p for p in self._dsh_skill_dirs() if p.name == name), None)
-        if src is None or not (src / "SKILL.md").exists():
-            raise ApiError(404, "dsh 技能 " + name + " 不存在")
+        src = next((p for p in skills.sources() if p.name == name), None)
+        if src is None or not (src / "SKILL.md").is_file():
+            raise ApiError(404, "本机技能源里没有「%s」" % name)
         lib = config.AGENTS_DIR / config.SKILLS_REL
         lib.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src / "SKILL.md", lib / (name + ".md"))
         shutil.copytree(src, lib / name, dirs_exist_ok=True)
         return {"ok": True, "name": name, "installed": True,
-                "msg": "已导入「" + name + "」到技能库", "skills": self._get_dsh_skills()["skills"]}
+                "msg": "已导入「" + name + "」到技能库", "skills": self._get_skill_sources()["skills"]}
 
     def _get_daily(self):
         return {"ok": True, "daily": knowledge.latest_daily()}
@@ -240,7 +223,7 @@ class Handler(BaseHTTPRequestHandler):
             ctype = "text/css; charset=utf-8" if rel.endswith(".css") else "text/javascript; charset=utf-8"
             self._file(config.STATIC / rel, ctype)
         elif url == "/api/kb-entries":
-            self._ok(lambda: {"ok": True, "manager": "老板助理（枢纽）R1",
+            self._ok(lambda: {"ok": True, "manager": "老板助理R1",
                               "entries": knowledge.kb_entries()})
         elif url == "/api/md":
             self._ok(self._get_md, err=400)
@@ -253,7 +236,7 @@ class Handler(BaseHTTPRequestHandler):
         elif url == "/api/timeline":
             self._ok(lambda: {"ok": True, **scheduler.get_timeline()})
         elif url == "/api/queue":
-            self._ok(lambda: {"ok": True, "queue": store.tasks()})
+            self._ok(lambda: {"ok": True, "queue": self._queue_rows()})
         elif url == "/api/rn-outputs":
             self._ok(lambda: {"ok": True,
                               "groups": scheduler.rn_outputs(self._qs().get("no", [""])[0])})
@@ -261,6 +244,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(lambda: {"ok": True, "files": scheduler.ws_files()})
         elif url == "/api/project-files":
             self._ok(lambda: {"ok": True, **scheduler.project_files()})
+        elif url == "/api/home-stats":
+            self._ok(scheduler.home_stats)
         elif url == "/api/tokens":
             self._ok(lambda: {"ok": True, "rows": scheduler.token_rows()})
         elif url == "/api/ws-file":
@@ -281,8 +266,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._get_role_card)
         elif url == "/api/skills":
             self._ok(self._get_skill_lib)
-        elif url == "/api/dsh-skills":
-            self._ok(self._get_dsh_skills)
+        elif url == "/api/skill-sources":
+            self._ok(self._get_skill_sources)
         elif url == "/api/templates":
             self._json({"ok": True, "templates": templates.templates()})
         elif url == "/api/handbook":
@@ -292,6 +277,10 @@ class Handler(BaseHTTPRequestHandler):
                         "active": config.active_project(), "seedRoles": config.settings_info()["seedRoles"]})
         elif url == "/api/settings":
             self._json(config.settings_info())
+        elif url == "/api/engines":
+            self._json({"ok": True, **engines.describe(),
+                        "fallback": config.engine_fallback(config.ENGINE),
+                        "configPath": str(config.CONFIG_FILE)})
         elif url == "/api/schedule":
             self._json({"ok": True, "schedules": config.schedule_status()})
         elif url == "/api/dirs":
@@ -330,7 +319,7 @@ class Handler(BaseHTTPRequestHandler):
             retried = True
             scheduler.scan_once()  # 立即扫描：置待派后马上重启执行链（busy 时自然排队）
         return {"ok": True, "no": no, "retried": retried,
-                "queue": store.tasks(),
+                "queue": self._queue_rows(),
                 "msg": ("重试 " + no + "：已重置为待派并触发扫描（未完成子任务重新执行）") if retried
                        else (no + " 状态为「" + hit[0]["status"] + "」，无需重试")}
 
@@ -344,7 +333,7 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "任务内容不能为空")
         no = store.add_task(text, expect)
         scheduler.scan_once()  # 立即生成 R1 拆解指令，不等 8s 轮询
-        return {"ok": True, "no": no, "queue": store.tasks(), "state": scheduler.SCHED_STATE}
+        return {"ok": True, "no": no, "queue": self._queue_rows(), "state": scheduler.SCHED_STATE}
 
     def _post_task_delete(self):
         body = self._body()
@@ -365,7 +354,7 @@ class Handler(BaseHTTPRequestHandler):
         rep_n = len(store.reports(no))            # 删除将连带移除回报/批阅依据
         store.delete_task(no)
         removed = scheduler.clean_task_files(no)
-        return {"ok": True, "no": no, "removedFiles": removed, "queue": store.tasks(),
+        return {"ok": True, "no": no, "removedFiles": removed, "queue": self._queue_rows(),
                 "msg": ("已删除任务 " + no + (" · 连带移除 " + str(rep_n) + " 条回报/批阅记录" if rep_n else "")
                         + ((" · 清理工作区文件 " + str(removed) + " 个") if removed else ""))}
 
@@ -444,12 +433,27 @@ class Handler(BaseHTTPRequestHandler):
                     kv["port"] = int(str(kv["port"]).strip())
                 except Exception:
                     kv.pop("port", None)
+            eng = str(kv.get("engine") or "").strip().lower()
+            if eng:                                  # 引擎名必须是已注册的，写错当场报错而不是留到派发
+                if eng not in engines.available():
+                    raise ApiError(400, "未知执行引擎：%s（可用：%s）"
+                                   % (eng, "、".join(engines.available()) or "无"))
+                kv["engine"] = eng
+            fb = kv.get("engineFallback")
+            if fb is not None:                       # 备用引擎（主引擎失败时兜底），空 = 关闭
+                fb = str(fb).strip().lower()
+                if fb and fb not in engines.available():
+                    raise ApiError(400, "未知备用引擎：%s（可用：%s）"
+                                   % (fb, "、".join(engines.available()) or "无"))
+                kv["engineFallback"] = fb
             out = {"ok": True}
             if kv and not dry:
                 config.save_cfg(kv)
                 config.reload()
                 bootstrap.bootstrap()      # 新根目录下的三目录幂等重建
                 out.update(config.settings_info())
+                out["engines"] = engines.describe()      # 切换后立即回带新状态，前端不用再拉一次
+                out["engines"]["fallback"] = config.engine_fallback(config.ENGINE)
                 out["boot"] = bootstrap.BOOT_LOG
             mbody = body.get("model")
             if isinstance(mbody, dict):
@@ -460,10 +464,13 @@ class Handler(BaseHTTPRequestHandler):
                 out["model"] = res         # 放在 settings_info 之后，否则被其 model 字段盖掉
             out["msg"] = "；".join(x for x in (
                 "模型 API 配置已保存" if isinstance(mbody, dict) else "",
+                ("执行引擎已切换到 " + eng) if eng else "",
                 "opc-config.json 已更新并生效" if kv else "",
                 "端口修改需重启控制台" if "port" in kv else "",
             ) if x) or "无改动"
             return out
+        except ApiError:
+            raise                    # 校验类错误原样抛出（400），别包成「保存设置失败」
         except Exception as e:
             raise ApiError(500, "保存设置失败: " + str(e)[:200])
 
@@ -575,8 +582,6 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._post_dispatch)
         elif url == "/api/task-delete":
             self._ok(self._post_task_delete)
-        elif url == "/api/r1-archive":
-            self._ok(lambda: {"ok": True, "result": scheduler.r1_archive()})
         elif url == "/api/plan-execute":
             self._ok(lambda: {"ok": True, "result": scheduler.plan_execute()})
         elif url == "/api/plan-pause":
