@@ -389,8 +389,10 @@ def execute(task_no, task_text, direct=None):
         # 归档入库：已完成/阻塞子任务回报落库、正文与元数据移入 已归档/（幂等，会顺带做任务级回填）
         try:
             sch.r1_archive()
-        except Exception:
-            pass
+        except Exception as e:
+            # 静默吞掉的话「产出没入库 / meta 没更新」完全无人知 —— 收尾失败必须留痕
+            runner.emit({"type": "assistant/chunk", "data": {
+                "text": "⚠ 归档入库失败：%s（产出可能未入库，可手动重试归档）" % str(e)[:110]}})
         # R1 整理回报 → 呈报 R0（批阅台新增「待决」段落，UI 批阅台可见并可裁决）
         piyue_no = None
         if ok_cnt > 0:
@@ -404,12 +406,14 @@ def execute(task_no, task_text, direct=None):
         # R1 自动收尾：汇总当日日报 + 从产出提炼知识库（失败不阻断主流程）
         try:
             sch.kb_digest(task_no)
-        except Exception:
-            pass
+        except Exception as e:
+            runner.emit({"type": "assistant/chunk", "data": {
+                "text": "⚠ 知识库沉淀失败：%s（产出已落盘，可后补沉淀）" % str(e)[:110]}})
         try:
             sch.build_daily_report(task_no)
-        except Exception:
-            pass
+        except Exception as e:
+            runner.emit({"type": "assistant/chunk", "data": {
+                "text": "⚠ 每日简报生成失败：%s" % str(e)[:110]}})
 
         if not fail:
             store.set_task(task_no, "完成", "%d/%d 子任务完成" % (ok_cnt, total))
@@ -432,8 +436,10 @@ def execute(task_no, task_text, direct=None):
             for s in store.subtasks(task_no):
                 if s["st"] in ("执行中", "待派", "已派"):
                     store.set_subtask(s["no"], "阻塞")
-        except Exception:
-            pass
+        except Exception as e2:
+            # 这里再吞掉就等于「执行链异常 + 状态没置阻塞」双重无痕，界面会一直显示在跑
+            runner.emit({"type": "assistant/chunk", "data": {
+                "text": "⚠ 置阻塞失败：%s（任务状态可能仍显示执行中）" % str(e2)[:100]}})
         set_state(lastOk=False, tag=msg)
         runner.emit({"type": "run/exited", "data": {"code": -1}, "error": msg})
     finally:

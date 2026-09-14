@@ -1131,8 +1131,11 @@ def home_stats() -> dict:
     proj = config.ROOT / "项目"
     proj_files = 0
     if proj.is_dir():
+        # 项目目录下「.」开头的目录一律是本机环境/缓存（工具链、gradle 缓存、venv…），
+        # 不是源码也不是交付物 —— 统计与文件树都跳过。这是通用规则，不逐个列举目录名：
+        # 一个项目的环境动辄上千 MB、上万文件，混进来数字就完全失去意义。
         proj_files = sum(1 for p in proj.rglob("*") if p.is_file()
-                         and ".git" not in p.parts and "__pycache__" not in p.parts)
+                         and not any(_skip_name(s) for s in p.relative_to(proj).parts))
     kb = 0
     kbd = config.ROOT / "知识库"
     if kbd.is_dir():
