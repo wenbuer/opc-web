@@ -13,10 +13,13 @@ import datetime
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
-# 应用根：config.py 位于 src/opc_web/，向上三级
-BASE = Path(__file__).resolve().parent.parent.parent
+# 应用根：config.py 位于 src/opc_web/，向上三级；
+# 用 PyInstaller 打包后 __file__ 在 _internal 内部目录，改为指向 exe 所在目录（资源/配置/.env 都在 exe 旁）
+BASE = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
+        else Path(__file__).resolve().parent.parent.parent)
 
 CONFIG_FILE = Path(os.environ.get("OPC_CONFIG") or (BASE / "opc-config.json"))
 

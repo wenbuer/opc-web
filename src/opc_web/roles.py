@@ -20,7 +20,7 @@ CARD_TPL = """# OPC 角色卡：%(no)s %(name)s
 - 编号：%(no)s｜名称：%(name)s｜类型：%(type_)s
 - 一句话定位：%(position)s
 - 标签：%(tags)s
-- 上级：R1 老板助理（接受派发、回报确认）
+- 上级：%(superior)s
 
 ## 职责
 %(duties)s
@@ -120,6 +120,8 @@ def role_card(no, name, duty, position, type_="业务", skills=(), tags=()):
         "duties": duties, "skills": "\n".join(rows),
         "tags": " ".join(tags),
         "kb": kb, "ws": ws, "wsname": name,
+        # R1 自己的上级是 R0 老板（下达任务、批阅裁决）；其余角色上级是 R1 枢纽（接受派发、回报确认）
+        "superior": "R0 老板（下达任务、批阅裁决）" if no == "R1" else "R1 老板助理（接受派发、回报确认）",
     }
 
 
