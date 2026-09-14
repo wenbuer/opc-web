@@ -2641,6 +2641,14 @@
       if (m) m.textContent = "";
     }).then(function(){ r1State("busy", false); if (s) s.disabled = false; });
   }
+  // 柱状图 hover 文案：三档用量 + 缓存命中率（缓存读取单价低，这一段比例才是成本的关键）。
+  // 挂在整列上而不是每段柱上 —— 每段各自的 title 会盖住列上的，hover 永远只看得到一段。
+  function tokTip(label, fresh, cache, out){
+    var tin = fresh + cache;
+    var rate = tin ? Math.round(cache / tin * 100) : 0;
+    return label + "　新输入 " + fmtTok(fresh) + " · 缓存命中 " + fmtTok(cache)
+         + " · 输出 " + fmtTok(out) + "　缓存命中率 " + rate + "%";
+  }
   function loadTokenStats(){
     var sum = $("tokSum"), chart = $("tokChart");
     if (sum) sum.textContent = "";
@@ -2682,12 +2690,12 @@
         var hFresh = Math.max(2, Math.round(fresh / max * 180));
         var hCache = Math.round(v.cache / max * 180);
         var hOut = Math.max(2, Math.round(v.out / max * 180));
-        return "<div class='tok-col'><div class='tok-bars'>"
+        return "<div class='tok-col' title='" + esc(tokTip(t, fresh, v.cache, v.out)) + "'><div class='tok-bars'>"
           + "<span class='tok-stack'>"
-          + "<span class='tok-bar in' style='height:" + hFresh + "px' title='" + esc(t) + " 新输入 " + fmtTok(fresh) + "'></span>"
-          + (hCache ? "<span class='tok-bar cache' style='height:" + hCache + "px' title='" + esc(t) + " 缓存命中 " + fmtTok(v.cache) + "'></span>" : "")
+          + "<span class='tok-bar in' style='height:" + hFresh + "px'></span>"
+          + (hCache ? "<span class='tok-bar cache' style='height:" + hCache + "px'></span>" : "")
           + "</span>"
-          + "<span class='tok-bar out' style='height:" + hOut + "px' title='" + esc(t) + " 输出 " + fmtTok(v.out) + "'></span>"
+          + "<span class='tok-bar out' style='height:" + hOut + "px'></span>"
           + "</div><div class='tok-lab'>" + esc(t) + "</div><div class='tok-val'>" + fmtTok(v.inn + v.out) + "</div></div>";
       }).join("");
       if (aIn || aOut){
@@ -2695,11 +2703,11 @@
         var ahIn = Math.max(2, Math.round(aFresh / max * 180));
         var ahCache = Math.round(aCache / max * 180);
         var ahOut = Math.max(2, Math.round(aOut / max * 180));
-        altBars = "<div class='tok-col alt'><div class='tok-bars'><span class='tok-stack'>"
-          + "<span class='tok-bar in alt' style='height:" + ahIn + "px' title='临时会话 新输入 " + fmtTok(aFresh) + "'></span>"
-          + (ahCache ? "<span class='tok-bar cache alt' style='height:" + ahCache + "px' title='临时会话 缓存命中 " + fmtTok(aCache) + "'></span>" : "")
+        altBars = "<div class='tok-col alt' title='" + esc(tokTip("临时会话", aFresh, aCache, aOut)) + "'><div class='tok-bars'><span class='tok-stack'>"
+          + "<span class='tok-bar in alt' style='height:" + ahIn + "px'></span>"
+          + (ahCache ? "<span class='tok-bar cache alt' style='height:" + ahCache + "px'></span>" : "")
           + "</span>"
-          + "<span class='tok-bar out alt' style='height:" + ahOut + "px' title='临时会话 输出 " + fmtTok(aOut) + "'></span>"
+          + "<span class='tok-bar out alt' style='height:" + ahOut + "px'></span>"
           + "</div><div class='tok-lab'>临时会话</div><div class='tok-val'>" + fmtTok(aIn + aOut) + "</div></div>";
       }
       var bars = altBars + tCol;                   // 临时会话排最前：它是唯一特殊的一组

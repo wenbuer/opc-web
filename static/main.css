@@ -1233,6 +1233,8 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .tok-bar.in{background:#2f7fd4}
 .tok-bar.out{background:linear-gradient(180deg,#34d399,var(--ok))}
 .tok-lab{font-family:var(--mono);font-size:9.5px;color:var(--gold);margin-top:4px;white-space:nowrap}
+/* 柱下合计：此前没有规则，继承浏览器默认 16px，比上面的编号还大一截 */
+.tok-val{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:2px;white-space:nowrap}
 /* 临时会话：不进任务流程，所以不并入任何任务柱 —— 在末尾单列一组，用分隔线隔开 */
 .tok-col.alt{border-right:1px dashed var(--line2);padding-right:14px;width:auto;min-width:64px}
 .tok-col.alt .tok-lab{color:var(--dim)}
