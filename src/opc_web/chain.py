@@ -18,8 +18,6 @@ import re
 from . import agent, config, runner, scheduler as sch, store
 
 EXEC_TIMEOUT = 900          # 单个子任务的 headless 执行超时（秒）
-_META_COPY = ("subNo", "taskNo", "role", "roleName", "sub", "expect", "output", "meta")
-
 
 def _flat(s):
     """dsh headless 把输入当命令行参数：Windows 命令行遇换行即截断，任何给 headless 的文本必须压成单行。"""
@@ -44,8 +42,8 @@ def parse_dispatch_rows(text):
     return out
 
 
-# 点名直派：只认任务开头的角色编号（「R8 开始设计…」是点名，「参考 R8 的设计…」是提及）。
-# (?![\dA-Za-z]) 挡掉 R2D2 这类；连接词字符类允许「R2 和 R8 一起做」点两个人。
+# 点名直派：只认任务开头的角色编号（「R6 开始设计…」是点名，「参考 R6 的设计…」是提及）。
+# (?![\dA-Za-z]) 挡掉 R2D2 这类；连接词字符类允许「R2 和 R6 一起做」点两个人。
 _NAMED_HEAD = re.compile(r"^\s*((?:R\d+(?![\dA-Za-z])[\s、,，和与/&+]*)+)")
 
 
@@ -83,8 +81,8 @@ def decompose(task_no, task_text):
 
     v1.17 三处修正：
       1. 角色表带上一句话职责 —— 原先只给编号+名称（83 字），模型只能靠名字猜，
-         「本周产品动态提纲」该给 R3 内容工厂还是 R6 数据分析官全凭运气；
-      2. 点名只认任务开头 —— 原正则 re.search(r"R(\\d+)") 会被「参考 R8 的设计」
+         「本周产品动态提纲」该给 R3 内容工厂还是 R4 增长与数据全凭运气；
+      2. 点名只认任务开头 —— 原正则 re.search(r"R(\\d+)") 会被「参考 R6 的设计」
          「2024 R1 季度」「R2D2 玩具」误命中并直接直派；
       3. 拆不出合法角色不再硬回退 R2 —— 静默错分比明确阻塞更糟。"""
     try:
@@ -107,9 +105,10 @@ def decompose(task_no, task_text):
     if asks_r1(task_text):
         lead += "用户指定由 R1（枢纽·老板助理）牵头派发——R1 只拆解派发不直接执行，请忽略任务里的 R1 字样，直接按职责从下列业务角色选人："
     prompt = (lead + role_list +
-              "。请按职责匹配选人（不要只看角色名猜），拆解为最多 %d 个可并行子任务。"
+              "。按职能合理拆分：能由一个角色一次完成（如单点调研/资料检索）就拆 1 个，"
+              "只有确实需要多个职能并行或接力、单角色覆盖不了时才拆多个 —— 宁少勿多，总数不超过 %d 个。"
               "只输出派发单表格行，每行格式：| %s | 子任务描述 | R编号 | 期望产出 | 待派 |；"
-              "示例：| %s | 设计 KeepTalk 首页 | R8 | 界面设计稿 | 待派 |。"
+              "示例：| %s | 设计产品落地页 | R6 | 界面设计稿 | 待派 |。"
               "不要输出任何解释、提问或多余文字。任务：%s" % (max_subs, task_no, task_no, task_text))
     try:
         text = runner.run_headless_sync(prompt, config.tune("decomposeTimeout"))
@@ -163,11 +162,11 @@ def execute(task_no, task_text):
         if not subs:
             # 拆解失败：区分「指定 R1」「点名了不可执行编号」「完全未点名」给出针对性提示
             if asks_r1(task_text):
-                msg = "R1 派发拆解暂无输出：模型未返回子任务（请确认 dsh 可用，或直接点名业务角色如「R8 …」让 R1 直派）"
+                msg = "R1 派发拆解暂无输出：模型未返回子任务（请确认 dsh 可用，或直接点名业务角色如「R6 …」让 R1 直派）"
             elif head:
-                msg = "点名了 " + "、".join(head) + "（R1 只拆解派发、不承接执行），且模型拆解暂无输出：请点名 R2~R9 之一，或配置模型后重试"
+                msg = "点名了 " + "、".join(head) + "（R1 只拆解派发、不承接执行），且模型拆解暂无输出：请点名 R2~R7 之一，或配置模型后重试"
             else:
-                msg = "拆解未得到合法角色：模型拆解暂无输出（请确认 dsh 与模型可用，或点名业务角色如「R8 …」让 R1 直派）"
+                msg = "拆解未得到合法角色：模型拆解暂无输出（请确认 dsh 与模型可用，或点名业务角色如「R6 …」让 R1 直派）"
             store.set_task(task_no, "阻塞", msg)
             runner.emit({"type": "assistant/chunk",
                          "data": {"text": "✗ " + msg + " —— 任务置阻塞，等待手动指派"}})
@@ -193,22 +192,28 @@ def execute(task_no, task_text):
             store.set_subtask(sub_no, "执行中")
             store.open_execution(sub_no, task_no, s["role"])
             try:
-                text = runner.run_headless_sync(_flat(spec["prompt"]), EXEC_TIMEOUT)
+                text, usage = runner.run_headless_task(_flat(spec["prompt"]), EXEC_TIMEOUT)
             except Exception:
-                text = ""
+                text, usage = "", None
             if text:
-                with open(body_p, "a", encoding="utf-8") as fh:
-                    fh.write("\n\n## 执行产出（控制台自动执行 %s）\n\n%s\n" % (sub_no, text))
+                with open(body_p, "a", encoding="utf-8") as fh:          # 完成回报（唯一的子任务产出文件）
+                    fh.write("\n\n## 完成回报（控制台自动执行 %s）\n\n%s\n" % (sub_no, text))
                 try:
                     meta = json.loads(meta_p.read_text(encoding="utf-8"))
                     meta["status"] = "完成"
+                    if usage:
+                        # token 用量写入 meta.json（输入=含缓存读取的计费口径，另存拆分）
+                        meta["tokensIn"] = usage["inputTokens"] + usage["cacheReadTokens"]
+                        meta["tokensOut"] = usage["outputTokens"]
+                        meta["tokensCacheRead"] = usage["cacheReadTokens"]
+                        meta["tokensReasoning"] = usage["reasoningTokens"]
                     meta_p.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 except Exception:
                     pass
                 store.settle_execution(sub_no, "完成")
                 ok_cnt += 1
                 runner.emit({"type": "assistant/chunk",
-                             "data": {"text": "✔ %s（%s）执行完成，产出已写入：%s" % (sub_no, s["role"], spec["output"])}})
+                             "data": {"text": "✔ %s（%s）执行完成，产出回报已写入：%s（归档时改名 output）" % (sub_no, s["role"], spec["output"])}})
             else:
                 try:
                     with open(body_p, "a", encoding="utf-8") as fh:
@@ -243,6 +248,16 @@ def execute(task_no, task_text):
             if piyue_no:
                 runner.emit({"type": "assistant/chunk",
                              "data": {"text": "📤 回报已整理并呈报 R0：批阅台 待决 #%d（可到批阅台 批准/驳回/修改）" % piyue_no}})
+        # R1 自动收尾：汇总当日日报 + 从产出提炼知识库（失败不阻断主流程）
+        try:
+            sch.kb_digest(task_no)
+        except Exception:
+            pass
+        try:
+            sch.build_daily_report()
+        except Exception:
+            pass
+
         if not fail:
             store.set_task(task_no, "完成", "%d/%d 子任务完成" % (ok_cnt, total))
             set_state(lastOk=True, tag="任务 %s 完成：%d/%d" % (task_no, ok_cnt, total))
