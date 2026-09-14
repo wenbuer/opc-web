@@ -2,52 +2,64 @@
 """知识库 md 解析器：批阅台 / 角色架构 / 派发单 / 决策日志 / 时间线 / 任务清单。"""
 import re
 
-from . import config, knowledge
+from . import config, knowledge, store
 
 # ---------- 批阅台 ----------
+# 条目分两类：### 工作 N（例行进展，进「工作内容查看」）｜### 待决 N（R1 认为需 R0 拍板，进「决策裁决」）
 HEAD_RE = re.compile(r"^###\s+待决\s+(\d+)\s*[｜|]\s*(.+)$")
+HEAD_WORK_RE = re.compile(r"^###\s+工作\s+(\d+)\s*[｜|]\s*(.+)$")
 JUDGE_RE = re.compile(r"^\s*-\s*\*\*[^：]*批阅[^：]*\*\*[:：]\s*(.*)$")
 SECTION_RE = re.compile(r"^##\s+")
 
 
+def _flush(cur, out):
+    if cur is None:
+        return
+    item = {"n": cur["n"], "title": cur["title"], "lines": cur["lines"]}
+    if cur["judged"]:                       # 已有实质批阅/已阅 → 归档区
+        out["archive"].append(item)
+    elif cur["kind"] == "工作":             # 例行进展（无批阅栏）→ 工作内容
+        out["work"].append(item)
+    else:
+        out["pending"].append(item)         # 待决未裁决 → 决策裁决
+
+
 def parse_piyuetai(text: str) -> dict:
-    """解析《批阅台/批阅台.md》 → {pending:[{n,title,lines}], archive:[{n,title}]}。"""
+    """解析《批阅台/批阅台.md》 → {work:[例行进展], pending:[待决策], archive:[已批阅归档]}。"""
     lines = text.split("\n")
-    pending, archive, cur = [], [], None
+    out = {"work": [], "pending": [], "archive": []}
+    cur = None
     for ln in lines:
-        if SECTION_RE.match(ln):                     # 章节边界（待决区/归档区/流程区）
-            if cur is not None:
-                (archive if cur["judged"] else pending).append({k: cur[k] for k in ("n", "title", "lines")})
+        if SECTION_RE.match(ln):                     # 章节边界
+            _flush(cur, out)
             cur = None
             continue
         m = HEAD_RE.match(ln)
-        if m:
-            if cur is not None:
-                (archive if cur["judged"] else pending).append({k: cur[k] for k in ("n", "title", "lines")})
-            cur = {"n": int(m.group(1)), "title": m.group(2).strip(), "judged": False, "lines": []}
+        wm = HEAD_WORK_RE.match(ln) if not m else None
+        if m or wm:
+            _flush(cur, out)
+            cur = {"n": int((m or wm).group(1)), "title": (m or wm).group(2).strip(),
+                   "judged": False, "lines": [], "kind": "待决" if m else "工作"}
             continue
         if cur is not None:
+            if ln.startswith("  ") and cur["lines"]:
+                # 两空格缩进 = 上一字段值的续行（md 多行字段）：并入上一行，保留换行
+                cur["lines"][-1] += "\n" + ln.strip()
+                continue
             jm = JUDGE_RE.match(ln)
             if jm:
                 val = jm.group(1).strip()
                 if val and "待填" not in val:
-                    cur["judged"] = True             # 已批阅：有实质内容（✅/❌/✏️ + 日期）
+                    cur["judged"] = True             # 已批阅/已阅：有实质内容
                 else:
                     cur["lines"].append(ln)          # 未批阅：保留“待填”占位行
             elif ln.strip() and ln.strip() != "---":
-                cur["lines"].append(ln)              # 收集背景/R 建议/需要拍板
-    if cur is not None:
-        (archive if cur["judged"] else pending).append({k: cur[k] for k in ("n", "title", "lines")})
-    for it in pending:
-        it.pop("judged", None)
-    for it in archive:
-        it.pop("judged", None)
-    return {"pending": pending, "archive": archive}
-
-
-def pending_items() -> list:
-    """快捷读取当前待决清单。"""
-    return parse_piyuetai(knowledge.read_md(config.PIYUETAI_REL))["pending"]
+                cur["lines"].append(ln)              # 收集背景/R 建议/需要拍板/进展
+    _flush(cur, out)
+    for bucket in (out["work"], out["pending"], out["archive"]):
+        for it in bucket:
+            it.pop("judged", None)
+    return out
 
 
 # ---------- 角色架构 ----------
@@ -74,72 +86,29 @@ def parse_roles() -> list:
                         if item["code"] == m.group(1):
                             item["desc"] = dm.group(1).strip()
                     break
-    dispatch = {}
-    for d in parse_dispatch():
-        dispatch[d["roleCode"]] = d
-    st_def = {"R0": "指挥中", "R1": "执行中", "R2": "执行中", "R3": "执行中", "R4": "暂不激活",
-              "R5": "暂不激活", "R6": "执行中", "R7": "执行中", "R8": "执行中", "R9": "未激活"}
-    cur_def = {"R0": "待批阅待决 8-15；发布/投放终审闸门", "R1": "D-009 已落实；日常调度+简报",
-               "R4": "等应用设计完成后讨论投放", "R5": "深访阶段未到", "R9": "是否激活待 R0 批阅（待决 9）"}
-    plan = {}
-    for p in parse_plan_rows():
-        plan.setdefault(p["role"], p)
+    # v1.18：状态只有两种 —— 有未完成子任务 = 执行中，否则待命中；R0/R1 固定指挥中。
+    # 原先是一张写死的 st_def/cur_def（R4/R5「暂不激活」、R9「未激活」、「深访阶段未到」…），
+    # 跟角色实际有没有活干毫无关系；决策日志里靠文本匹配出的状态同样早就对不上，一并弃用。
+    busy, latest_sub = set(), {}
+    for p in store.subtasks():                 # 已按编号排序，后写覆盖 = 该角色最新的子任务
+        if p["st"] in ("待派", "已派"):
+            busy.add(p["role"])
+        latest_sub[p["role"]] = p
+    last_exec = store.last_execution_by_role()
     for it in rows:
-        d = dispatch.get(it["code"]); p = plan.get(it["code"])
-        if p:
-            it["status"] = "执行中" if p["st"] and "完成" not in p["st"] else "执行中"
-            it["current"] = p["sub"][:44]
-            it["ref"] = "派发单-动态 " + p["no"]
+        code = it["code"]
+        it["status"] = "指挥中" if code in ("R0", "R1") else ("执行中" if code in busy else "待命中")
+        e = last_exec.get(code)
+        if e and e.get("sub"):                 # 最近一次执行：执行中=正在做的，待命中=上次做的
+            it["current"], it["ref"] = e["sub"][:44], "子任务 " + e["sub_no"]
+        elif code in latest_sub:               # 无执行记录（如 md 迁移来的历史数据）→ 退到最新子任务
+            it["current"], it["ref"] = latest_sub[code]["sub"][:44], "子任务 " + latest_sub[code]["no"]
         else:
-            it["status"] = d["status"] if d else st_def.get(it["code"], "待命")
-            it["current"] = d["current"] if d else cur_def.get(it["code"], "待命")
-            it["ref"] = d["ref"] if d else ""
+            it["current"], it["ref"] = "暂无执行记录", ""
     return rows
 
 
-# ---------- 派发单与决策日志 ----------
-def parse_plan_rows() -> list:
-    """读取《批阅台/派发单-动态.md》表行 → [{no, sub, role, expect, st}]。"""
-    p = config.dispatch_file()
-    if not p.exists():
-        return []
-    out = []
-    for ln in p.read_text(encoding="utf-8").split("\n"):
-        m = re.match(r"^\|\s*(T-\S+)\s*\|\s*([^|]+?)\s*\|\s*(R\d+)[^|]*\s*\|\s*([^|]+?)\s*\|\s*([^|]*?)\s*\|$", ln)
-        if m:
-            out.append({"no": m.group(1).strip(), "sub": m.group(2).strip(),
-                        "role": m.group(3).strip(), "expect": m.group(4).strip(),
-                        "st": m.group(5).strip()})
-    return out
-
-
-def parse_dispatch() -> list:
-    """解析《批阅台/决策日志.md》派发单 → [{role, roleCode, task, ref, target, status, current}]。"""
-    text = knowledge.read_md(config.LOG_REL)
-    lines = text.split("\n")
-    start = None
-    for i, ln in enumerate(lines):
-        if ln.startswith("## 派发单"):
-            start = i
-            break
-    if start is None:
-        return []
-    out = []
-    reRow = re.compile(r"^\|\s*(R\d+)\s+([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|\s*([^|]+?)\s*\|")
-    for ln in lines[start + 1:]:
-        if ln.startswith("## "):
-            break
-        m = reRow.match(ln)
-        if m:
-            task = m.group(3).strip()
-            status = "暂不激活" if ("暂不激活" in task or "未激活" in task) else "执行中"
-            out.append({"role": m.group(1) + " " + m.group(2).strip(),
-                        "roleCode": m.group(1), "task": task,
-                        "ref": m.group(4).strip(), "target": m.group(5).strip(),
-                        "status": status, "current": task[:44]})
-    return out
-
-
+# ---------- 决策日志（R0 公文，仍是 md：人读人写） ----------
 def parse_timeline() -> list:
     """从《批阅台/决策日志.md》生成 OPC 时间线节点。"""
     text = knowledge.read_md(config.LOG_REL)
@@ -163,14 +132,3 @@ def parse_timeline() -> list:
     return events
 
 
-def parse_tasks() -> list:
-    """当前任务清单 = 派发单 + 待批阅项。"""
-    tasks = []
-    for d in parse_dispatch():
-        tasks.append({"type": "派发", "role": d["role"], "task": d["task"],
-                      "ref": d["ref"], "target": d["target"], "status": d["status"]})
-    data = parse_piyuetai(knowledge.read_md(config.PIYUETAI_REL))
-    for it in data["pending"]:
-        tasks.append({"type": "待批", "role": "R0", "task": "待决 #" + str(it["n"]) + "：" + it["title"],
-                      "ref": "批阅台", "target": "", "status": "待 R0 批阅"})
-    return tasks

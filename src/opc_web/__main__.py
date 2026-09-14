@@ -1,18 +1,15 @@
 # -*- coding: utf-8 -*-
 """入口：python run.py / python -m opc_web / console script 共用。
-   python -m opc_web roles list|generate|add  角色管理子命令。"""
+   python -m opc_web roles list|add  角色管理子命令。"""
 import sys
 import threading
+import webbrowser
 
 from . import bootstrap, config, roles, scheduler, server
 
 
 def _roles_cli(args):
-    """角色管理：list（默认）/ generate [--force] / add --name .. --duty .. [--position ..] [--type ..] [--dry]。"""
-    if args and args[0] == 'generate':
-        r = roles.generate_all(force='--force' in args)
-        print('生成 preset 资产 %d 个文件；角色: %s' % (r['count'], ', '.join(r['roles'])))
-        return
+    """角色管理：list（默认）/ add --name .. --duty .. [--position ..] [--type ..] [--dry]。"""
     if args and args[0] == 'add':
         kv = {}
         for i in range(1, len(args), 2):
@@ -23,7 +20,6 @@ def _roles_cli(args):
             dry='--dry' in args)
         print('新增角色：%s %s' % (r['no'], r['name']))
         print('  角色卡: %s' % r['cardPath'])
-        print('  preset: opc-%s（源+部署 ~/.dsh/.agent-presets/）' % r['no'].lower())
         print('  作业区: %s' % r['sbRoot'])
         if r.get('archLine'):
             print('  架构登记: ' + r['archLine'])
@@ -41,8 +37,10 @@ def main():
         print('  · ' + line)
     threading.Thread(target=scheduler.auto_pilot, daemon=True).start()
     srv = server.create_server()
-    print('OPC 控制台（opc-web）已启动 → http://%s:%d' % (config.HOST, config.PORT))
-    print('  根目录: %s（自动 批阅台/工作区/知识库）· 调度: 队列有任务即生成【调度指令】待常驻主会话 R1（subagent 派发）' % config.ROOT)
+    url = 'http://%s:%d' % (config.HOST, config.PORT)
+    print('OPC 控制台（opc-web）已启动 → ' + url)
+    print('  根目录: %s（自动 批阅台/工作区/知识库）· 调度: 台账有待派任务即生成【调度指令】待常驻主会话 R1（subagent 派发）' % config.ROOT)
+    webbrowser.open(url)      # 在这里开浏览器，端口才跟得上配置（启动脚本写死过 8901）
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

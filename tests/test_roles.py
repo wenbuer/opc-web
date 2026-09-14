@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-"""角色管理自检：角色列表/自动编号/角色卡组装/persona 提取/preset 资产/新增角色(dry)"""
+"""角色管理自检：角色列表 / 自动编号 / 角色卡组装 / 新增角色(dry) / 项目守卫"""
+import shutil
 import sys
 import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from opc_web import agent, config, roles  # noqa: E402
+from opc_web import config, roles  # noqa: E402
 
 
 class TestRolesCore(unittest.TestCase):
@@ -21,38 +22,35 @@ class TestRolesCore(unittest.TestCase):
         card = roles.role_card("R10", "增长实验官", "跑 AB 实验；输出实验简报", "负责增长实验与复盘", "业务")
         self.assertIn("# OPC 角色卡：R10 增长实验官", card)
         self.assertIn("跑 AB 实验；输出实验简报", card)
-        self.assertIn("回报人：R10", card)
-        self.assertIn("opc-r10/", card)
+        self.assertIn("<子任务编号>.md", card)
+        self.assertIn("status 改为 完成/部分/阻塞", card)
 
-    def test_extract_persona(self):
-        card = roles.role_card("R10", "增长实验官", "跑实验", "定位", "业务")
-        p = roles.extract_persona(card, "R10")
-        self.assertIn("你是 OPC", p)
-        self.assertIn("工作纪律", p)
-        self.assertIn("回报人：R10", p)
-        self.assertIn("工作区/增长实验官/回报-待落库.md", p)
-
-    def test_preset_files(self):
-        p = roles.preset_files("R10", "增长实验官", "persona 正文\n回报人：R10｜任务：T-xxx｜状态：完成")
-        self.assertIn("name: OPC 增长实验官", p["preset.yml"])
-        self.assertIn("order: 10", p["preset.yml"])
-        self.assertIn("@deepseek-ai/dsh-persona", p["agent.cordis.yml"])
-        self.assertIn("persona 正文", p["agent.cordis.yml"])
-
-    def test_generate_all_idempotent(self):
-        r = roles.generate_all(force=True)
-        self.assertGreater(r["count"], 0)
-        self.assertIn("R1", r["roles"])
-        self.assertTrue((agent.PRESET_SRC / "opc-r1" / "preset.yml").exists())
-        self.assertTrue((agent.PRESET_HOME / "opc-r1" / "preset.yml").exists())
+    def test_add_role_needs_active_project(self):
+        """没有激活项目时必须拒绝 —— 否则角色卡会写进 agents-seed 模板库，污染所有新项目。"""
+        if config.active_project():
+            self.skipTest("当前已有激活项目")
+        with self.assertRaises(ValueError):
+            roles.add_role("演示角色", "演示职责", "演示定位", "业务", dry=True)
 
     def test_add_role_dry_no_side_effect(self):
-        before = len(list(config.AGENTS_DIR.glob("R*.role.md")))
-        r = roles.add_role("演示角色", "演示职责", "演示定位", "业务", dry=True)
-        self.assertEqual(r["no"], "R10")
-        self.assertIn("preset", r)
-        after = len(list(config.AGENTS_DIR.glob("R*.role.md")))
-        self.assertEqual(before, after, 'dry 不应落盘角色卡')
+        """dry 预览不落盘（在临时项目里跑，不碰模板库）。"""
+        tmp = Path(__file__).resolve().parent.parent / ".testproj"
+        shutil.rmtree(tmp, ignore_errors=True)
+        keep = (dict(config._CFG), config.ROOT, config.AGENTS_DIR)
+        config._CFG = {"projects": [{"name": "t", "root": str(tmp), "schedule": []}], "active": str(tmp)}
+        config.ROOT = tmp
+        config.AGENTS_DIR = tmp / "agents"
+        config.AGENTS_DIR.mkdir(parents=True, exist_ok=True)
+        for p in config.AGENTS_SEED.glob("R*.role.md"):
+            shutil.copy2(p, config.AGENTS_DIR / p.name)
+        try:
+            before = len(list(config.AGENTS_DIR.glob("R*.role.md")))
+            r = roles.add_role("演示角色", "演示职责", "演示定位", "业务", dry=True)
+            self.assertEqual(r["no"], "R10")
+            self.assertEqual(before, len(list(config.AGENTS_DIR.glob("R*.role.md"))), "dry 不应落盘角色卡")
+        finally:
+            config._CFG, config.ROOT, config.AGENTS_DIR = keep
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 class TestConfigFile(unittest.TestCase):
@@ -61,7 +59,7 @@ class TestConfigFile(unittest.TestCase):
         self.assertEqual(config.WORKSPACE_REL, "工作区")
         self.assertEqual(config.PORT, 8901)
         self.assertTrue(config.KB_ROOT.name == "知识库")
-        self.assertEqual(config.piyuetai_file().name, "批阅台.md")
+        self.assertEqual((config.ROOT / config.PIYUETAI_REL).name, "批阅台.md")
         self.assertEqual(config.wb_root().name, "工作区")
 
 
