@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260910n">
+<link rel="stylesheet" href="/static/main.css?v=20260913a">
 </head>
 <body>
 <div class="shell">
@@ -213,6 +213,7 @@
           <button class="snav-item" data-snav="schedule">④ 定时任务</button>
           <button class="snav-item" data-snav="tokens">⑤ Token 统计</button>
     <button class="snav-item" data-snav="skill">⑥ Skill 导入</button>
+          <button class="snav-item" data-snav="assistant">⑦ R1 助理</button>
         </aside>
         <div class="settings-main">
           <div class="snav-pane active" data-pane="dir">
@@ -240,6 +241,18 @@
           </div>
           <div class="snav-pane" data-pane="engine">
             <div class="set-head">执行引擎</div>
+            <div class="mapi-row">
+              <label>谁在执行角色任务
+                <select id="engSel"><option value="">加载中…</option></select>
+              </label>
+              <label>主引擎跑不起来时回退到
+                <select id="engFb"><option value="">加载中…</option></select>
+              </label>
+            </div>
+            <div class="mapi-row mapi-actions">
+              <button id="btnSaveEngine">保存引擎选择</button>
+              <span id="engMsg" class="set-msg"></span>
+            </div>
             <div id="engList" class="eng-list"><div class="placeholder">加载中…</div></div>
             <div class="set-note" id="engNote"></div>
           </div>
@@ -292,9 +305,20 @@
                     </select>
                   </div>
                   <div class="sched-fld sched-fld-inline">
-                    <div><label>时刻 HH:MM（每天 / 每周）</label><input id="schedTime" placeholder="如 09:30"></div>
-                    <div><label>星期 0=周一 … 6=周日（每周）</label><input id="schedWeekday" placeholder="如 1"></div>
-                    <div><label>间隔分钟（间隔模式）</label><input id="schedInterval" placeholder="如 60"></div>
+                    <div><label>时刻（每天 / 每周）</label>
+                      <input type="time" id="schedTime" value="09:30" step="60"></div>
+                    <div><label>星期（每周）</label>
+                      <select id="schedWeekday">
+                        <option value="0">周一</option>
+                        <option value="1">周二</option>
+                        <option value="2">周三</option>
+                        <option value="3">周四</option>
+                        <option value="4">周五</option>
+                        <option value="5">周六</option>
+                        <option value="6">周日</option>
+                      </select></div>
+                    <div><label>间隔分钟（间隔模式）</label>
+                      <input type="number" id="schedInterval" value="60" min="1" step="1"></div>
                   </div>
                   <div class="sched-actions">
                     <button id="btnSchedAdd">＋ 添加定时任务</button>
@@ -317,8 +341,19 @@
             <div class="set-head">任务 Token 统计</div>
             <div class="tok-sum" id="tokSum"></div>
             <div class="tok-chart" id="tokChart"><div class="placeholder">加载中…</div></div>
-            <div class="set-note"><b>口径</b> 每个子任务执行时把 dsh headless 用量写进 <code>T-xxx-Sn.meta.json</code>（tokensIn = 输入 + 缓存读取，tokensOut = 输出）。<br>仅统计改版后执行的任务；旧任务没有字段不会计入。</div>
+            <div class="set-note"><b>口径</b> 每个子任务执行时把用量写进 <code>T-xxx-Sn.meta.json</code>（tokensIn = 输入 + 缓存读取，tokensOut = 输出），并记下执行它的引擎与会话标识，统计对不上时能回溯。<br><b>临时会话</b>（⑦ R1 助理）的用量记在《批阅台/临时会话.jsonl》，不进任何子任务、不并入任务合计，在图上单列一组柱。</div>
           </div>
+        <div class="snav-pane" data-pane="assistant">
+          <div class="set-head">R1 助理悬浮窗</div>
+          <div class="dock-row">
+            <label class="dock-switch">
+              <input type="checkbox" id="dockOn">
+              <span>开启悬浮窗（右下角常驻）</span>
+            </label>
+            <span class="set-msg" id="dockMsg"></span>
+          </div>
+          <div class="set-note"><b>临时会话</b> 悬浮窗里的问答<b>不进任务流程</b> —— 不建任务、不派角色、不写回报，也不会出现在任务队列里。<br>R1 会带着项目现状作答（任务概况 / 档案数 / 最新简报）；要细节就在问题里点名，它会自己去读文件。<br><b>用量</b> 记在《批阅台/临时会话.jsonl》，在「③ Token 统计」里单列一组柱。</div>
+        </div>
         </div>
       </div>
     </section>
@@ -385,7 +420,7 @@
   <div class="onb-mask" id="onbMask" hidden>
     <div class="onb-box">
       <div class="onb-hero"><span class="onb-dot"></span>部署你的 OPC 指挥中心</div>
-      <div class="onb-sub">还没有项目和模型。这三步让 R1 与员工角色真正跑起来：</div>
+      <div class="onb-sub">还没有项目和模型。这四步让 R1 与员工角色真正跑起来：</div>
       <div class="onb-steps">
         <div class="onb-step">
           <div class="onb-num">01</div>
@@ -399,11 +434,32 @@
           <div class="onb-num">03</div>
           <div class="onb-body"><b>认识《员工手册》</b><p>所有角色的唯一行为准则：不拍板 / 读写权限 / 产出回报格式。</p><button class="onb-go" data-go="handbook">查看员工手册 →</button></div>
         </div>
+        <div class="onb-step">
+          <div class="onb-num">04</div>
+          <div class="onb-body"><b>选执行引擎 · 知道 token 花在哪</b><p>DSH 每轮都带着自己那套系统提示、工具与技能（一万到数万 token，其中约九成命中缓存按低价计费），能跑需要沙箱的技能；直连 API 每轮上下文小，但每轮都要重发全部历史，轮数一多累积很快。两者都逐轮累加记账，<b>比总额、不要比单轮</b>。</p><button class="onb-go" data-go="engine">去看执行引擎 →</button></div>
+        </div>
       </div>
       <div class="onb-foot"><button id="onbClose" class="onb-skip">稍后再说</button></div>
     </div>
   </div>
 </div>
-<script src="/static/main.js?v=20260910n"></script>
+<!-- R1 助理悬浮窗：临时会话，不进入任务流程（头像与逻辑由 main.js 注入） -->
+<div id="r1Dock" class="r1-dock" hidden>
+  <div id="r1Panel" class="r1-panel" hidden>
+    <div class="r1-head">
+      <span class="r1-ava" id="r1Ava"></span>
+      <div class="r1-who"><b>R1 助理</b><em>临时会话 · 不进任务流程</em></div>
+      <button id="r1Close" class="r1-x" title="收起面板（悬浮球保留；要关掉悬浮窗去「设置 → ⑦ R1 助理」）">×</button>
+    </div>
+    <div id="r1Msgs" class="r1-msgs"></div>
+    <div class="r1-input">
+      <input id="r1Q" placeholder="问点项目相关的事，比如「现在进行到哪一步了」">
+      <button id="r1Send">发送</button>
+    </div>
+    <div class="r1-foot"><span id="r1Msg"></span><span id="r1Tok"></span></div>
+  </div>
+  <button id="r1Fab" class="r1-fab" data-tip="问我项目的事 · 临时会话" title="R1 助理（临时会话，可拖动）"></button>
+</div>
+<script src="/static/main.js?v=20260913a"></script>
 </body>
 </html>

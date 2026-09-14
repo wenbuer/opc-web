@@ -33,3 +33,5 @@ build.ps1
 # ===== 测试与诊断脚本（本机保留，不入库）=====
 tests/
 .diag-regen.py
+server.out.log
+server.err.log

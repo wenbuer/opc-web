@@ -30,6 +30,48 @@ def _squeeze(s: str, limit: int = 90) -> str:
     return " ".join(str(s or "").split())[:limit]
 
 
+_LOG_DIR = "运行日志"     # 完整运行轨迹落盘处：《批阅台/运行日志/T-xxx-Sn.log》
+_TRACE_MAX = 20000        # 单个轨迹块进事件流的字符上限（超出只在落盘文件里留全文）
+
+
+def trace_path(act: str) -> "object":
+    """某子任务的运行日志路径。act 来自查询参数，所以要掐掉路径分隔符防逃逸。"""
+    safe = "".join(ch for ch in str(act or "") if ch.isalnum() or ch in "-_")
+    return config.BATCH_ROOT / _LOG_DIR / (safe + ".log")
+
+
+def read_trace(act: str, limit: int = 400000) -> str:
+    """读某子任务的完整运行日志（「查看完整日志」用）；没有则返回空串。"""
+    p = trace_path(act)
+    if not p.is_file():
+        return ""
+    try:
+        return p.read_text(encoding="utf-8", errors="replace")[-limit:]
+    except OSError:
+        return ""
+
+
+
+def _trace_emit(act: str, kind: str, text: str) -> None:
+    """完整轨迹：一条事件进事件流（面板实时看），同时追加落盘（事后回看）。
+
+    事件流常驻内存且有上限，所以过长的单块在事件里截断并标注；
+    落盘文件始终是全文 —— 面板里的「查看完整日志」读的就是它。"""
+    body = str(text or "")
+    cut = len(body) > _TRACE_MAX
+    _append({"type": "exec/trace",
+             "data": {"sub": act, "kind": str(kind or "text"),
+                      "text": body[:_TRACE_MAX] if cut else body, "truncated": cut}})
+    try:
+        p = trace_path(act)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "a", encoding="utf-8") as fh:
+            fh.write(chr(10) + "## [" + str(kind or "text") + "] "
+                     + time.strftime("%H:%M:%S") + chr(10) + body + chr(10))
+    except Exception:
+        pass
+
+
 def run_info(act: str) -> dict:
     """最近一次 act 运行的信息：{engine, session, elapsed}。
 
@@ -80,6 +122,16 @@ def _progress_sink(act: str):
             with _EXEC_LOCK:
                 _EXEC_STATE.pop(act, None)
             return
+        tr = getattr(p, "trace", None)          # 完整轨迹（心跳之外的全文通道）
+        if tr and str(tr.get("text") or "").strip():
+            _trace_emit(act, str(tr.get("kind") or "text"), str(tr["text"]))
+        # 只带轨迹、不带任何心跳字段的回调不能进心跳：它会把已累计的操作数清零
+        # （界面于是显示「操作 0 次」，明明跑了 57 次工具调用）。
+        if tr and not (int(getattr(p, "tools", 0) or 0)
+                       or str(getattr(p, "lastTool", "") or "")
+                       or str(getattr(p, "lastText", "") or "")
+                       or str(getattr(p, "session", "") or "")):
+            return
         _exec_beat(act, int(getattr(p, "tools", 0) or 0),
                    str(getattr(p, "lastTool", "") or ""),
                    str(getattr(p, "lastText", "") or ""), t0)
@@ -112,6 +164,20 @@ def events(since: int = 0) -> dict:
                 "events": [e for e in _ACTIVE["events"] if e["seq"] > since]}
 
 
+def _engine_ready(name: str) -> bool:
+    """引擎环境是否就绪（preflight）：探命令、读配置，都很轻。
+
+    典型场景：默认引擎是 dsh，但本机没装 —— 这时应当**直接**改用备用引擎，
+    而不是先派一次、等它秒退再回退（那一次同样会花掉拆解或角色执行的时间）。
+    自检每次都做：用户可能刚装好 dsh，缓存住反而会挡住它。"""
+    try:
+        from .engines import get_engine
+        ok, _ = get_engine(name).preflight()
+        return bool(ok)
+    except Exception:
+        return False
+
+
 def _engine_failed(res) -> bool:
     """这次是「引擎没跑起来」还是「任务本身没做完」——只有前者值得回退重跑。
 
@@ -129,29 +195,40 @@ def _engine_failed(res) -> bool:
     return False
 
 
-def _run_engine(task_text: str, timeout: float, act: str = "", purpose: str = ""):
+def _run_engine(task_text: str, timeout: float, act: str = "", purpose: str = "", max_steps=None):
     """跑一次任务：主引擎失败时按配置回退到备用引擎（默认 api 兜底 dsh）。
 
     回退会留痕（engine/fallback 事件），工作台详情能看到「谁失败了、换了谁、为什么」。"""
     from .engines import get_engine
     name = config.engine_for(purpose)
-    res = _invoke(get_engine(name), name, task_text, timeout, act)
     alt = config.engine_fallback(name)
+    if alt and not _engine_ready(name):
+        # 主引擎环境不满足（如本机没装 dsh）→ 直接用备用引擎，不必让它先失败一次
+        emit({"type": "engine/fallback",
+              "data": {"purpose": purpose or "main", "from": name, "to": alt,
+                       "reason": "环境自检未通过（未安装或未配置）"}})
+        return _invoke(get_engine(alt), alt, task_text, timeout, act, max_steps)
+    res = _invoke(get_engine(name), name, task_text, timeout, act, max_steps)
     if not alt or not _engine_failed(res):
         return res
     emit({"type": "engine/fallback",
           "data": {"purpose": purpose or "main", "from": name, "to": alt,
                    "reason": res.error or ("%s 秒退无产出" % int(res.elapsed or 0))}})
-    return _invoke(get_engine(alt), alt, task_text, timeout, act)
+    return _invoke(get_engine(alt), alt, task_text, timeout, act, max_steps)
 
 
-def _invoke(eng, name: str, task_text: str, timeout: float, act: str):
+def _invoke(eng, name: str, task_text: str, timeout: float, act: str, max_steps=None):
     """调一次引擎：登记 act → 引擎名（kill 用），跑完留下运行信息（追溯用）。"""
     if act:
         with _EXEC_LOCK:
             _ACT_ENGINE[act] = name
     try:
-        res = eng.run(task_text, timeout=timeout, act=act, on_progress=_progress_sink(act))
+        if max_steps:
+            res = eng.run(task_text, timeout=timeout, act=act, on_progress=_progress_sink(act),
+                          max_steps=max_steps)
+        else:
+            # 不传 max_steps：老签名/自建引擎照旧可用（接口上它是可选参数）
+            res = eng.run(task_text, timeout=timeout, act=act, on_progress=_progress_sink(act))
     finally:
         if act and _ACT_ENGINE.get(act) == name:
             with _EXEC_LOCK:
@@ -174,12 +251,13 @@ def run_headless_sync(task_text: str, timeout: float = 600, purpose: str = "") -
     return _run_engine(task_text, timeout, act="", purpose=purpose).text
 
 
-def run_headless_task(task_text: str, timeout: float = 600, act: str = "", purpose: str = ""):
+def run_headless_task(task_text: str, timeout: float = 600, act: str = "", purpose: str = "",
+                      max_steps=None):
     """headless 最终文本模式：返回 (最终文本, 用量 dict|None)。
 
     走配置的执行引擎（purpose 非空时按用途路由，如 "execute"）。签名与语义与解耦前一致，
     chain / scheduler / server 无需改动；同时登记 act → 引擎名，供 kill_spawn 精确找对引擎。"""
-    res = _run_engine(task_text, timeout, act=act, purpose=purpose)
+    res = _run_engine(task_text, timeout, act=act, purpose=purpose, max_steps=max_steps)
     return res.text, res.usage
 
 

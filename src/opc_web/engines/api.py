@@ -232,6 +232,9 @@ class ApiEngine(Engine):
     name = "api"
     label = "直连大模型 API"
     description = "内置 4 个工具的 agent 循环，直连 API 流式执行；不依赖 dsh"
+    cost = ("上下文只有本项目的 prompt 与 4 个基础工具的说明，单轮远小于 DSH；"
+            "但每轮都要重发全部历史，轮数一多总输入累积很快。跑不动需要沙箱的技能。")
+
     def capabilities(self) -> dict:
         return {"tools": True, "streaming": True, "usage": True, "skills": False, "sandbox": True}
 
@@ -253,8 +256,10 @@ class ApiEngine(Engine):
             return act in _RUNNING
 
     def run(self, prompt: str, *, timeout: float = 600, act: str = "",
-            cwd=None, on_progress=None) -> RunResult:
+            cwd=None, on_progress=None, max_steps=None) -> RunResult:
         cfg = _cfg()
+        if max_steps:
+            cfg["maxSteps"] = max(1, int(max_steps))
         t0 = time.monotonic()
         deadline = t0 + float(timeout or 600)
         # 注意：这里**不能**清取消标志——kill() 可能在 run() 之前被调用（删除任务/超时），
@@ -277,6 +282,21 @@ class ApiEngine(Engine):
         messages = [{"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt}]
 
+        def trim_history(msgs, keep_tail=10, max_len=14):
+            """对话太长就丢掉中间的工具往返，只留开场与最近的几轮。
+
+            工具循环每一轮都把完整历史重发一遍，步数越多输入涨得越快：实测一次问答
+            跑满循环后 input 累计到 100 万 token，而最后只回了一句「我先查一下」。
+            修剪时起点必须落在 assistant（带 tool_calls）上 —— 否则会留下孤儿 tool
+            消息，OpenAI 兼容接口会直接报错。"""
+            if len(msgs) <= max_len:
+                return msgs
+            head, tail = msgs[:2], msgs[2:]
+            i = max(0, len(tail) - keep_tail)
+            while i < len(tail) and tail[i].get("role") == "tool":
+                i += 1
+            return head + tail[i:]
+
         def beat(last_tool_arg="", last_text_arg="", force=False):
             nonlocal last_beat, last_tool, last_text
             if last_tool_arg:
@@ -290,6 +310,15 @@ class ApiEngine(Engine):
             if on_progress:
                 on_progress(Progress(elapsed=int(now - t0), tools=n_tools,
                                      lastTool=last_tool, lastText=last_text[:120]))
+
+        def trace(kind, text):
+            """完整轨迹（**不受 beat 的每秒节流**）：每轮输出、工具调用与其结果全文。
+
+            dsh 那边思考流走 stderr，这里没有思考流，等价物就是
+            「每轮说了什么 + 调了什么工具 + 工具返回了什么」——面板折叠块装的就是它。"""
+            if on_progress and str(text or "").strip():
+                on_progress(Progress(elapsed=int(time.monotonic() - t0),
+                                     trace={"kind": kind, "text": str(text)}))
 
         try:
             while steps < int(cfg["maxSteps"]):
@@ -308,6 +337,7 @@ class ApiEngine(Engine):
                 text = r.get("text") or ""
                 if text.strip():
                     last_text = " ".join(text.split())[:200]
+                    trace("text", text)
                 if r.get("tool_calls"):
                     messages.append({"role": "assistant", "content": text or None,
                                      "tool_calls": [{"id": c["id"] or ("call_%d" % i), "type": "function",
@@ -321,13 +351,16 @@ class ApiEngine(Engine):
                             args = {}
                         n_tools += 1
                         beat((name + " " + json.dumps(args, ensure_ascii=False))[:130], "", force=True)
+                        trace("tool", name + " " + json.dumps(args, ensure_ascii=False))
                         impl = _TOOL_IMPL.get(name)
                         try:
                             result = impl(args) if impl else "未知工具：%s" % name
                         except Exception as e:
                             result = "工具执行失败：%s" % e
+                        trace("result", str(result)[:8000])
                         messages.append({"role": "tool", "tool_call_id": c["id"] or ("call_%d" % i),
                                          "content": str(result)[:12000]})
+                    messages = trim_history(messages)
                     continue
                 # 没有工具调用 → 结束
                 beat(force=True)

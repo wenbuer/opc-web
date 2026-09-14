@@ -178,6 +178,18 @@ def _put_run_info(meta: dict, sub_no: str) -> None:
         meta["engineSession"] = info.get("session") or info.get("engineSession")
 
 
+def _meta_read(meta_p):
+    """读子任务 meta：正常在工作区；**执行中被归档线程抢走**（角色 agent 早已把 status 写成
+    「完成」）就从 已归档/ 读回来。两处都没有返回 (None, None) —— 调用方据此报出来，
+    不再静默 pass：这个异常曾让 engine 与 tokens 一个字都写不进去，统计里凭空少一块。"""
+    for p in (meta_p, meta_p.parent / "已归档" / meta_p.name):
+        try:
+            return p, json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+    return None, None
+
+
 def _put_tokens(meta: dict, usage) -> None:
     """把 headless 用量写进 meta（完成/阻塞两条路径共用）；usage 为空则不写。
 
@@ -244,9 +256,13 @@ def _decision_block(task_text: str) -> str:
     return ("\n\n【R0 已拍板的决策上下文（任务文本里的「方案A/B/C」等简称以此为准）】\n%s" % ctx) if ctx else ""
 
 
-def execute(task_no, task_text):
+def execute(task_no, task_text, direct=None):
     """一键自动执行链：拆解 → 台账落库 → 逐子任务生成派发指令并预置产出文件。
-    全程把阶段事件写入 runner 事件流（工作台详情面板的「实时事件」区可见）。"""
+    全程把阶段事件写入 runner 事件流（工作台详情面板的「实时事件」区可见）。
+
+    direct = {"role": "R3", "sub": "...", "expect": "..."} 时**跳过 R1 拆解**，
+    直接把这条任务派给指定角色（角色卡片上的终端入口用）。产出/回报/归档/token
+    全走同一条链路，只是少了拆解这一步与它的一次模型调用。"""
     with sch.SCHED_LOCK:
         if sch.SCHED_STATE.get("busy"):
             return
@@ -256,12 +272,20 @@ def execute(task_no, task_text):
         runner.emit({"type": "run/start", "task": "%s · 自动执行链" % task_no,
                      "provider": "opc-web", "model": "chain"})
         runner.emit({"type": "step/start", "data": {"turn": 1, "step": 1}})
-        runner.emit({"type": "assistant/chunk", "data": {"text": "R1 拆解 %s：%s" % (task_no, task_text)}})
-        set_state(tag="R1 拆解中…")
-        # 指定 R1（含「请 R1 / 让 R1 …」）= R1 牵头派发：同样走模型拆解选业务角色（decompose 内已引导模型忽略 R1）
         head = head_named(task_text)
-        subs = decompose(task_no, task_text)
-        if not subs:
+        if direct:
+            role = str(direct.get("role") or "").strip()
+            subs = [{"role": role, "sub": str(direct.get("sub") or task_text),
+                     "expect": str(direct.get("expect") or "R1 判断")}]
+            runner.emit({"type": "assistant/chunk", "data": {
+                "text": "直派 %s %s：%s（跳过 R1 拆解）" % (role, config.role_name(role), subs[0]["sub"])}})
+            set_state(tag="直派 %s" % role)
+        else:
+            runner.emit({"type": "assistant/chunk", "data": {"text": "R1 拆解 %s：%s" % (task_no, task_text)}})
+            set_state(tag="R1 拆解中…")
+            # 指定 R1（含「请 R1 / 让 R1 …」）= R1 牵头派发：同样走模型拆解选业务角色
+            subs = decompose(task_no, task_text)
+        if not subs and not direct:
             # 拆解失败：区分「指定 R1」「点名了不可执行编号」「完全未点名」给出针对性提示
             if asks_r1(task_text):
                 msg = "R1 派发拆解暂无输出：模型未返回子任务（请确认 dsh 可用，或直接点名业务角色如「R6 …」让 R1 直派）"
@@ -285,8 +309,9 @@ def execute(task_no, task_text):
             if not _alive(task_no):          # 任务已被删除/终止 → 提前退出，不再执行剩余子任务
                 return
             set_state(tag="执行 %d/%d：%s %s" % (i + 1, total, s["role"], s["sub"]))
-            runner.emit({"type": "step/start", "data": {"turn": i + 2, "step": 1}})
-            runner.emit({"type": "assistant/chunk",
+            # 事件带 sub：实时事件面板据此跟着看板上选中的子任务走
+            runner.emit({"type": "step/start", "sub": sub_no, "data": {"turn": i + 2, "step": 1}})
+            runner.emit({"type": "assistant/chunk", "sub": sub_no,
                          "data": {"text": "自动执行 %s（%s）：%s —— headless 直跑" % (sub_no, s["role"], s["sub"])}})
             spec = agent.subtask_spec(s["role"], "执行子任务：%s。期望产出：%s。%s" % (s["sub"], s["expect"], _decision_block(task_text)),
                                       expect=s["expect"], sub_no=sub_no)
@@ -320,16 +345,21 @@ def execute(task_no, task_text):
                 with open(body_p, "a", encoding="utf-8") as fh:          # 完成回报（唯一的子任务产出文件）
                     fh.write("\n\n## 完成回报（控制台自动执行 %s）\n\n%s\n" % (sub_no, text))
                 try:
-                    meta = json.loads(meta_p.read_text(encoding="utf-8"))
-                    meta["status"] = "完成"
-                    _put_run_info(meta, sub_no)  # 引擎名 + 会话标识，事后可追溯
-                    _put_tokens(meta, usage)     # 输入=含缓存读取的计费口径，另存拆分
-                    meta_p.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                except Exception:
-                    pass
+                    mp, meta = _meta_read(meta_p)
+                    if meta is None:
+                        runner.emit({"type": "assistant/chunk", "data": {
+                            "text": "⚠ %s 元数据读不到（工作区与 已归档/ 都没有），engine 与 tokens 未记入" % sub_no}})
+                    else:
+                        meta["status"] = "完成"
+                        _put_run_info(meta, sub_no)  # 引擎名 + 会话标识，事后可追溯
+                        _put_tokens(meta, usage)     # 输入=含缓存读取的计费口径，另存拆分
+                        mp.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                except Exception as e:
+                    runner.emit({"type": "assistant/chunk", "data": {
+                        "text": "⚠ %s 元数据更新失败：%s" % (sub_no, e)}})
                 store.settle_execution(sub_no, "完成")
                 ok_cnt += 1
-                runner.emit({"type": "assistant/chunk",
+                runner.emit({"type": "assistant/chunk", "sub": sub_no,
                              "data": {"text": "✔ %s（%s）执行完成，产出回报已写入：%s（归档时改名 output）" % (sub_no, s["role"], spec["output"])}})
             else:
                 reason = (("headless 回报无效：原始输出 %d 字符，过短或含乱码（疑似瞬时故障），不予采信" % len(raw))
@@ -337,22 +367,24 @@ def execute(task_no, task_text):
                 try:
                     with open(body_p, "a", encoding="utf-8") as fh:
                         fh.write("\n\n## 执行结果\n\n【%s，置阻塞】\n" % reason)
-                    meta = json.loads(meta_p.read_text(encoding="utf-8"))
-                    meta["status"] = "阻塞"
-                    _put_run_info(meta, sub_no)  # 引擎名 + 会话标识，事后可追溯
-                    _put_tokens(meta, usage)     # 被强杀/无输出也烧了 token，照样记账
-                    meta_p.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-                except Exception:
-                    pass
+                    mp, meta = _meta_read(meta_p)
+                    if meta is not None:
+                        meta["status"] = "阻塞"
+                        _put_run_info(meta, sub_no)  # 引擎名 + 会话标识，事后可追溯
+                        _put_tokens(meta, usage)     # 被强杀/无输出也烧了 token，照样记账
+                        mp.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                except Exception as e:
+                    runner.emit({"type": "assistant/chunk", "data": {
+                        "text": "⚠ %s 元数据更新失败：%s" % (sub_no, e)}})
                 store.settle_execution(sub_no, "阻塞", reason[:40])
                 fail.append(sub_no)
-                runner.emit({"type": "assistant/chunk",
+                runner.emit({"type": "assistant/chunk", "sub": sub_no,
                              "data": {"text": "✗ %s %s（已置阻塞，可点名重试）" % (sub_no, reason)}})
             agent.log_schedule("自动执行 %s" % sub_no,
                                "角色 %s %s 执行子任务：%s\n产出文件：%s\n结果：%s"
                                % (s["role"], spec["roleName"], s["sub"], spec["output"],
                                   "完成" if text else "阻塞"))
-            runner.emit({"type": "step/end", "data": {"turn": i + 2, "step": 1,
+            runner.emit({"type": "step/end", "sub": sub_no, "data": {"turn": i + 2, "step": 1,
                         "reason": {"kind": "完成" if text else "阻塞"}}})
         # 归档入库：已完成/阻塞子任务回报落库、正文与元数据移入 已归档/（幂等，会顺带做任务级回填）
         try:

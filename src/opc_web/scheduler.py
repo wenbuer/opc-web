@@ -59,6 +59,64 @@ def scan_once():
         pass
 
 
+_BOOT = datetime.datetime.now()          # 进程启动时刻：没跑过的 interval 任务拿它当基准
+
+
+def _parse_ts(s):
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.datetime.strptime(str(s).strip(), fmt)
+        except Exception:
+            pass
+    return None
+
+
+def schedule_due(j: dict, now=None) -> bool:
+    """这个定时任务现在该不该跑。
+
+    原来拿 config.schedule_next()（下次运行时刻，永远在未来）与 now 比较，条件恒不成立，
+    任务因此**从不触发**（lastRun 一直为空）。正确的问法是「应运行的时点是否已经越过、
+    且这一轮还没跑过」：
+
+    - daily  ：今天的 HH:MM 已过，且今天还没跑过 → 到期。服务当天晚些才启动也会补上；
+               跑过（lastRun 是今天）则不再重复。
+    - weekly ：到了指定星期、时点已过，且当天还没跑过。
+    - interval：距上次运行已超过 N 分钟（没跑过就按进程启动时刻起算）。
+    """
+    now = now or datetime.datetime.now()
+    if not j.get("enabled", True):
+        return False
+    mode = str(j.get("mode") or "daily")
+    # lastRun 为空＝从未跑过。**不能**拿进程启动时刻顶替它：进程今天启动、now 也是今天，
+    # 会被下面「今天已跑过」的判定误杀，任务照样不触发（修过一版就踩在这）。
+    last = _parse_ts(j.get("lastRun"))
+    if mode == "interval":
+        base = last or _BOOT                 # 间隔模式才需要基准：没跑过就从进程启动起算
+        try:
+            mins = max(1, int(str(j.get("intervalMin") or "60")))
+        except Exception:
+            mins = 60
+        return (now - base).total_seconds() >= mins * 60
+    if mode == "weekly":
+        try:
+            wd = int(str(j.get("weekday") or "0"))
+        except Exception:
+            wd = 0
+        if now.weekday() != wd:
+            return False
+    # 容错带秒的写法（部分浏览器的时间选择器会回 "HH:MM:SS"）
+    m = re.match(r"^(\d{1,2}):(\d{2})(?::\d{2})?$", str(j.get("time") or "").strip())
+    if not m:
+        return False
+    target = now.replace(hour=int(m.group(1)), minute=int(m.group(2)),
+                         second=0, microsecond=0)
+    if now < target:
+        return False
+    if last is None:
+        return True                          # 从未跑过：时点已过就该跑
+    return last.date() != now.date()         # 今天还没跑过 → 到期
+
+
 def schedule_once():
     """定时任务触发检查：到期任务 → 落台账 + 调度日志。"""
     try:
@@ -66,10 +124,7 @@ def schedule_once():
         jobs = config.load_schedules()
         changed = False
         for j in jobs:
-            if not j.get("enabled", True):
-                continue
-            nxt = config.schedule_next(j, now)
-            if nxt is None or nxt > now:
+            if not schedule_due(j, now):
                 continue
             task = str(j.get("task") or "").strip() or "定时任务"
             no = store.add_task(task, "定时任务（R1 执行）")
@@ -133,6 +188,12 @@ def r1_archive() -> dict:
     幂等由主键（子任务编号）保证：重复归档即覆盖同一行，不再靠整行字符串比对去重。
     文件在=待处理、文件移走=已处理，文件系统本身就是状态机。"""
     done, skipped, ledger = [], [], []
+    # 执行中的子任务不许归档（角色 agent 会提前把 meta 的 status 写成「完成」，
+    # 归档线程抢先搬走文件，执行链回来更新 meta 就找不到它了）。
+    # 判据必须是「**当前进程里真的在跑**」，不能用 DB 的未结算记录 ——
+    # 进程被杀（重启）会留下永远不结算的记录，那样这个守卫会永久挡住归档，
+    # 而子任务状态恰恰是靠归档更新的，于是永远卡在「执行中」。
+    running = set(runner.exec_state().keys())
     for d in _wb_role_dirs():
         for meta_p in sorted(d.glob("*.meta.json")):
             try:
@@ -145,6 +206,9 @@ def r1_archive() -> dict:
             body_p = d / (sub_no + "-report.md")          # 新命名：完成回报
             if not body_p.exists():
                 body_p = d / (sub_no + ".md")             # 兼容历史旧命名
+            if sub_no in running:
+                skipped.append("%s（执行中，不归档）" % sub_no)
+                continue
             if status in ("待执行", "执行中") or not body_p.exists():
                 skipped.append("%s（%s）" % (sub_no, status if body_p.exists() else "正文未产出"))
                 continue
@@ -169,14 +233,18 @@ def r1_archive() -> dict:
             if (d / (f.stem + ".meta.json")).exists():
                 continue
             ledger.append(f.relative_to(config.WORKSPACE_ROOT).as_posix())
-    # 任务级回填：子任务全部完成 → 任务完成
+    # 任务级回填：子任务全部完成 → 任务完成。
+    # 只在状态真的变了才进 done：否则每归档一次就把所有历史任务重报一遍，
+    # 日志写着「自动归档入库 13 项」而其中只有 1 项是这次的。
+    cur = {str(t.get("no")): str(t.get("status") or "") for t in store.tasks()}
     by_task = {}
     for s in store.subtasks():
         by_task.setdefault(s["taskNo"], []).append(s["st"])
     for task_no, sts in by_task.items():
         if sts and all(x == "完成" for x in sts):
+            if cur.get(str(task_no)) != "完成":
+                done.append("%s → 任务完成" % task_no)
             store.set_task(task_no, "完成", "%d/%d 子任务完成" % (len(sts), len(sts)))
-            done.append("%s → 任务完成" % task_no)
     out = {"archived": done, "skipped": skipped, "ledger": ledger}
     if done:
         agent.log_schedule("R1 自动归档",
@@ -184,8 +252,19 @@ def r1_archive() -> dict:
     if ledger:
         lg = config.BATCH_ROOT / ("归档登记-" + datetime.date.today().isoformat() + ".md")
         lg.parent.mkdir(parents=True, exist_ok=True)
-        with open(lg, "a", encoding="utf-8") as fh:
-            fh.write("\n".join("- " + p for p in ledger) + "\n")
+        # 登记的是「仍留在工作区、没有 meta 的内容交付物」——归档不会把它们移走，
+        # 所以每次扫描都会再看见同一批。这里去重后只追加没登记过的，否则同一批文件
+        # 每归档一次就重抄一遍（实测 13 项被写成 245 行，重复 6 遍）。
+        old = set()
+        if lg.is_file():
+            try:
+                old = {ln.strip() for ln in config.read_text(lg).splitlines() if ln.strip()}
+            except Exception:
+                old = set()
+        new = ["- " + p for p in ledger if ("- " + p) not in old]
+        if new:
+            with open(lg, "a", encoding="utf-8") as fh:
+                fh.write("\n".join(new) + "\n")
     return out
 
 
@@ -848,6 +927,33 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
         return None
 
 
+def clean_piyuetai(no: str) -> int:
+    """从《批阅台》移除某任务的条目块（删除任务时调用，避免留下指向已删任务的记录）。
+
+    块的边界只认标题：从「### …｜任务 T-xxx…」起到下一个标题（# 起首的任意级）之前。
+    任务号是唯一可靠的锚 —— 按行号或固定偏移切块，历史上吃过亏（内容一改就劈错段）。
+    只删标题里点了这个任务号的块，其余条目一个字不动。"""
+    p = config.ROOT / config.PIYUETAI_REL
+    if not p.is_file():
+        return 0
+    lines = config.read_text(p).split(chr(10))
+    pat = re.compile(r"^#{2,4}\s.*任务\s*%s(?!\d)" % re.escape(no))
+    out, i, removed = [], 0, 0
+    while i < len(lines):
+        if pat.match(lines[i].strip()):
+            removed += 1
+            i += 1
+            while i < len(lines) and not re.match(r"^#{1,4}\s", lines[i]):
+                i += 1
+            continue
+        out.append(lines[i])
+        i += 1
+    if removed:
+        txt = re.sub(r"\n{3,}", chr(10) + chr(10), chr(10).join(out))
+        p.write_text(txt, encoding="utf-8")
+    return removed
+
+
 def clean_task_files(no: str) -> int:
     """删除某任务在工作区/公共项目区的产出文件（子任务正文 / .meta.json / 汇总 / 回报，含已归档/）。
 
@@ -881,6 +987,15 @@ def clean_task_files(no: str) -> int:
                     removed += 1
                 except OSError:
                     pass
+    # 运行日志（《批阅台/运行日志/T-xxx-Sn.log》）：任务的痕迹，随任务一起走
+    logdir = config.BATCH_ROOT / "运行日志"
+    if logdir.is_dir():
+        for p in list(logdir.glob(no + "-*.log")):
+            try:
+                p.unlink()
+                removed += 1
+            except OSError:
+                pass
     return removed
 
 
@@ -1085,6 +1200,8 @@ def token_rows() -> list:
                              "date": str(m.get("createdAt") or "")[:10],
                              "tokensIn": int(m.get("tokensIn") or 0),
                              "tokensOut": int(m.get("tokensOut") or 0),
+                             # tokensIn 已含缓存读取，这里单独给一份供界面拆「命中 / 未命中」
+                             "tokensCache": int(m.get("tokensCacheRead") or 0),
                              "archived": base.name == "已归档"})
     seen = {}
     for r in rows:
@@ -1156,10 +1273,15 @@ def sub_output(sub_no: str) -> dict:
         return {}
     for d in _wb_role_dirs():
         for base in (d, d / "已归档"):
-            p = base / (sub_no + "-report.md")
-            if not p.exists():
-                p = base / (sub_no + ".md")
-            if not p.exists():
+            # 归档时正文会从 {sub}-report.md 改名成 {sub}-output.md，三个名字都要认 ——
+            # 只认前两个的话，任务一归档（自动发生），点看板上的子任务就必然 404。
+            p = None
+            for nm in (sub_no + "-report.md", sub_no + "-output.md", sub_no + ".md"):
+                cand = base / nm
+                if cand.exists():
+                    p = cand
+                    break
+            if p is None:
                 continue
             meta = {}
             meta_p = base / (sub_no + ".meta.json")
@@ -1291,23 +1413,48 @@ def build_timeline() -> dict:
     return {"ok": True, "events": events, "msg": "已生成（" + rel + "）"}
 
 
-def project_files() -> dict:
-    """公共项目区（项目/）文件清单：源码/工程性产出。全员可读；仅「工程」标签角色可写。
+def _skip_name(name: str) -> bool:
+    """公共项目区里不展示的条目（隐藏文件与跳过目录名）。"""
+    return name.startswith(".") or name in _WS_SKIP_PARTS
 
-    writers = 当前具备《项目/》写权限的角色（工程标签），供前端展示。"""
+
+def project_files(path: str = "") -> dict:
+    """公共项目区（项目/）文件清单：**只列一层**。
+
+    path 为空 = 根层；给了 path = 该目录的直接子项。前端点开目录时再来要下一层 ——
+    原来是无脑 rglob 整棵树，项目一大首屏就被这次遍历拖住，而用户往往只看根层。
+    子目录带 dir/hasChildren，前端据此决定画不画展开箭头。
+
+    writers = 当前具备《项目/》写权限的角色（工程标签），供前端展示（只在根层算）。"""
     from . import roles as _roles
+    root = config.PROJECT_ROOT.resolve()
+    base = root
+    if path:
+        base = (config.ROOT / path).resolve()
+        if base != root and root not in base.parents:      # 防路径逃逸
+            raise ValueError("路径不在公共项目区内：" + path)
+        if not base.is_dir():
+            raise ValueError("不是目录：" + path)
     out = []
-    root = config.PROJECT_ROOT
-    if root.is_dir():
-        for p in sorted(root.rglob("*")):
-            if not p.is_file() or any(seg in _WS_SKIP_PARTS for seg in p.relative_to(root).parts):
+    if base.is_dir():
+        for p in sorted(base.iterdir()):
+            if _skip_name(p.name):
                 continue
             try:
                 st = p.stat()
             except OSError:
                 continue
-            out.append({"name": p.name, "rel": p.relative_to(config.ROOT).as_posix(),
-                        "ext": p.suffix.lower(), "size": st.st_size, "mtime": int(st.st_mtime)})
+            rel = p.relative_to(config.ROOT).as_posix()
+            if p.is_dir():
+                has = False
+                try:
+                    has = any(not _skip_name(c.name) for c in p.iterdir())
+                except OSError:
+                    pass
+                out.append({"name": p.name, "rel": rel, "dir": True, "hasChildren": has})
+            elif p.is_file():
+                out.append({"name": p.name, "rel": rel, "ext": p.suffix.lower(),
+                            "size": st.st_size, "mtime": int(st.st_mtime)})
     writers = [no for no, _ in _roles.role_files() if _roles.can_write_project(no)]
-    return {"files": out, "writers": writers}
+    return {"files": out, "writers": writers, "path": path}
 

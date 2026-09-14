@@ -153,12 +153,13 @@
       card.innerHTML = "<span class='rc-st " + stCls + "'>" + esc(r.status || "") + "</span>"
         + "<div class='rc-top'><span class='rc-name'>" + esc(r.name || r.code) + "</span><span class='rc-n'>" + esc(r.code) + "</span>"
         + "<span class='rc-tags'>" + (r.tags || []).map(function(t){ return "<i>" + esc(t) + "</i>"; }).join("") + "</span>"
-        + "<button class='rc-folder' title='查看项目文件'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/></svg></button><button class='rc-del' title='删除角色（需二次确认）'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 6h18'/><path d='M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2'/><path d='M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6'/><path d='M10 11v6'/><path d='M14 11v6'/></svg></button></div>"
+        + "<button class='rc-term' title='终端：直接给这个角色下达任务（跳过 R1 拆解）'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='4 17 10 11 4 5'/><line x1='12' y1='19' x2='20' y2='19'/></svg></button><button class='rc-folder' title='查看项目文件'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z'/></svg></button><button class='rc-del' title='删除角色（需二次确认）'><svg viewBox='0 0 24 24' width='13' height='13' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 6h18'/><path d='M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2'/><path d='M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6'/><path d='M10 11v6'/><path d='M14 11v6'/></svg></button></div>"
         + "<div class='rc-duty'>" + esc(r.duty || "") + "</div>"
         + "<div class='rc-cur'>当前：" + esc(r.current || "无") + "</div>";
       card.addEventListener("click", function(){ openRole(r.code); });
       var btDel = card.querySelector(".rc-del");
       if (btDel) btDel.addEventListener("click", function(ev){ ev.stopPropagation(); openDelRoleModal(r.code, r.name || r.code); }); var btFolder = card.querySelector(".rc-folder"); if (btFolder) btFolder.addEventListener("click", function(ev){ ev.stopPropagation(); gotoRoleFiles(r.name || r.code); });
+      var btTerm = card.querySelector(".rc-term"); if (btTerm) btTerm.addEventListener("click", function(ev){ ev.stopPropagation(); openRoleChat(r.code, r.name || r.code); });
       grid.appendChild(card);
     });
     /* 原「未激活角色」位已改为固定「＋ 新增角色」入口（orgAdd）：点击弹窗新增角色；
@@ -166,6 +167,70 @@
        新增/编辑均走 /api/roles/add、/api/roles/edit（角色卡 + 工作区《名称/》）。 */
   }
 
+  /* ===== 角色终端：对某个角色直接下达任务 =====
+     跳过 R1 拆解，下游与自动执行链完全一致（产出/回报/归档/token 都走同一条链路）。
+     不做跨消息记忆：每一条消息都是一次独立执行，消息流只是流水。 */
+  var RC_ROLE = "";
+  function rcPanel(){
+    var p = $("rcChat");
+    if (p) return p;
+    p = document.createElement("div");
+    p.id = "rcChat";
+    p.className = "rc-chat";
+    p.hidden = true;
+    p.innerHTML = "<div class='r1-head'><span class='rc-dot'></span>"
+      + "<div class='r1-who'><b id='rcWho'></b><em>直派 · 跳过 R1 拆解 · 每次独立执行</em></div>"
+      + "<button id='rcClose' class='r1-x' title='关闭'>×</button></div>"
+      + "<div id='rcMsgs' class='r1-msgs'></div>"
+      + "<div class='r1-input'><input id='rcQ' placeholder='给这个角色下达任务，回车发送'>"
+      + "<button id='rcSend'>下达</button></div>"
+      + "<div class='r1-foot'><span id='rcMsg'></span></div>";
+    document.body.appendChild(p);
+    $("rcClose").addEventListener("click", function(){ p.hidden = true; });
+    $("rcSend").addEventListener("click", rcSend);
+    $("rcQ").addEventListener("keydown", function(e){
+      if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); rcSend(); }
+    });
+    return p;
+  }
+  function rcMsg(kind, text){
+    var box = $("rcMsgs"); if (!box) return null;
+    var el = document.createElement("div");
+    el.className = "r1-m " + kind;
+    el.textContent = text;
+    box.appendChild(el);
+    box.scrollTop = box.scrollHeight;
+    return el;
+  }
+  function openRoleChat(code, name){
+    var p = rcPanel();
+    RC_ROLE = code;
+    $("rcWho").textContent = code + " " + (name || "");
+    p.hidden = false;
+    if (!p.dataset.tip){
+      p.dataset.tip = "1";
+      rcMsg("sys", "下达的任务会直接派给该角色执行，不进 R1 拆解；每条消息独立执行，进度去「工作台 → 实时事件」看。");
+    }
+    var q = $("rcQ"); if (q) q.focus();
+  }
+  function rcSend(){
+    var q = $("rcQ"), m = $("rcMsg"), s = $("rcSend");
+    var text = (q && q.value || "").trim();
+    if (!text || !RC_ROLE) return;
+    rcMsg("q", text);
+    if (q) q.value = "";
+    if (s) s.disabled = true;
+    if (m) m.textContent = "已下达，正在执行…";
+    post("/api/role-task", { role: RC_ROLE, task: text }).then(function(j){
+      if (j && j.ok) rcMsg("a", "已建任务 " + j.no + "，直派给 " + j.role + " " + (j.roleName || "") + " 执行中。");
+      else rcMsg("sys", (j && j.msg) || "下达失败");
+      if (m) m.textContent = "";
+      scheduleWbRefresh(true);
+    }).catch(function(e){
+      rcMsg("sys", "异常：" + ((e && e.message) || ""));
+      if (m) m.textContent = "";
+    }).then(function(){ if (s) s.disabled = false; });
+  }
   function skillStem(n){ return String(n || "").replace(/\.md$/i, ""); }
   function renderSkillCaps(names){
     var body = $("roleSkillsBody");
@@ -464,6 +529,7 @@
   function showTaskOutput(no, row){
     state.activeNo = no;
     state.activeSub = null;
+    runFocusSub(null);
     showCurTask(no);
     renderAct(no);
     renderBoard();                    // 看板跟随选中任务筛选
@@ -512,7 +578,8 @@
       box.querySelectorAll(".to-cap").forEach(function(f){
         f.addEventListener("click", function(){
           var rel = f.getAttribute("data-rel");
-          box.innerHTML = "<div class='placeholder'>加载 " + esc(rel) + " 全文…</div>";
+          gotoWsFile(rel);            // 跳到「项目文件」页打开原文
+          return;                     // 就地预览不再走（下面那段留着不影响）
           api("/api/md?rel=" + encodeURIComponent(rel)).then(function(r){
             if (r && r.ok){
               box.innerHTML = "<div class='to-head'><a href='javascript:void(0)' id='toBack'>← 返回任务输出</a> <span>" + esc(rel.split("/").pop()) + "</span></div>"
@@ -529,6 +596,7 @@
   function showSubOutput(x){
     state.activeNo = x.taskNo;
     state.activeSub = x.no;
+    runFocusSub(x.no);            // 实时事件跟着看板选中的子任务走
     showCurTask(x.taskNo);
     renderAct(x.taskNo);
     renderBoard();
@@ -1115,6 +1183,14 @@
       box.innerHTML = "<div class='placeholder'>" + (q || state.activeNo ? "没有匹配的子任务" : "暂无子任务 —— 下达任务后 R1 拆解即出现") + "</div>";
       return;
     }
+    /* 没点任何任务 = 全局总览：子任务只会越积越多，四列看板是**任务级**的视图，
+       全局用「一行一事」的列表。点了某个任务才回到四列看板。 */
+    if (!state.activeNo){
+      boardRecent(rows, box, rows.length);
+      return;
+    }
+    box.className = "board";
+    box.style.gridTemplateColumns = "";
     var buckets = {};
     BOARD_COLS.forEach(function(c){ buckets[c.key] = []; });
     rows.forEach(function(x){ buckets[boardColOf(x.st)].push(x); });
@@ -1152,6 +1228,44 @@
       col.appendChild(list);
       box.appendChild(col);
     });
+  }
+  /* 全部静止时的形态：按完成时间倒序，一行一个子任务。
+     看板看「正在流动」，列表看「最近发生了什么」—— 两种状态不该用同一种图。 */
+  function boardRecent(list, box, total){
+    box.className = "board list-mode";
+    box.innerHTML = "";
+    var wrap = document.createElement("div");
+    wrap.className = "bd-recent";
+    var head = document.createElement("div");
+    head.className = "br-head";
+    head.innerHTML = "<span>子任务</span><em>共 " + total + " 个</em>";
+    wrap.appendChild(head);
+    var arr = list.slice().sort(function(a, b){
+      return String(b.lastStarted || "").localeCompare(String(a.lastStarted || ""));
+    }).slice(0, 30);
+    arr.forEach(function(x){
+      var partial = String(x.st || "").indexOf("部分") >= 0;
+      var el = document.createElement("div");
+      el.className = "br-row" + (state.activeSub === x.no ? " sel" : "");
+      el.innerHTML = "<span class='br-time'>"
+        + esc(String(x.lastStarted || "").replace("T", " ").slice(5, 16)) + "</span>"
+        + "<span class='br-no'>" + esc(x.no) + "</span>"
+        + "<span class='br-st " + (boardColOf(x.st) === "完成" ? "ok"
+            : (boardColOf(x.st) === "阻塞" ? "bad" : "run")) + "'>" + esc(x.st || "待派") + "</span>"
+        + "<span class='br-sub'>" + esc(x.sub) + "</span>"
+        + (partial ? "<span class='bc-tag partial'>部分</span>" : "")
+        + "<span class='br-role'>" + esc(x.role) + " " + esc(roleName(x.role)) + "</span>";
+      el.title = "期望产出：" + (x.expect || "—");
+      el.addEventListener("click", function(){ showSubOutput(x); });
+      wrap.appendChild(el);
+    });
+    if (list.length > arr.length){
+      var m = document.createElement("div");
+      m.className = "bd-more";
+      m.textContent = "… 更早还有 " + (list.length - arr.length) + " 条 · 点任务看全部";
+      wrap.appendChild(m);
+    }
+    box.appendChild(wrap);
   }
   function boardCard(x){
     var el = document.createElement("div");
@@ -1278,6 +1392,65 @@
       if (detail) showTaskOutput(state.activeNo, null);   // 任务边界（启动/结束/退出）刷详情
     }
   }
+  /* ===== 子任务执行轨迹：完整思考 / 工具调用 / 输出 =====
+     心跳（exec/progress）只报「最近在干什么」，轨迹（exec/trace）报全文。
+     同屏只展开最新一块 —— 正在跑的那个看得见，历史块收起来，点块头可展开。 */
+  var RT_KIND = { reasoning: "思考", tool: "调用工具", result: "工具返回", text: "输出", final: "最终输出" };
+  /* 实时事件跟着看板选中的子任务走：聚焦某子任务时只留它自己（与不带 sub 的任务级事件） */
+  var RUN_FOCUS = null;
+  function runVisible(sub){ return !RUN_FOCUS || !sub || sub === RUN_FOCUS; }
+  function runFocusSub(sub){
+    RUN_FOCUS = sub || null;
+    var box = runSecBody(false);
+    if (box){
+      Array.prototype.forEach.call(box.children, function(el){
+        el.style.display = runVisible(el.getAttribute("data-sub")) ? "" : "none";
+      });
+    }
+  }
+  function runTraceBlock(body, sub){
+    var el = body.querySelector(".run-trace[data-sub='" + sub + "']");
+    if (el) return el;
+    el = document.createElement("div");
+    el.className = "run-trace open";
+    el.setAttribute("data-sub", sub);
+    el.innerHTML = "<div class='run-trace-head'><span class='rt-arrow'>▾</span><b>" + esc(sub)
+      + "</b><em class='rt-meta'></em><button class='rt-log' title='在《批阅台/运行日志/》里看这一份的全文'>完整日志</button></div>"
+      + "<div class='run-trace-body'></div>";
+    el.querySelector(".run-trace-head").addEventListener("click", function(e){
+      if (e.target && e.target.className === "rt-log") return;
+      var on = el.classList.toggle("open");
+      el.querySelector(".rt-arrow").textContent = on ? "▾" : "▸";
+    });
+    el.querySelector(".rt-log").addEventListener("click", function(){ openRunLog(sub); });
+    Array.prototype.forEach.call(body.querySelectorAll(".run-trace.open"), function(x){
+      if (x === el) return;
+      x.classList.remove("open");
+      var a = x.querySelector(".rt-arrow"); if (a) a.textContent = "▸";
+    });
+    el.style.display = runVisible(sub) ? "" : "none";
+    body.appendChild(el);
+    return el;
+  }
+  function runTraceMeta(el){
+    var n = el.querySelectorAll(".rt-item").length, chars = 0;
+    Array.prototype.forEach.call(el.querySelectorAll(".rt-item pre"), function(p){ chars += (p.textContent || "").length; });
+    var em = el.querySelector(".rt-meta");
+    if (em) em.textContent = n + " 块 · " + chars.toLocaleString() + " 字";
+  }
+  function openRunLog(sub){
+    var w = window.open("", "_blank");
+    if (!w) return;
+    w.document.write("<title>" + sub + " 运行日志</title><pre style=\"white-space:pre-wrap;word-break:break-word;"
+      + "font:12px/1.6 ui-monospace,Consolas,monospace;padding:16px\">加载中…</pre>");
+    api("/api/runlog?sub=" + encodeURIComponent(sub)).then(function(j){
+      var pre = w.document.querySelector("pre");
+      if (pre) pre.textContent = (j && j.text) || ((j && j.msg) || "没有日志");
+    }).catch(function(e){
+      var pre = w.document.querySelector("pre");
+      if (pre) pre.textContent = "读取失败：" + ((e && e.message) || "");
+    });
+  }
   function runRender(ev){
     /* 事件源 = runner 缓冲（chain 只发 6 种合成事件）：run/start → 新建任务段；
        其余事件追加进当前段。 */
@@ -1288,6 +1461,13 @@
     var d = ev.data || {};
     var body;
     if (type === "run/start"){
+      // 新任务开始：上一条任务的聚焦作废，否则新子任务的事件会被整段挡掉
+      if (RUN_FOCUS){
+        RUN_FOCUS = null;
+        Array.prototype.forEach.call(lg.querySelectorAll(".run-sec-body > *"), function(el){
+          el.style.display = "";
+        });
+      }
       body = newRunSec(ev);
       var b = document.createElement("div");
       b.className = "run-banner";
@@ -1297,21 +1477,34 @@
       body = runSecBody(true);
     }
     if (!body) return;
+    var esub = String(ev.sub || d.sub || "");
     if (type === "step/start"){
-      body.appendChild(runStepEl(d.turn, d.step, ""));
-      body.appendChild(runOutEl(d.turn, d.step));
+      var s1 = runStepEl(d.turn, d.step, "");
+      s1.setAttribute("data-sub", esub);
+      s1.style.display = runVisible(esub) ? "" : "none";
+      body.appendChild(s1);
+      var o1 = runOutEl(d.turn, d.step);
+      o1.setAttribute("data-sub", esub);
+      o1.style.display = runVisible(esub) ? "" : "none";
+      body.appendChild(o1);
     } else if (type === "assistant/chunk"){
       if (d.text != null){
         var ob = runLastOut();
         if (!ob){ ob = runOutEl("", ""); body.appendChild(ob); }
+        if (!ob.getAttribute("data-sub") && esub) ob.setAttribute("data-sub", esub);
         var span = document.createElement("span");
         span.textContent = d.text;
         ob.appendChild(span);
       }
     } else if (type === "step/end"){
-      body.appendChild(runStepEl(d.turn, d.step, "步骤完成"));
+      var s2 = runStepEl(d.turn, d.step, "步骤完成");
+      s2.setAttribute("data-sub", esub);
+      s2.style.display = runVisible(esub) ? "" : "none";
+      body.appendChild(s2);
     } else if (type === "run/end"){
       /* 不截断：全文进 DOM，超长由 .run-out 折叠 + 「展开全部」承载 */
+      // 跑完把每块轨迹的块头从「运行中 [..]」改回「N 块 · M 字」
+      Array.prototype.forEach.call(body.querySelectorAll(".run-trace"), runTraceMeta);
       var e4 = document.createElement("div");
       e4.className = "run-banner end";
       e4.textContent = "执行结束 · " + String(ev.text || "");
@@ -1324,21 +1517,30 @@
       e5.textContent = "进程退出码：" + (d.code != null ? d.code : "?");
       body.appendChild(e5);
     } else if (type === "exec/progress"){
-      /* 执行心跳：同一子任务复用同一行原地更新（周期心跳否则会把面板堆满） */
-      var el = (d.elapsed || 0), mm = Math.floor(el / 60), ss = ("0" + (el % 60)).slice(-2);
+      /* 执行心跳：状态写进该子任务轨迹块的块头（原地更新，不堆行） */
       var sub = String(d.sub || "");
-      var inner = "<em>[" + mm + ":" + ss + "]</em> " + esc(sub) + " · 操作 " + (d.tools || 0) + " 次"
-        + (d.lastTool ? " · 最近：" + esc(d.lastTool) : "")
-        + (d.lastText ? "<div class='rp-text'>" + esc(d.lastText) + "</div>" : "");
-      var pr = sub ? body.querySelector(".run-prog[data-sub='" + sub + "']") : null;
-      if (pr){ pr.innerHTML = inner; }
-      else {
-        pr = document.createElement("div");
-        pr.className = "run-prog";
-        if (sub) pr.setAttribute("data-sub", sub);
-        pr.innerHTML = inner;
-        body.appendChild(pr);
-      }
+      if (!sub) return;
+      var el = (d.elapsed || 0), mm = Math.floor(el / 60), ss = ("0" + (el % 60)).slice(-2);
+      var tb0 = runTraceBlock(body, sub);
+      var head = tb0.querySelector(".rt-meta");
+      if (head) head.textContent = "运行中 [" + mm + ":" + ss + "] · 操作 " + (d.tools || 0) + " 次"
+        + (d.lastTool ? " · 最近：" + esc(d.lastTool) : "");
+    } else if (type === "exec/trace"){
+      /* 完整轨迹：思考 / 工具调用 / 工具返回 / 每轮输出 / 最终输出 */
+      var tsub = String(d.sub || "");
+      if (!tsub) return;
+      var tb = runTraceBlock(body, tsub);
+      var kind = String(d.kind || "text");
+      var item = document.createElement("div");
+      item.className = "rt-item " + kind.replace(/[^a-z]/g, "");
+      var lbl = document.createElement("div");
+      lbl.className = "rt-kind";
+      lbl.textContent = (RT_KIND[kind] || kind) + (d.truncated ? "（过长已截断，全文见完整日志）" : "");
+      var pre = document.createElement("pre");
+      pre.textContent = String(d.text || "");
+      item.appendChild(lbl); item.appendChild(pre);
+      tb.querySelector(".run-trace-body").appendChild(item);
+      runTraceMeta(tb);
     }
     runFoldCheck();
     lg.scrollTop = lg.scrollHeight;
@@ -1613,6 +1815,20 @@
   }
 
   /* ================= 04 项目文件：各角色工作区（按角色/任务筛选；md 渲染、文本 txt 查看、不可读不放行） ================= */
+  /* 跳到「项目文件」页并定位打开某个文件：角色档位由 rel 推出来
+     （工作区/<角色名>/… → 角色名；项目/… → 项目档位）。 */
+  function wsRoleOfRel(rel){
+    var p = String(rel || "").split("/");
+    if (p[0] === "项目") return "项目";
+    if (p[0] === "工作区" && p.length > 2) return p[1];
+    return "";
+  }
+  function gotoWsFile(rel){
+    pendingWsRole = wsRoleOfRel(rel);
+    pendingWsFile = rel;
+    var tab = document.querySelector('.tab[data-view="wsfiles"]');
+    if (tab) tab.click(); else loadWsFiles();
+  }
   var wsFiles = [], wsRole = "", wsTask = "", pendingWsRole = "", pendingWsFile = ""; function gotoRoleFiles(role){ pendingWsRole = role; var tab = document.querySelector('.tab[data-view="wsfiles"]'); if (tab){ tab.click(); } else { document.querySelectorAll(".view").forEach(function(x){ x.classList.remove("active"); }); var v = $("view-wsfiles"); if (v) v.classList.add("active"); loadWsFiles(); } }
   function wsFmtSize(n){
     n = Number(n) || 0;
@@ -1638,35 +1854,27 @@
       note.className = "proj-shared-note";
       note.textContent = "全员只读 · 可写：" + wtx;
       box.appendChild(note);
-      /* 文件多了平铺太长：按 rel 路径建树、目录可折叠；容器固定高度 + 滚动条（见 CSS） */
-      renderProjTree(projTree(files), box, 0);
+      /* 懒加载：根层只画一层，点开目录才去要下一层（容器固定高度 + 滚动条，见 CSS） */
+      var projRoot = projNode("项目");
+      projFill(projRoot, files);
+      renderProjTree(projRoot, box, 0);
     }).catch(function(e){ if (box) box.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
   }
-  /* ===== 公共项目区：文件夹树 ===== */
-  function projParts(f){
-    return String(f.rel || f.name || "").split("/").filter(function(x){ return x; });
-  }
-  function projTree(files){
-    /* 剥掉所有文件共有的公共前缀目录（公共项目区本就位于《项目/》下，不再白占一层） */
-    var lists = files.map(projParts);
-    var drop = 0;
-    if (lists.length){
-      var first = lists[0];
-      while (drop < first.length - 1 &&
-             lists.every(function(p){ return p.length > drop + 1 && p[drop] === first[drop]; })){
-        drop++;
+  /* ===== 公共项目区：文件夹树（懒加载） =====
+     接口一次只给一层，点开目录才去要下一层。原来首屏把整棵树 rglob 出来，
+     项目一大就白遍历一堆用户根本不展开的目录。 */
+  function projNode(rel){ return { dirs: {}, files: [], rel: rel, loaded: false }; }
+  function projFill(node, files){
+    files.forEach(function(f){
+      if (f.dir){
+        var sub = node.dirs[f.name] || projNode(f.rel);
+        sub.empty = !f.hasChildren;
+        node.dirs[f.name] = sub;
+      } else {
+        node.files.push({ f: f, name: f.name });
       }
-    }
-    var root = { dirs: {}, files: [] };
-    lists.forEach(function(parts, idx){
-      var segs = parts.slice(drop), node = root, i;
-      for (i = 0; i < segs.length - 1; i++){
-        node.dirs[segs[i]] = node.dirs[segs[i]] || { dirs: {}, files: [] };
-        node = node.dirs[segs[i]];
-      }
-      if (segs.length) node.files.push({ f: files[idx], name: segs[segs.length - 1] });
     });
-    return root;
+    node.loaded = true;
   }
   function projCount(node){
     var n = node.files.length;
@@ -1680,16 +1888,26 @@
       row.className = "pf-dir";
       row.style.paddingLeft = (6 + depth * 13) + "px";
       row.innerHTML = "<span class='pf-arrow'>▸</span>"
-        + "<span class='pf-name'>" + esc(name) + "</span><em>" + projCount(sub) + " 项</em>";
+        + "<span class='pf-name'>" + esc(name) + "</span><em class='pf-count'></em>";
       var kids = document.createElement("div");
       kids.className = "pf-kids";
       kids.style.display = "none";                        // 默认全部收起，点目录逐级展开
-      renderProjTree(sub, kids, depth + 1);
-      row.addEventListener("click", function(){
+      row.addEventListener("click", function(ev){
+        ev.stopPropagation();
         var open = kids.style.display !== "none";
         kids.style.display = open ? "none" : "";
         var a = row.querySelector(".pf-arrow");
         if (a) a.textContent = open ? "▸" : "▾";
+        if (open || sub.loaded) return;                   // 收起 / 已加载过 → 不发请求
+        kids.innerHTML = "<div class='placeholder'>加载中…</div>";
+        api("/api/project-files?path=" + encodeURIComponent(sub.rel)).then(function(j){
+          kids.innerHTML = "";
+          if (!j || !j.ok){ kids.innerHTML = "<div class='placeholder'>读取失败</div>"; return; }
+          projFill(sub, j.files || []);
+          renderProjTree(sub, kids, depth + 1);
+          var c = row.querySelector(".pf-count");
+          if (c) c.textContent = projCount(sub) + " 项";
+        }).catch(function(){ kids.innerHTML = "<div class='placeholder'>读取失败</div>"; });
       });
       box.appendChild(row);
       box.appendChild(kids);
@@ -1713,17 +1931,13 @@
     if (box) box.innerHTML = "<div class='placeholder'>加载文件清单…</div>";
     // 工作区文件 + 项目/（工程产出）一起取：项目/ 的以 role="项目" 并入，自动出现在角色筛选里
     Promise.all([
-      api("/api/ws-files"),
-      api("/api/project-files").catch(function(){ return { ok: false }; })
+      api("/api/ws-files")
     ]).then(function(rs2){
-      var j = rs2[0], pj = rs2[1];
+      var j = rs2[0];
       if (!j || !j.ok){ if (box) box.innerHTML = "<div class='placeholder'>清单加载失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
       wsFiles = (j.files || []).slice();
-      if (pj && pj.ok){
-        (pj.files || []).forEach(function(f){
-          if (f.rel) wsFiles.push({ name: f.name, rel: f.rel, size: f.size, role: "项目", task: "" });
-        });
-      }
+      // 公共项目区不在这里拉：它是唯一体量大的来源（上万文件），
+      // 选到「项目/（工程产出）」时才逐层要（见 wsProjTree）
       var roles = [], seenR = {}, tasks = [], seenT = {}, hasNone = false;
       wsFiles.forEach(function(f){
         if (!seenR[f.role]){ seenR[f.role] = 1; roles.push(f.role); }
@@ -1739,7 +1953,7 @@
         if (mb) return 1;
         return a < b ? -1 : a > b ? 1 : 0;
       });
-      var hasProj = roles.indexOf("项目") >= 0;
+      var hasProj = true;                        // 项目区永远是可选的一档：它是懒加载树，不依赖 wsFiles
       if (hasProj) roles = roles.filter(function(x){ return x !== "项目"; });
       tasks.sort(function(a, b){ return parseInt(a.slice(2), 10) - parseInt(b.slice(2), 10); });
       rs.innerHTML = "<option value=''>全部角色</option>"
@@ -1835,10 +2049,61 @@
       box.appendChild(el);
     });
   }
+  /* 懒加载版的树渲染：目录与文件都用「项目文件」页原有的样式（.pf-dir / .ws-item），
+     只是子层在首次展开时才请求。项目区以前走首页那套 .proj-file-item，跟其他角色
+     的 .ws-item 长得不一样，看着像两个页面拼起来的。 */
+  function renderWsLazy(node, box, depth){
+    Object.keys(node.dirs).sort().forEach(function(name){
+      var sub = node.dirs[name];
+      var row = document.createElement("div");
+      row.className = "pf-dir";
+      row.style.paddingLeft = (4 + depth * 12) + "px";
+      row.innerHTML = "<span class='pf-arrow'>▸</span>"
+        + "<span class='pf-name'>" + esc(name) + "</span><em class='pf-count'></em>";
+      var kids = document.createElement("div");
+      kids.style.display = "none";
+      row.addEventListener("click", function(ev){
+        ev.stopPropagation();
+        var open = kids.style.display !== "none";
+        kids.style.display = open ? "none" : "";
+        var a = row.querySelector(".pf-arrow");
+        if (a) a.textContent = open ? "▸" : "▾";
+        if (open || sub.loaded) return;               // 收起 / 已加载过 → 不发请求
+        kids.innerHTML = "<div class='placeholder'>加载中…</div>";
+        api("/api/project-files?path=" + encodeURIComponent(sub.rel)).then(function(j){
+          kids.innerHTML = "";
+          if (!j || !j.ok){ kids.innerHTML = "<div class='placeholder'>读取失败</div>"; return; }
+          projFill(sub, j.files || []);
+          renderWsLazy(sub, kids, depth + 1);
+          var c = row.querySelector(".pf-count");
+          if (c) c.textContent = wsTreeCount(sub) + " 项";
+        }).catch(function(){ kids.innerHTML = "<div class='placeholder'>读取失败</div>"; });
+      });
+      box.appendChild(row);
+      box.appendChild(kids);
+    });
+    node.files.sort(function(a, b){ return a.name.localeCompare(b.name); }).forEach(function(it){
+      var el = wsItemEl(it.f);
+      el.style.paddingLeft = (4 + depth * 12) + "px";
+      box.appendChild(el);
+    });
+  }
+  /* 项目文件页里的公共项目区：只加载根层，点开目录才要下一层。 */
+  function wsProjTree(box){
+    box.innerHTML = "<div class='placeholder'>加载项目区根层…</div>";
+    api("/api/project-files").then(function(j){
+      if (!j || !j.ok){ box.innerHTML = "<div class='placeholder'>读取失败：" + esc(j && j.msg || "") + "</div>"; return; }
+      box.innerHTML = "";
+      var root = projNode("项目");
+      projFill(root, j.files || []);
+      renderWsLazy(root, box, 0);
+    }).catch(function(e){ box.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
+  }
   function renderWsList(){
     var box = $("wsList");
     if (!box) return;
     if (!wsRole && !wsTask){ box.innerHTML = "<div class='placeholder'>选择 角色 / 项目 / 任务 后，此处按文件夹树显示文件</div>"; return; }
+    if (wsRole === "项目"){ wsProjTree(box); return; }   // 项目区：懒加载树，不参与 wsFiles 平铺清单
     var rows = filteredWsFiles();
     if (!rows.length){
       box.innerHTML = "<div class='placeholder'>" + (wsFiles.length ? "没有匹配的文件（换个角色 / 项目 / 任务筛选）" : "暂无文件 —— 任务执行后各角色产出会落到《工作区/<角色>/》") + "</div>";
@@ -2020,6 +2285,28 @@
   function loadEngines(){
     api("/api/engines").then(function(j){
       if (!j || !j.ok) return;
+      var sel = $("engSel");
+      if (sel){
+        sel.innerHTML = "";
+        (j.engines || []).forEach(function(e){
+          var o = document.createElement("option");
+          o.value = e.name;
+          o.textContent = e.label + (e.ok ? "" : "（环境不可用）");
+          sel.appendChild(o);
+        });
+        sel.value = j.current;
+      }
+      var fb = $("engFb");
+      if (fb){
+        fb.innerHTML = "";
+        (j.engines || []).forEach(function(e){
+          var o = document.createElement("option");
+          o.value = e.name;
+          o.textContent = e.label + (e.ok ? "" : "（环境不可用）");
+          fb.appendChild(o);
+        });
+        fb.value = j.fallback || j.current;
+      }
       var box = $("engList");
       if (box){
         box.innerHTML = "";
@@ -2033,6 +2320,7 @@
             + (e.current ? "<span class='eng-cur'>当前</span>" : "")
             + "<span class='eng-st " + (e.ok ? "ok" : "bad") + "'>" + (e.ok ? "可用" : "不可用") + "</span></div>"
             + "<div class='eng-desc'>" + esc(e.description || "") + "</div>"
+            + (e.cost ? "<div class='eng-cost'>" + esc(e.cost) + "</div>" : "")
             + "<div class='eng-note'>" + esc(e.note || "") + "</div>"
             + "<div class='eng-caps'>" + tags + "</div>";
           box.appendChild(el);
@@ -2045,6 +2333,10 @@
           + "（主引擎没跑起来时的备用，当前 <code>" + esc(j.fallback || "未启用") + "</code>）。改完刷新页面即生效，正在跑的任务不受影响。";
         t += "<br><b>回退</b> 主引擎「报错」或「秒退无产出」时改用备用引擎重跑一次，默认 <code>api</code> 兜底 <code>dsh</code>；已经跑了很久却没产出属于任务本身的问题，不会重跑（避免重复劳动与重复烧钱）。与主引擎相同时不生效。";
         t += "<br><b>按用途路由</b> 同一文件的 <code>engineFor</code> 段可给 <code>prompt</code>（拆解/汇总）与 <code>execute</code>（角色任务）分别指定引擎，留空即用主引擎。";
+        t += "<br><b>Token 与费用</b> 两个引擎都<b>逐轮累加</b>记账（provider 按每轮重发的完整上下文计费，命中缓存的按低价计）。"
+          + "DSH 的数字天然更大：它每轮都带着自己那套系统提示、工具与技能（一万到数万 token），但其中约九成命中缓存；"
+          + "直连 API 每轮上下文小，但历史全量重发。<b>所以要比总额、不要比单轮</b>，具体到「③ Token 统计」看 —— "
+          + "两个引擎的柱高是同一把尺子量的。";
         if (j.envOverride) t += "<br><b>注意</b> 环境变量 <code>OPC_ENGINE=" + esc(j.envOverride) + "</code> 优先于配置文件，改文件不会生效。";
         var errs = j.errors || {};
         var ek = Object.keys(errs);
@@ -2053,9 +2345,23 @@
       }
     }).catch(function(){});
   }
+  function saveEngine(){
+    var sel = $("engSel"), m = $("engMsg");
+    if (!sel || !sel.value) return;
+    var payload = { engine: sel.value };
+    var fb = $("engFb");
+    if (fb && fb.value) payload.engineFallback = fb.value;
+    if (m) m.textContent = "保存中…";
+    post("/api/settings", payload).then(function(j){
+      if (m) m.textContent = (j && j.msg) || ((j && j.ok) ? "已保存" : "保存失败");
+      loadEngines();
+    }).catch(function(e){ if (m) m.textContent = "异常：" + esc((e && e.message) || ""); });
+  }
   function loadSettings(){
     api("/api/settings").then(function(j){
       if (!j || !j.ok){ var m = $("setMsg"); if (m) m.textContent = "读取设置失败：" + esc(j && j.msg || "未知"); return; }
+      var efv = $("engFb");                            // 备用引擎回显已保存的选择
+      if (efv && j.config && j.config.engineFallback) efv.value = j.config.engineFallback;
       var mi = j.model || {};
       var mp = $("mApiProvider"); if (mp) mp.value = mi.provider || "deepseek";
       var ak = $("mApiKey"); if (ak) ak.value = "";
@@ -2157,6 +2463,184 @@
     if (n >= 1000) return (n / 1000).toFixed(1) + "k";
     return String(n);
   }
+  /* ================= R1 助理悬浮窗（临时会话，不进任务流程） ================= */
+  /* 卡通 R1：圆脸 + 耳麦 + 金色领结，纯 inline SVG —— 不用 emoji、不引外部图，两个主题下都清楚。 */
+  /* 悬浮球里的图形：一个对话气泡 + 三个点。底色与光环由 CSS 给（跟随主题），
+     这里只画图形本身 —— 不再是具体的人脸形象。 */
+  var R1_SVG = "<svg viewBox='0 0 48 48' xmlns='http://www.w3.org/2000/svg' aria-hidden='true'>"
+    + "<path d='M11 13h26a5 5 0 0 1 5 5v11a5 5 0 0 1-5 5H24l-8 7v-7h-5a5 5 0 0 1-5-5V18a5 5 0 0 1 5-5z' fill='#43536b'/>"
+    + "<circle cx='17' cy='23.5' r='2.3' fill='#f4f8fc'/>"
+    + "<circle cx='24' cy='23.5' r='2.3' fill='#f4f8fc'/>"
+    + "<circle cx='31' cy='23.5' r='2.3' fill='#f4f8fc'/>"
+    + "</svg>";
+
+  function fmtTok(n){ return (Number(n) || 0).toLocaleString(); }
+
+  function mountDock(){
+    var fab = $("r1Fab"), ava = $("r1Ava");
+    if (fab){
+      // 光球本体用 CSS 画（呼吸核心 + 漂移光晕 + 刻度环 + 频谱条），
+      // 不再是"把一个图标塞进按钮里"那种做法。
+      fab.innerHTML = "<span class='r1-halo'></span><span class='r1-ring'></span>"
+        + "<span class='r1-wave'><i></i><i></i><i></i><i></i></span>";
+      fab.addEventListener("click", function(){ toggleR1Panel(); });
+    }
+    if (ava) ava.innerHTML = R1_SVG;
+    // 右上角 × 只收起面板；悬浮球一直留在原处（要彻底关掉去「设置 → ⑦ R1 助理」取消勾选）
+    var x = $("r1Close"); if (x) x.addEventListener("click", function(){ showR1Panel(false); });
+    var s = $("r1Send"); if (s) s.addEventListener("click", askR1);
+    var q = $("r1Q");
+    if (q) q.addEventListener("keydown", function(e){
+      if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); askR1(); }
+    });
+    var on = $("dockOn");
+    if (on) on.addEventListener("change", function(){ applyDock(on.checked, true); });
+    dockApplyPos();                                 // 恢复上次拖到的位置
+    makeDockDraggable();
+    // 第一次露面时招呼一下（气泡 3 秒后自动收回），之后不再打扰
+    try {
+      if (!localStorage.getItem("opc.dockTipped")){
+        var f = $("r1Fab");
+        if (f){ f.classList.add("tipped"); setTimeout(function(){ f.classList.remove("tipped"); }, 3200); }
+        localStorage.setItem("opc.dockTipped", "1");
+      }
+    } catch (e) {}
+    // 初始状态以配置为准（跨浏览器一致，而不是只看本机 localStorage）
+    api("/api/settings").then(function(j){
+      var v = !!(j && j.config && j.config.assistantDock);
+      applyDock(v, false);
+      var cb = $("dockOn"); if (cb) cb.checked = v;
+    }).catch(function(){});
+  }
+
+  /* ---- 悬浮球可拖动：位置存本机（设备相关，不跟着配置跨设备同步） ---- */
+  function dockPosSave(x, y){
+    try { localStorage.setItem("opc.dockPos", x + "," + y); } catch (e) {}
+  }
+  function dockPosLoad(){
+    try {
+      var v = localStorage.getItem("opc.dockPos");
+      if (!v) return null;
+      var p = v.split(",");
+      var x = parseInt(p[0], 10), y = parseInt(p[1], 10);
+      return (isNaN(x) || isNaN(y)) ? null : { x: x, y: y };
+    } catch (e) { return null; }
+  }
+  function dockApplyPos(){
+    var d = $("r1Dock"), p = dockPosLoad();
+    if (!d || !p) return;                           // 没拖过就留在 CSS 默认的右下角
+    d.style.right = "auto"; d.style.bottom = "auto";
+    d.style.left = Math.max(4, Math.min(window.innerWidth - 60, p.x)) + "px";
+    d.style.top = Math.max(4, Math.min(window.innerHeight - 60, p.y)) + "px";
+  }
+  function makeDockDraggable(){
+    var d = $("r1Dock");
+    if (!d) return;
+    var grips = [$("r1Fab")].filter(Boolean);   // 只有悬浮球能拖；面板不参与拖动
+    var st = { on: false, moved: false, sx: 0, sy: 0, ox: 0, oy: 0 };
+    function down(e, grip){
+      if (e.button !== 0) return;
+      // 按到**别的**按钮（面板上的 × 等）就不拖；悬浮球自己就是 button，
+      // 不能拿「target 是不是 button」当判据 —— 那会把拖动整个挡掉。
+      var b = (e.target && e.target.closest) ? e.target.closest("button") : null;
+      if (b && b !== grip) return;
+      var r = d.getBoundingClientRect();
+      st.on = true; st.moved = false;
+      st.sx = e.clientX; st.sy = e.clientY; st.ox = r.left; st.oy = r.top;
+      d.style.right = "auto"; d.style.bottom = "auto";
+      d.style.left = r.left + "px"; d.style.top = r.top + "px";
+    }
+    function move(e){
+      if (!st.on) return;
+      var dx = e.clientX - st.sx, dy = e.clientY - st.sy;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) st.moved = true;
+      var h = Math.max(d.offsetHeight, 60);
+      d.style.left = Math.max(4, Math.min(window.innerWidth - d.offsetWidth - 4, st.ox + dx)) + "px";
+      d.style.top = Math.max(4, Math.min(window.innerHeight - h - 4, st.oy + dy)) + "px";
+    }
+    function up(){
+      if (st.on && st.moved)
+        dockPosSave(parseInt(d.style.left, 10) || 0, parseInt(d.style.top, 10) || 0);
+      st.on = false;
+      // click 在 mouseup 之后触发：延后清零，拖动过的那一次就不会被当成点击
+      setTimeout(function(){ st.moved = false; }, 0);
+    }
+    grips.forEach(function(g){ g.addEventListener("mousedown", function(e){ down(e, g); }); });
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+    var fab = $("r1Fab");
+    if (fab) fab.addEventListener("click", function(e){
+      if (st.moved){ e.preventDefault(); e.stopPropagation(); }
+    }, true);
+  }
+
+  function applyDock(on, save){
+    var d = $("r1Dock");
+    if (d) d.hidden = !on;
+    if (!on) showR1Panel(false);
+    var m = $("dockMsg");
+    if (m && save) m.textContent = on ? "已开启 —— 右下角点 R1 头像开始问答" : "已关闭";
+    if (save) post("/api/settings", { assistantDock: on }).catch(function(){});
+  }
+
+  // 悬浮球三态：待命 / open（面板展开）/ busy（正在算）。这里只切类名，样式全在 CSS。
+  var R1_TIP = "";
+  function r1State(name, on){
+    var f = $("r1Fab");
+    if (!f) return;
+    if (!R1_TIP) R1_TIP = f.dataset.tip || "";
+    f.classList.toggle(name, !!on);
+    if (name === "busy") f.dataset.tip = on ? "R1 正在思考…" : R1_TIP;
+  }
+  function showR1Panel(on){
+    var p = $("r1Panel");
+    if (p) p.hidden = !on;
+    r1State("open", !!on);
+    if (on){
+      var box = $("r1Msgs");
+      if (box && !box.childElementCount)
+        addR1Msg("sys", "临时会话：只问答，不建任务、不派角色。问我项目现在什么情况就行。");
+      var q = $("r1Q"); if (q) q.focus();
+    }
+  }
+  function toggleR1Panel(){
+    var p = $("r1Panel");
+    showR1Panel(!!(p && p.hidden));
+  }
+  function addR1Msg(kind, text){
+    var box = $("r1Msgs");
+    if (!box) return null;
+    var el = document.createElement("div");
+    el.className = "r1-m " + kind;
+    el.textContent = text;
+    box.appendChild(el);
+    box.scrollTop = box.scrollHeight;
+    return el;
+  }
+  function askR1(){
+    var q = $("r1Q"), s = $("r1Send"), m = $("r1Msg"), tk = $("r1Tok");
+    var text = (q && q.value || "").trim();
+    if (!text) return;
+    addR1Msg("q", text);
+    if (q) q.value = "";
+    if (s) s.disabled = true;
+    r1State("busy", true);
+    if (m) m.textContent = "R1 正在看项目现状…";
+    var wait = addR1Msg("sys", "思考中…");
+    post("/api/assistant/ask", { q: text }).then(function(j){
+      if (wait) wait.remove();
+      if (j && j.ok && j.a) addR1Msg("a", j.a);
+      else addR1Msg("sys", (j && j.msg) || "没有拿到回答");
+      if (m) m.textContent = "";
+      if (j && j.tokens && tk)
+        tk.innerHTML = "临时会话累计 <b>" + fmtTok((j.tokens.in || 0) + (j.tokens.out || 0)) + "</b>";
+      loadTokenStats();
+    }).catch(function(e){
+      if (wait) wait.remove();
+      addR1Msg("sys", "异常：" + ((e && e.message) || ""));
+      if (m) m.textContent = "";
+    }).then(function(){ r1State("busy", false); if (s) s.disabled = false; });
+  }
   function loadTokenStats(){
     var sum = $("tokSum"), chart = $("tokChart");
     if (sum) sum.textContent = "";
@@ -2164,35 +2648,64 @@
     api("/api/tokens").then(function(j){
       if (!j || !j.ok){ if (chart) chart.innerHTML = "<div class='placeholder'>读取失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
       var rows = j.rows || [];
-      if (!rows.length){
+      var asst = j.assistant || { in: 0, out: 0, count: 0 };
+      var aIn = asst.in || 0, aOut = asst.out || 0, aCnt = asst.count || 0;
+      // 任务为空但临时会话有量时也要出图，所以两个条件一起判
+      if (!rows.length && !aCnt){
         if (chart) chart.innerHTML = "<div class='placeholder'>暂无 token 数据 —— 启用 token 统计后执行的任务会写入 meta.json</div>";
         return;
       }
-      var byTask = {}, tIn = 0, tOut = 0;
+      var byTask = {}, tIn = 0, tOut = 0, tCache = 0;
       rows.forEach(function(x){
-        tIn += x.tokensIn || 0; tOut += x.tokensOut || 0;
+        tIn += x.tokensIn || 0; tOut += x.tokensOut || 0; tCache += x.tokensCache || 0;
         var t = x.task || "(无任务)";
-        if (!byTask[t]) byTask[t] = { inn: 0, out: 0, subs: 0 };
-        byTask[t].inn += x.tokensIn || 0; byTask[t].out += x.tokensOut || 0; byTask[t].subs++;
+        if (!byTask[t]) byTask[t] = { inn: 0, out: 0, cache: 0, subs: 0 };
+        byTask[t].inn += x.tokensIn || 0; byTask[t].out += x.tokensOut || 0;
+        byTask[t].cache += x.tokensCache || 0; byTask[t].subs++;
       });
       var names = Object.keys(byTask).sort(function(a, b){
         var ia = parseInt(a.slice(2), 10), ib = parseInt(b.slice(2), 10);
         return (isNaN(ia) ? 0 : ia) - (isNaN(ib) ? 0 : ib);
       });
-      var max = 0;
+      var max = aIn + aOut;        // 临时会话与任务柱共用同一把尺子，否则高度没有可比性
       names.forEach(function(t){ max = Math.max(max, byTask[t].inn + byTask[t].out); });
       max = max || 1;
-      if (sum) sum.innerHTML = "共 <b>" + rows.length + "</b> 个子任务 · 总输入 <b>" + fmtTok(tIn) + "</b> · 总输出 <b>" + fmtTok(tOut) + "</b> · 输入:输出 " + Math.round(tOut / (tIn || 1) * 100) + "%";
-      var bars = names.map(function(t){
+      var cacheAll = tCache + (asst.cache || 0), inAll = (tIn + aIn) || 1;
+      if (sum) sum.innerHTML = "共 <b>" + rows.length + "</b> 个子任务 + 临时会话 <b>" + aCnt + "</b> 次 · 总输入 <b>"
+        + fmtTok(tIn + aIn) + "</b>（其中缓存命中 <b>" + fmtTok(cacheAll) + "</b>，"
+        + Math.round(cacheAll / inAll * 100) + "%）· 总输出 <b>" + fmtTok(tOut + aOut) + "</b> · 输入:输出 "
+        + Math.round((tOut + aOut) / inAll * 100) + "%";
+      var altBars = "";
+      var tCol = names.map(function(t){
         var v = byTask[t];
-        var hIn = Math.max(2, Math.round(v.inn / max * 180));
+        var fresh = Math.max(0, v.inn - v.cache);
+        var hFresh = Math.max(2, Math.round(fresh / max * 180));
+        var hCache = Math.round(v.cache / max * 180);
         var hOut = Math.max(2, Math.round(v.out / max * 180));
         return "<div class='tok-col'><div class='tok-bars'>"
-          + "<span class='tok-bar in' style='height:" + hIn + "px' title='" + esc(t) + " 输入 " + fmtTok(v.inn) + "'></span>"
+          + "<span class='tok-stack'>"
+          + "<span class='tok-bar in' style='height:" + hFresh + "px' title='" + esc(t) + " 新输入 " + fmtTok(fresh) + "'></span>"
+          + (hCache ? "<span class='tok-bar cache' style='height:" + hCache + "px' title='" + esc(t) + " 缓存命中 " + fmtTok(v.cache) + "'></span>" : "")
+          + "</span>"
           + "<span class='tok-bar out' style='height:" + hOut + "px' title='" + esc(t) + " 输出 " + fmtTok(v.out) + "'></span>"
           + "</div><div class='tok-lab'>" + esc(t) + "</div><div class='tok-val'>" + fmtTok(v.inn + v.out) + "</div></div>";
       }).join("");
-      chart.innerHTML = "<div class='tok-legend'><span class='lg-in'>输入</span><span class='lg-out'>输出</span></div>"
+      if (aIn || aOut){
+        var aCache = asst.cache || 0, aFresh = Math.max(0, aIn - aCache);
+        var ahIn = Math.max(2, Math.round(aFresh / max * 180));
+        var ahCache = Math.round(aCache / max * 180);
+        var ahOut = Math.max(2, Math.round(aOut / max * 180));
+        altBars = "<div class='tok-col alt'><div class='tok-bars'><span class='tok-stack'>"
+          + "<span class='tok-bar in alt' style='height:" + ahIn + "px' title='临时会话 新输入 " + fmtTok(aFresh) + "'></span>"
+          + (ahCache ? "<span class='tok-bar cache alt' style='height:" + ahCache + "px' title='临时会话 缓存命中 " + fmtTok(aCache) + "'></span>" : "")
+          + "</span>"
+          + "<span class='tok-bar out alt' style='height:" + ahOut + "px' title='临时会话 输出 " + fmtTok(aOut) + "'></span>"
+          + "</div><div class='tok-lab'>临时会话</div><div class='tok-val'>" + fmtTok(aIn + aOut) + "</div></div>";
+      }
+      var bars = altBars + tCol;                   // 临时会话排最前：它是唯一特殊的一组
+      chart.innerHTML = "<div class='tok-legend'><span class='lg-cache'>缓存命中</span><span class='lg-in'>新输入</span>"
+        + "<span class='lg-out'>输出</span>"
+        + "<span class='lg-alt'>临时会话（单列一组，不进任务统计）</span></div>"
         + "<div class='tok-zone'>" + bars + "</div>";
     }).catch(function(e){ if (chart) chart.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
   }
@@ -2281,6 +2794,7 @@
         if (go === "project") goPane("settings", "dir");
         else if (go === "model") gotoModel();
         else if (go === "handbook") viewHandbook();
+        else if (go === "engine") goPane("settings", "engine");
       });
     });
     var oc = $("onbClose"); if (oc) oc.addEventListener("click", closeOnboard);
@@ -2318,6 +2832,7 @@
     var bm = $("btnSaveModelApi"); if (bm) bm.addEventListener("click", saveModelApi);
     var bt = $("btnTestModelApi"); if (bt) bt.addEventListener("click", testModelApi);
     var mpv = $("mApiProvider"); if (mpv) mpv.addEventListener("change", modelProviderChanged);
+    var beng = $("btnSaveEngine"); if (beng) beng.addEventListener("click", saveEngine);
     var sa = $("btnSchedAdd"); if (sa) sa.addEventListener("click", addSched);
     var bb = $("btnBrowseDir"); if (bb) bb.addEventListener("click", dirOpen);
     var dcl = $("btnDirClose"); if (dcl) dcl.addEventListener("click", dirClose);
@@ -2417,7 +2932,11 @@
     post("/api/schedule", payload).then(function(jj){
       if (jj && jj.ok){
         if (msg) msg.textContent = "✓ 定时任务已添加 —— 到点自动下达《任务下达队列》并生成调度指令，交常驻主会话 R1 执行";
-        ["schedTask","schedTime","schedWeekday","schedInterval"].forEach(function(id){ var el = $(id); if (el) el.value = ""; });
+        // 复位：指令清空，三个受控字段回到默认值（时刻 / 星期 / 间隔都是选择器，不能清成空）
+        var td = $("schedTask"); if (td) td.value = "";
+        var tm = $("schedTime"); if (tm) tm.value = "09:30";
+        var wd = $("schedWeekday"); if (wd) wd.value = "0";
+        var iv = $("schedInterval"); if (iv) iv.value = "60";
         loadSchedules();
       } else { if (msg) msg.textContent = "添加失败：" + esc(jj && jj.msg || "未知"); }
     }).catch(function(e){ if (msg) msg.textContent = "异常：" + esc(e.message); });
@@ -2524,6 +3043,7 @@
   tick();
   loadHome();
   bindSettings();
+  mountDock();            // R1 助理悬浮窗（临时会话，不进任务流程）
   loadProjects();   // 启动即拉项目清单：顶栏项目切换器一直显示正确项目名，而不是等进设置
   loadProjectTemplates();
   bindOnboard();

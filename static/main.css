@@ -667,6 +667,14 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 /* ===== 作战面板角色卡：删除按钮（右下角，避免与右上状态徽章重叠） ===== */
 .role-card .rc-folder{position:absolute;right:40px;top:50%;transform:translateY(calc(-50% + 30px));background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:7px;padding:3px 8px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;opacity:.85;transition:all .15s ease}
 .role-card .rc-folder:hover{opacity:1;color:var(--gold);border-color:rgba(2,132,199,.6);background:rgba(2,132,199,.1);box-shadow:0 2px 10px rgba(2,132,199,.25)}
+/* 终端入口：排在文件夹与删除之前（right 依次 72 / 40 / 8） */
+.role-card .rc-term{position:absolute;right:72px;top:50%;transform:translateY(calc(-50% + 30px));background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:7px;padding:3px 8px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;opacity:.85;transition:all .15s ease}
+.role-card .rc-term:hover{opacity:1;color:var(--ok);border-color:rgba(52,211,153,.6);background:rgba(52,211,153,.1);box-shadow:0 2px 10px rgba(52,211,153,.25)}
+:root[data-theme="dark"] .role-card .rc-term:hover{border-color:rgba(52,211,153,.6);background:rgba(52,211,153,.1)}
+/* 角色终端面板：复用 R1 悬浮窗的头/消息/输入样式，只重定位 */
+.rc-chat{position:fixed;right:22px;bottom:96px;width:min(420px,92vw);max-height:min(520px,70vh);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line2);border-radius:14px;box-shadow:0 18px 50px rgba(15,23,42,.32);z-index:1250;overflow:hidden}
+.rc-chat[hidden]{display:none}
+.rc-dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:none}
 .role-card .rc-del{position:absolute;right:8px;top:50%;transform:translateY(calc(-50% + 30px));background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:7px;padding:3px 8px;font-size:12px;cursor:pointer;line-height:1.3;font-weight:600;opacity:.85;transition:all .15s ease}
 .role-card .rc-del:hover{opacity:1;color:var(--red-bright);border-color:rgba(239,68,68,.6);background:rgba(239,68,68,.1);box-shadow:0 2px 10px rgba(239,68,68,.25);transform:translateY(calc(-50% + 30px)) scale(1.05)}
 .role-card .rc-cur{padding-right:54px}
@@ -741,7 +749,7 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 .sched-fld{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
 .sched-fld>label{font-size:10px;color:var(--dim);letter-spacing:.5px}
 .sched-fld input,.sched-fld textarea,.sched-fld select{background:var(--panel2);border:1px solid var(--line2);color:var(--txt);border-radius:8px;padding:7px 10px;font-size:11.5px;font-family:inherit;width:100%;box-sizing:border-box}
-.sched-fld input:focus,.sched-fld textarea:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(2,132,199,.15);outline:none}
+.sched-fld input:focus,.sched-fld textarea:focus,.sched-fld select:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(2,132,199,.15);outline:none}
 .sched-fld textarea{min-height:64px;resize:vertical}
 .sched-fld-inline{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .sched-actions{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
@@ -833,9 +841,29 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
    所以首行「T-00x · 自动执行链」不会被退出按钮压住） */
 .run-log.fullscreen{position:fixed;inset:0;z-index:1200;max-height:none!important;height:auto;background:var(--panel,#fff);padding:56px 22px 22px;border-radius:0;overflow-y:auto!important}
 .run-log.fullscreen::before{content:"";position:fixed;top:0;left:0;right:0;height:52px;background:var(--panel,#fff);border-bottom:1px solid var(--line2);z-index:2}
-.run-prog{color:var(--faint);font-size:11.5px;line-height:1.55;padding:3px 0;border-bottom:1px dashed var(--line2)}
-.run-prog em{font-style:normal;font-variant-numeric:tabular-nums;color:var(--indigo,#4c6ef5)}
-.run-prog .rp-text{white-space:pre-wrap;word-break:break-word;margin-top:2px}
+/* ===== 子任务执行轨迹：完整思考 / 工具调用 / 输出（可折叠） =====
+   心跳只报「最近在干什么」，轨迹报全文；同屏只展开最新一块（正在跑的那个）。 */
+.run-trace{border:1px solid var(--line2);border-radius:9px;margin:8px 0;overflow:hidden;background:var(--panel2)}
+.run-trace-head{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;font-size:11px;color:var(--txt)}
+.run-trace-head b{font-family:var(--mono);font-size:11px}
+.run-trace-head em{font-style:normal;font-size:10px;color:var(--faint);flex:1;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.run-trace-head .rt-arrow{font-size:10px;color:var(--dim)}
+.run-trace .rt-log{font-size:9.5px;padding:2px 7px;border:1px solid var(--line2);border-radius:5px;background:transparent;
+  color:var(--dim);cursor:pointer;flex:none}
+.run-trace .rt-log:hover{color:var(--txt)}
+.run-trace-body{display:none;border-top:1px solid var(--line);max-height:420px;overflow:auto;padding:7px 10px}
+.run-trace.open .run-trace-body{display:block}
+.rt-item{margin:0 0 9px}
+.rt-item:last-child{margin-bottom:0}
+.rt-kind{font-size:9.5px;letter-spacing:.4px;color:var(--faint);margin-bottom:3px}
+.rt-item.reasoning .rt-kind{color:#8b5cf6}
+.rt-item.tool .rt-kind{color:var(--gold)}
+.rt-item.result .rt-kind,.rt-item.text .rt-kind,.rt-item.final .rt-kind{color:var(--ok)}
+.rt-item pre{margin:0;white-space:pre-wrap;word-break:break-word;
+  font:11px/1.6 ui-monospace,Consolas,monospace;color:var(--txt);background:transparent}
+.rt-item.reasoning pre{color:var(--dim);border-left:2px solid rgba(139,92,246,.45);padding-left:8px}
+/* 执行历史条目不再是可点入口（完整的运行日志入口已撤） */
 .run-out{position:relative}
 .run-out.folded{max-height:240px;overflow:hidden}
 .run-out.expanded{max-height:none}
@@ -1234,18 +1262,52 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .tok-sum{margin-bottom:10px;font-size:12px;color:var(--txt)}
 .tok-sum b{color:var(--gold);font-family:var(--mono)}
 .tok-legend{display:flex;gap:14px;font-size:10.5px;color:var(--dim);margin-bottom:4px;align-items:center}
-.tok-legend .lg-in::before,.tok-legend .lg-out::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-.tok-legend .lg-in::before{background:var(--gold)}
+.tok-legend .lg-cache::before,.tok-legend .lg-in::before,.tok-legend .lg-out::before,.tok-legend .lg-alt::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+.tok-legend .lg-in::before{background:#2f7fd4}
 .tok-legend .lg-out::before{background:var(--ok)}
+.tok-legend .lg-alt{margin-left:auto;color:var(--faint)}
+.tok-legend .lg-alt::before{background:#8b5cf6}
+.tok-legend .lg-cache::before{background:#cfe1f7;border:1px solid #9dc0e8}
+/* 输入柱拆两段：下=新输入（未命中），上=缓存命中。缓存单价低，这一段的比例才是成本的关键 */
+.tok-stack{display:flex;flex-direction:column-reverse;width:13px;gap:0}
+.tok-stack .tok-bar{width:13px;border-radius:0}
+.tok-bar.cache{background:#cfe1f7}
+.tok-stack .tok-bar.cache{border-radius:3px 3px 0 0;margin-bottom:2px}   /* 留缝＝分界线 */
+.tok-bar.cache.alt{background:#ddd6fe}
+.tok-stack .tok-bar.cache.alt{margin-bottom:2px}
+.tok-bar.in.alt{background:#7c5cf0}
 .tok-zone{display:flex;align-items:flex-end;gap:14px;padding:6px 4px 0;height:250px;overflow-x:auto;overflow-y:hidden;border-bottom:1px solid var(--line2)}
 .tok-col{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;width:56px;height:100%}
 .tok-bars{display:flex;align-items:flex-end;gap:3px;height:200px}
 .tok-bar{width:13px;border-radius:3px 3px 0 0;cursor:pointer}
-.tok-bar.in{background:linear-gradient(180deg,#3db8f5,var(--gold))}
+.tok-bar.in{background:#2f7fd4}
 .tok-bar.out{background:linear-gradient(180deg,#34d399,var(--ok))}
 .tok-lab{font-family:var(--mono);font-size:9.5px;color:var(--gold);margin-top:4px;white-space:nowrap}
-.tok-val{font-size:9px;color:var(--faint);font-family:var(--mono)}
+/* 临时会话：不进任务流程，所以不并入任何任务柱 —— 在末尾单列一组，用分隔线隔开 */
+.tok-col.alt{border-right:1px dashed var(--line2);padding-right:14px;width:auto;min-width:64px}
+.tok-col.alt .tok-lab{color:var(--dim)}
+.tok-bar.alt.in{background:linear-gradient(180deg,#a78bfa,#7c5cf0)}
+.tok-bar.alt.out{background:linear-gradient(180deg,#e9a6f5,#a855c7)}
 
+/* ===== 全部静止时的「最近完成」列表（替代看板） ===== */
+.board.list-mode{grid-template-columns:minmax(0,1fr)}
+.bd-recent{grid-column:1/-1;min-height:0;overflow-y:auto;border:1px solid var(--line);border-radius:9px;padding:6px 8px}
+.br-head{display:flex;justify-content:space-between;align-items:baseline;padding:3px 6px 8px;margin-bottom:4px;
+  border-bottom:1px solid var(--line);font-size:11px;color:var(--ok)}
+.br-head em{font-style:normal;font-family:var(--mono);font-size:10px;color:var(--faint)}
+.br-row{display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:7px;cursor:pointer;
+  border-left:2px solid transparent;font-size:11px}
+.br-row:hover{background:#dde7f2}
+.br-row.sel{border-left-color:var(--gold);background:rgba(2,132,199,.10)}
+.br-time{flex:none;width:74px;font-family:var(--mono);font-size:10px;color:var(--faint)}
+.br-no{flex:none;font-family:var(--mono);font-size:10.5px}
+.br-sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.br-st{flex:none;font-size:9.5px;padding:1px 6px;border-radius:5px;border:1px solid var(--line2);color:var(--dim)}
+.br-st.ok{color:var(--ok);border-color:rgba(52,211,153,.45)}
+.br-st.run{color:#4f46e5;border-color:rgba(79,70,229,.45)}
+.br-st.bad{color:var(--red-bright);border-color:rgba(239,68,68,.45)}
+.br-role{flex:none;width:92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--dim);text-align:right}
+:root[data-theme="dark"] .br-row:hover{background:#22304f}
 .bd-more{font-size:9px;color:var(--faint);text-align:center;padding:6px 2px;border:1px dashed var(--line);border-radius:6px}
 /* 工作台调度状态条 → 面板底部 footer */
 .wb-footer{flex:none;margin:10px 0 2px;padding-top:8px;border-top:1px dashed var(--line2)}
@@ -1439,6 +1501,8 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .eng-st.bad{color:var(--red-bright)}
 .eng-desc{font-size:10.5px;color:var(--dim);line-height:1.55}
 .eng-note{font-family:var(--mono);font-size:10px;color:var(--faint);line-height:1.5}
+/* token 消耗特征：选引擎时最该先看的一条，用左侧竖线与前两行区分开 */
+.eng-cost{font-size:10.5px;color:var(--txt);line-height:1.6;border-left:2px solid rgba(139,92,246,.55);padding-left:8px}
 .eng-caps{display:flex;gap:6px;flex-wrap:wrap}
 .eng-caps i{font-style:normal;font-size:9.5px;color:var(--dim);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
 :root[data-theme="dark"] .eng-item{background:rgba(255,255,255,.02)}
@@ -1514,3 +1578,117 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 /* 不进上面淡底白名单的：列表项 / 卡片（.dq-row / .bd-card / .proj-item / .eng-item 等）
    靠底色和 hover 区分层级，全透明会糊成一片；模态框 .modal-box 要实底才看得清；
    全屏查看的 .run-log.fullscreen 规则特异性更高，不受影响。*/
+
+/* ===== R1 助理悬浮窗（临时会话，不进任务流程） ===== */
+.r1-dock{position:fixed;right:22px;bottom:22px;z-index:1200}
+/* ===== 悬浮球：科技感光球 =====
+   四层动效叠出来的「活物」感（参考语音助手那类 orb）：
+     · 核心球 breathe —— 呼吸般的辉光涨落，同时向外发脉冲环
+     · 漂移光晕 drift —— 内层高光缓慢游移，球面看起来在流动
+     · 刻度环 spin —— 外圈虚线顺时针、内圈细弧逆时针，反向旋转
+     · 频谱 bar —— 中间四条竖条跳动，呼应「说话」
+   只有球能拖；面板不参与拖动。 */
+.r1-fab{position:relative;width:56px;height:56px;padding:0;border:none;border-radius:50%;cursor:grab;
+  /* 银白金属球：左上高光 → 右下渐深，配内外两道阴影做出厚度 */
+  background:radial-gradient(circle at 34% 28%,#ffffff 0%,#e9eff6 36%,#bcc9d9 68%,#8d9cb0 100%);
+  box-shadow:0 6px 20px rgba(15,23,42,.20),0 2px 6px rgba(15,23,42,.12),
+    inset 0 1px 2px rgba(255,255,255,.95),inset 0 -7px 14px rgba(120,140,165,.30);
+  animation:r1breathe 3.4s ease-in-out infinite;
+  transition:transform .18s ease}
+.r1-fab:hover{transform:translateY(-2px) scale(1.05)}
+.r1-fab:active{cursor:grabbing}
+/* 漂移光晕 */
+.r1-halo{position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle at 62% 68%,rgba(255,255,255,.8),transparent 62%);
+  animation:r1drift 5.6s ease-in-out infinite alternate}
+/* 旋转刻度环（外虚线 + 内反向细弧） */
+.r1-ring{position:absolute;inset:-6px;border-radius:50%;pointer-events:none;
+  border:1.5px dashed rgba(176,193,213,.85);animation:r1spin 9s linear infinite}
+.r1-ring::after{content:"";position:absolute;inset:4px;border-radius:50%;
+  border:1px solid rgba(176,193,213,.5);border-top-color:transparent;border-bottom-color:transparent;
+  animation:r1spin 4.5s linear infinite reverse}
+/* 语音频谱 */
+.r1-wave{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  gap:3px;pointer-events:none}
+.r1-wave i{display:block;width:3px;height:8px;border-radius:2px;background:#5c6c82;
+  box-shadow:0 0 5px rgba(255,255,255,.85);animation:r1bar 1.15s ease-in-out infinite}
+.r1-wave i:nth-child(2){animation-delay:.13s}
+.r1-wave i:nth-child(3){animation-delay:.26s}
+.r1-wave i:nth-child(4){animation-delay:.39s}
+@keyframes r1breathe{
+  0%,100%{box-shadow:0 6px 20px rgba(15,23,42,.20),0 2px 6px rgba(15,23,42,.12),0 0 0 0 rgba(196,214,234,.55),
+    inset 0 1px 2px rgba(255,255,255,.95),inset 0 -7px 14px rgba(120,140,165,.30)}
+  70%{box-shadow:0 6px 20px rgba(15,23,42,.20),0 2px 6px rgba(15,23,42,.12),0 0 0 15px rgba(196,214,234,0),
+    inset 0 1px 2px rgba(255,255,255,.95),inset 0 -7px 14px rgba(120,140,165,.30)}
+  100%{box-shadow:0 6px 20px rgba(15,23,42,.20),0 2px 6px rgba(15,23,42,.12),0 0 0 0 rgba(196,214,234,0),
+    inset 0 1px 2px rgba(255,255,255,.95),inset 0 -7px 14px rgba(120,140,165,.30)}}
+@keyframes r1spin{to{transform:rotate(360deg)}}
+@keyframes r1drift{from{transform:translate(-12%,-10%) scale(.9)}to{transform:translate(12%,10%) scale(1.05)}}
+@keyframes r1bar{0%,100%{height:7px;opacity:.7}50%{height:19px;opacity:1}}
+@keyframes r1barBusy{0%,100%{height:6px;opacity:.75}50%{height:26px;opacity:1}}
+/* ===== 悬浮球三态：待命（默认）/ 面板展开（.open）/ 运行中（.busy） =====
+   三种状态共用同一颗球，只改转速、亮度与频谱幅度 —— 形状不变，右下角始终是同一个东西。
+   待命：银白慢呼吸，一眼是「静着」；展开：环提速并转蓝，是「在工作」；
+   运行中：脉冲与频谱明显加快加高、转成实蓝，是「正在算」。 */
+.r1-fab.open{animation:none}                       /* 看着你：不呼吸，静着等输入 */
+.r1-fab.open .r1-halo{animation:none;opacity:.55}
+.r1-fab.open .r1-ring{animation-duration:5s;border-color:rgba(122,158,205,.95)}
+.r1-fab.open .r1-ring::after{animation-duration:2.6s;border-color:rgba(122,158,205,.6)}
+.r1-fab.open .r1-wave i{animation:none;height:9px;opacity:.85;background:#4a6da8}
+.r1-fab.busy{animation:r1breathe 1.5s ease-in-out infinite;cursor:progress}
+.r1-fab.busy .r1-ring{animation-duration:1.6s;border-color:rgba(56,132,222,.95);
+  box-shadow:0 0 12px rgba(56,132,222,.45)}
+.r1-fab.busy .r1-ring::after{animation-duration:.9s;border-color:rgba(56,132,222,.7)}
+.r1-fab.busy .r1-halo{animation-duration:2.2s}
+.r1-fab.busy .r1-wave i{background:#2f6fd0;animation:r1barBusy .55s ease-in-out infinite}
+/* 暗色主题：金色科技球 */
+/* 暗色主题下同样用银白球：深色底上银白的对比最好，也不再切金色 */
+:root[data-theme="dark"] .r1-fab{box-shadow:0 8px 24px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.35),
+  inset 0 1px 2px rgba(255,255,255,.95),inset 0 -7px 14px rgba(90,105,125,.4)}
+/* 悬停（以及首次露面时）浮出的招呼气泡 */
+.r1-fab::after{content:attr(data-tip);position:absolute;right:64px;top:50%;
+  transform:translateY(-50%) translateX(4px);white-space:nowrap;font-size:11px;color:var(--txt);
+  background:var(--panel);border:1px solid var(--line2);border-radius:9px;padding:6px 10px;
+  box-shadow:0 4px 14px rgba(15,23,42,.18);opacity:0;pointer-events:none;
+  transition:opacity .18s ease,transform .18s ease}
+.r1-fab:hover::after,.r1-fab.tipped::after{opacity:1;transform:translateY(-50%) translateX(0)}
+.r1-fab svg,.r1-ava svg{display:block;width:100%;height:100%;border-radius:50%}
+.r1-panel{position:absolute;right:0;bottom:70px;width:min(380px,92vw);max-height:min(560px,78vh);
+  display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line2);
+  border-radius:14px;box-shadow:0 18px 50px rgba(15,23,42,.32);overflow:hidden}
+/* hidden 属性必须显式兜底：上面的 display:flex 优先级高于 UA 的 [hidden]{display:none}，
+   不写这一条，JS 里 p.hidden = true 根本关不掉面板（收起按钮形同虚设）。 */
+.r1-panel[hidden]{display:none}
+.r1-head{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.r1-ava{width:32px;height:32px;flex:none;border-radius:50%;
+  background-image:radial-gradient(circle at 34% 28%,#ffffff,#bcc9d9 72%)}
+.r1-who{flex:1;min-width:0;display:flex;flex-direction:column}
+.r1-who b{font-size:12px}
+.r1-who em{font-style:normal;font-size:9.5px;color:var(--faint);letter-spacing:.3px}
+.r1-x{border:none;background:none;color:var(--dim);font-size:16px;cursor:pointer;padding:0 4px;line-height:1}
+.r1-x:hover{color:var(--gold)}
+.r1-msgs{flex:1;min-height:120px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:9px}
+.r1-m{max-width:86%;padding:8px 11px;border-radius:10px;font-size:11.5px;line-height:1.6;
+  white-space:pre-wrap;overflow-wrap:anywhere}
+.r1-m.q{align-self:flex-end;background:rgba(2,132,199,.12);border:1px solid rgba(2,132,199,.3)}
+.r1-m.a{align-self:flex-start;background:rgba(15,30,50,.05);border:1px solid var(--line)}
+:root[data-theme="dark"] .r1-m.q{background:rgba(76,110,245,.16)}
+:root[data-theme="dark"] .r1-m.a{background:rgba(255,255,255,.03)}
+.r1-m.sys{align-self:center;background:none;border:none;color:var(--faint);font-size:10.5px;text-align:center}
+.r1-input{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line)}
+.r1-input input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line2);color:var(--txt);
+  border-radius:8px;padding:8px 10px;font-size:11.5px;outline:none}
+.r1-input input:focus{border-color:var(--gold)}
+.r1-input button{flex:none;padding:8px 14px;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;
+  background:rgba(2,132,199,.06);color:var(--gold);border:1px solid rgba(2,132,199,.55)}
+.r1-input button:hover{background:rgba(2,132,199,.16);border-color:var(--gold)}
+.r1-input button:disabled{opacity:.5;cursor:default}
+.r1-foot{display:flex;justify-content:space-between;gap:8px;padding:0 12px 10px;font-size:9.5px;color:var(--faint)}
+.r1-foot b{color:var(--gold);font-family:var(--mono)}
+:root[data-theme="dark"] .r1-input button{background:rgba(232,183,61,.06);border-color:rgba(232,183,61,.55)}
+:root[data-theme="dark"] .r1-input button:hover{background:rgba(232,183,61,.16)}
+/* 设置页：悬浮窗开关 + 临时会话用量 */
+.dock-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:4px 0 10px}
+.dock-switch{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;color:var(--txt);cursor:pointer}
+.dock-switch input{width:16px;height:16px;accent-color:var(--gold);cursor:pointer}
+/* 临时会话用量统一在「设置 → Token 统计」里看（单独一组柱），助理页不再重复显示 */
