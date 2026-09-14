@@ -21,6 +21,7 @@ _LOCK = threading.RLock()
 _ACTIVE = {"events": [], "seq": 0}
 _EXEC_LOCK = threading.Lock()
 _EXEC_STATE = {}     # act -> {startedAt, tools, lastTool, lastText, beatMono, session}——执行实时状态值
+_DONE_ACTS = set()   # act -> 已报过 finished。收尾期的迟到心跳不许把「执行中」重新建出来
 _ACT_ENGINE = {}     # act -> 正在执行它的引擎名（按用途路由后，kill 要精确找对引擎）
 _LAST_RUN = {}       # act -> 最近一次运行信息（引擎名 / 引擎侧会话标识 / 耗时），供事后追溯
 
@@ -92,6 +93,11 @@ def _exec_beat(act: str, tools: int, last_tool: str, last_text: str, t0: float):
     """刷新心跳与状态值，并 emit 一条 exec/progress 进度事件。"""
     now = time.monotonic()
     with _EXEC_LOCK:
+        if act in _DONE_ACTS:
+            # finished 已报过：这一条是收尾期漏出来的迟到心跳（dsh 的会话监听线程比
+            # finished 晚一步退出）。放它进来就会把「执行中」重建出来且再无人清除 ——
+            # 界面永远显示在跑，归档守卫（exec_state）从此永久挡住这个子任务。
+            return
         st = _EXEC_STATE.setdefault(act, {"startedAt": time.strftime("%H:%M:%S", time.localtime()),
                                           "tools": 0, "lastTool": "", "lastText": "",
                                           "beatMono": now - 999, "session": ""})
@@ -115,12 +121,15 @@ def _progress_sink(act: str):
     act 为空（没有子任务号的同步直跑）时不记录状态。"""
     if not act:
         return None
+    with _EXEC_LOCK:
+        _DONE_ACTS.discard(act)     # 新一轮开始：解封（上一轮的收尾心跳到此为止）
     t0 = time.monotonic()
 
     def _on_progress(p):
         if getattr(p, "finished", False):
             with _EXEC_LOCK:
                 _EXEC_STATE.pop(act, None)
+                _DONE_ACTS.add(act)
             return
         tr = getattr(p, "trace", None)          # 完整轨迹（心跳之外的全文通道）
         if tr and str(tr.get("text") or "").strip():
