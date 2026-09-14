@@ -23,6 +23,7 @@ description: opc-web 控制台的本地运维：起服务、重启时机、截�
 - **纯前端改动不重启**：改 `static/*.css|js` 或 `templates/index.html`，递增其中的 `?v=`，用户 Ctrl+F5 即可
 - **只有改了 `src/opc_web/*.py` 才重启**
 - **重启前先查有没有在跑的任务**：`runner.exec_state()` 非空就别重启——会打断正在执行的任务。T-021 曾因此重跑一遍，多烧 271 万 token
+- **但 exec_state 非空 ≠ 真有任务在跑**：dsh 的会话监听线程比 `finished` 晚一步退出，它最后一次心跳会在完成后把条目重建出来（`startedAt` 是完成时刻、`elapsed` 却是真实运行时长，两者对不上就是这个指纹）。判据换成「服务有没有活着的 headless 子进程」（`Get-CimInstance Win32_Process` 里 parent 是服务器 pid 的 node）—— 幽灵条目只挡归档，重启正好清掉它。T-028-S2 因此卡在「执行中」不回
 
 ## 动手前先探活
 
