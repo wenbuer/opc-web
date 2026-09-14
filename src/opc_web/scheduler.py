@@ -650,7 +650,9 @@ def build_daily_report(task_no: str = None, datestr: str = None) -> dict:
         return {"ok": True, "merged": False, "msg": "当日无任务回报，不更新简报"}
     target = config.BATCH_ROOT / ("每日简报-%s.md" % datestr)
     target.parent.mkdir(parents=True, exist_ok=True)
-    old_text = config.read_text(target) if target.exists() else ""
+    # 旧稿也过一遍归一化：历史遗留的坏格式（围栏 / 前置说明）会在下一次合并时自动痊愈；
+    # 而且喂给模型的「现有简报」也是干净的，它才不会照着那个坏格式往下写。
+    old_text = _as_document(config.read_text(target)) if target.exists() else ""
     digest = _digest_reps(reps, limit=2400)
     has_old = bool(old_text.strip())
     prompt = (
@@ -669,33 +671,62 @@ def build_daily_report(task_no: str = None, datestr: str = None) -> dict:
            datestr,
            templates.doc_template("每日简报"),
            old_text.strip() or "（当天尚无简报）", digest))
-    text = _headless_text(prompt, 600)
+    text = _as_document(_headless_text(prompt, 600))   # 先剥包装，再拿干净文本去校验「任务不丢」
     if text and has_old:
-        text = _merge_daily(old_text, text.strip(), task_no or "")   # 校验失败返回 "" → 走降级合并
-    if not text or not text.strip():
+        text = _merge_daily(old_text, text, task_no or "")   # 校验失败返回 "" → 走降级合并
+    # 落盘前的最后一道闸：格式不合格就不落盘（见 _doc_ok）。这一段是这一类的通解 ——
+    # 模型的包装写法永远列举不完，但「不写坏文件」是可以保证的。
+    if not _doc_ok(text, "每日简报", datestr):
+        if (text or "").strip():
+            runner.emit({"type": "assistant/chunk", "data": {
+                "text": "⚠ 简报模型输出不合格式（首行不是「# 每日简报 · %s」），已改走代码级合并；"
+                        "原输出首行：%s" % (datestr, text.strip().splitlines()[0][:60])}})
         text = _daily_fallback(old_text, reps, task_no, datestr)
-    text = _unwrap_md(text)
     target.write_text(text.strip() + chr(10), encoding="utf-8")
     return {"ok": True, "merged": has_old, "file": target.name,
             "rel": target.relative_to(config.ROOT).as_posix()}
 
-def _unwrap_md(text: str) -> str:
-    """剥掉模型爱加的包装：前置说明行 + ```markdown 围栏。
+def _as_document(text: str) -> str:
+    """把模型返回的**交付物文本**规整成一份干净文档：剥掉它爱加的包装。
 
-    模型偶尔把**交付物当回复内容**写：「合并后的完整简报（已写入 xxx）：」+ 整篇塞进代码块。
-    直接落盘的话，简报页会把整份文档渲染成一个灰底等宽代码块（2026-09-11 那份就是这么坏的）。
-    围栏出现在开头附近才剥——正文中间的代码块是内容，不能动。"""
+    这是「模型文本 → 落盘文档」的唯一出口。模型会把交付物当回复内容写：
+    前置说明行 + ```markdown 围栏 + 结尾「处理说明」段落（09-11、09-14 两份简报都这么坏的）。
+
+    做法不是把已知包装列举全 —— 那是补不完的（补了「前置说明+围栏」，下一份又加了
+    「围栏+结尾说明」）。改成**按结构取正文**：全文第一个 `# ` 标题行就是文档起点，
+    标题之前出现过围栏行就说明整篇被包在代码块里，正文到标题之后的下一个独立围栏行为止。
+    归一化是**幂等**的，所以读旧稿时也过一遍：已经坏掉的文件会在下一次合并时自动痊愈。"""
     t = (text or "").strip()
-    m = re.search(r"```(?:markdown|md)?\s*\n([\s\S]*?)\n```", t)
-    if m and m.start() <= 200:
-        t = m.group(1).strip()
+    if not t:
+        return ""
     lines = t.splitlines()
-    for i, ln in enumerate(lines):          # 丢掉标题之前的说明行
-        if ln.startswith("# "):
-            return chr(10).join(lines[i:]).strip()
-        if i > 6:                            # 前 6 行还没有标题 → 不是这种包装，原样返回
-            break
-    return t
+    head = next((i for i, ln in enumerate(lines) if ln.startswith("# ")), None)
+    if head is None:
+        return t                     # 找不到标题：不是这种包装，原样返回，交上层校验
+    fenced = any(ln.strip().startswith("```") for ln in lines[:head])
+    out = lines[head:]
+    if fenced:
+        # 正文里的围栏行。**成对**的都是正文自带的代码块，只有**多出来的那一个**
+        # （总数是奇数）才是包裹文档用的收尾围栏 —— 从它开始截掉，后面的说明段一并丢。
+        # 用「最后一个」而不是「第一个」：正文带代码块时，第一个不成对的位置在代码块开头，
+        # 从那里截会把正文切掉一半。
+        idx = [j for j, ln in enumerate(out) if j and ln.strip().startswith("```")]
+        if len(idx) % 2 == 1:
+            out = out[:idx[-1]]
+    return chr(10).join(out).strip()
+
+
+def _doc_ok(text: str, expect: str, datestr: str) -> bool:
+    """落盘前的结构硬校验：第一行必须是「# <expect> · <日期>」。
+
+    这才是这一类的通解——不指望把模型的包装写法穷举干净，而是**归一化后不合格就不落盘**：
+    宁可走代码级合并写一份干净但略简的简报，也不把一份会渲染成灰底代码块的文件留给 R0。
+    历史两次事故（09-11 前置说明+围栏、09-14 围栏+结尾说明）都过不了这道闸。"""
+    t = (text or "").strip()
+    if not t:
+        return False
+    first = t.splitlines()[0]
+    return first.startswith("# ") and expect in first and datestr in first
 
 
 def _kb_skim() -> str:
