@@ -147,7 +147,11 @@ def _progress_sink(act: str):
         sess = str(getattr(p, "session", "") or "")
         if sess:
             with _EXEC_LOCK:
-                _EXEC_STATE.setdefault(act, {})["session"] = sess
+                # 只补写**已存在**的状态。这里的 setdefault 会凭空造出一个空壳条目
+                # （startedAt / elapsed 全空），而归档守卫只看键在不在 ——
+                # 空壳照样把子任务永久挡在归档之外，等于绕过了 _exec_beat 里那道闸。
+                if act in _EXEC_STATE and act not in _DONE_ACTS:
+                    _EXEC_STATE[act]["session"] = sess
 
     return _on_progress
 

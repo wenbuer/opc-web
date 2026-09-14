@@ -202,6 +202,20 @@ def _put_tokens(meta: dict, usage) -> None:
     meta["tokensReasoning"] = usage["reasoningTokens"]
 
 
+def _settle_sub(sub_no: str, status: str, error: str = "") -> None:
+    """一次子任务跑完，当场把结果落定：结算执行记录 **并** 翻转子任务状态。
+
+    两件事必须成对做。原先只结算执行记录、把「翻状态」整个留给归档器，等于
+    **双重所有权**：执行链明明知道自己跑完了却不说，归档器一旦被守卫挡住
+    （exec_state 里有个幽灵条目），状态就永远停在「执行中」——
+    T-028-S2 就是这样：execution 表里 lastResult 已是「完成」，子任务却显示在执行。
+
+    归档器随后仍会写一次同样的值（它要的是「搬文件 + 回报入库」），
+    对同一个状态重复写是幂等的，不冲突。"""
+    store.settle_execution(sub_no, status, error)
+    store.set_subtask(sub_no, status)
+
+
 def _landed_evidence(body_p, size0: int, t_exec: float, limit: int = 4) -> list:
     """headless 无输出时的核盘证据。
 
@@ -357,7 +371,7 @@ def execute(task_no, task_text, direct=None):
                 except Exception as e:
                     runner.emit({"type": "assistant/chunk", "data": {
                         "text": "⚠ %s 元数据更新失败：%s" % (sub_no, e)}})
-                store.settle_execution(sub_no, "完成")
+                _settle_sub(sub_no, "完成")
                 ok_cnt += 1
                 runner.emit({"type": "assistant/chunk", "sub": sub_no,
                              "data": {"text": "✔ %s（%s）执行完成，产出回报已写入：%s（归档时改名 output）" % (sub_no, s["role"], spec["output"])}})
@@ -376,7 +390,7 @@ def execute(task_no, task_text, direct=None):
                 except Exception as e:
                     runner.emit({"type": "assistant/chunk", "data": {
                         "text": "⚠ %s 元数据更新失败：%s" % (sub_no, e)}})
-                store.settle_execution(sub_no, "阻塞", reason[:40])
+                _settle_sub(sub_no, "阻塞", reason[:40])
                 fail.append(sub_no)
                 runner.emit({"type": "assistant/chunk", "sub": sub_no,
                              "data": {"text": "✗ %s %s（已置阻塞，可点名重试）" % (sub_no, reason)}})
