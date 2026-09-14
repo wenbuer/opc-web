@@ -54,8 +54,7 @@
         "<span class='ov-k'>进行中</span><span class='ov-v'>" + byStatus(false) + "</span>" +
         "<span class='ov-k'>已完成</span><span class='ov-v'>" + byStatus(true) + "</span>";
     });
-    api("/api/kb-entries").then(function(j){ if (j && j.ok){ var k=(j.entries||[]).length; var o=$("ovOkf"); if(o) o.textContent=k; } });
-    loadHomeStats();
+    loadHomeStats();      // 知识库文件数与「项目进度」同源（home-stats 的 progress.kbFiles），不另开请求
     api("/api/daily").then(function(j){ if (j && j.ok){ var d=(j.daily||[])[0]; var o=$("ovDaily"); if(o) o.textContent = d ? d.date : "无"; } });
   }
   /* ===== 首页右侧：项目进度（/api/home-stats 的 progress 段） ===== */
@@ -90,9 +89,12 @@
       + (p.blocked ? "<em class='bad'>阻塞 " + p.blocked + "</em>" : "") + "</div>"
       + "<div class='hp-track'><i style='width:" + sp + "%'></i></div></div>"
       + "<div class='hp-facts'><span>项目文件 <b>" + (p.projFiles || 0) + "</b></span>"
-      + "<span>知识库 <b>" + (p.kbEntries || 0) + "</b></span>"
+      + "<span>知识库 <b>" + (p.kbFiles || 0) + "</b></span>"
       + "<span>每日简报 <b>" + (p.dailyReports || 0) + "</b></span></div>";
     box.innerHTML = h;
+    // 总览条那张「知识库文件」卡与这里是同一个数（progress.kbFiles），一起更新，
+    // 免得两个地方各取一次、还可能对不上。
+    var okf = $("ovKbFiles"); if (okf) okf.textContent = (p.kbFiles || 0);
   }
   function loadHome(){
     cacheRoles();
@@ -1994,6 +1996,10 @@
           if (o.value === want || o.value === alt || o.value.indexOf(want + "（") === 0) hit = o.value;
         });
         if (hit){ rs.value = hit; wsRole = hit; }
+      } else if (rs){
+        // 默认落在「项目/」：进这一页十有八九是看工程产出，
+        // 「全部角色」会把工作区里那堆回报一起倒出来，先得自己筛一遍。
+        rs.value = "项目"; wsRole = "项目";
       }
       renderWsList();
     }).catch(function(e){ if (box) box.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });

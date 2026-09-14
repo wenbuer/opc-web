@@ -1183,7 +1183,11 @@ def home_stats() -> dict:
     kb = 0
     kbd = config.ROOT / "知识库"
     if kbd.is_dir():
-        kb = sum(1 for p in kbd.rglob("*.md") if p.is_file())
+        # 「知识库文件数」而不是「OKF 条目数」：条目要解析 front-matter，少一个字段就少算一条，
+        # 数字跟目录里看得见的文件对不上；文件数才是能一眼核对的量。
+        for _dp, _dirs, _files in os.walk(kbd):
+            _dirs[:] = [d for d in _dirs if not _skip_name(d)]
+            kb += sum(1 for f in _files if not _skip_name(f))
     daily = len(list((config.ROOT / "批阅台").glob("每日简报-*.md")))
     recent = [{"no": t.get("no"), "title": str(t.get("task") or "")[:46]}
               for t in done[-3:]]
@@ -1198,7 +1202,7 @@ def home_stats() -> dict:
                    "week": week, "prices": config.token_prices()},
         "progress": {"tasksTotal": len(tasks), "tasksDone": len(done),
                      "subsTotal": subs_total, "subsDone": subs_done, "blocked": blocked,
-                     "projFiles": proj_files, "kbEntries": kb, "dailyReports": daily,
+                     "projFiles": proj_files, "kbFiles": kb, "dailyReports": daily,
                      "recent": recent},
     }
 
