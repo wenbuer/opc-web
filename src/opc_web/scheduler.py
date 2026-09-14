@@ -311,6 +311,10 @@ def _field_lines(key: str, value: str) -> list:
     return out
 
 
+# 「需要 R0 拍板」这节的准入清单之外、但角色偶尔会写进来的流程性事项 —— 不算决策点
+_PROCEDURAL_ASK = ("归档口径", "是否归档", "是否结案", "可否结案", "状态确认", "确认无误", "是否继续", "是否收口")
+
+
 def _pending_items(reps) -> str:
     """回报里「## 需要 R0 拍板」小节的实质内容（多角色拼接）。
 
@@ -329,6 +333,11 @@ def _pending_items(reps) -> str:
             seg = seg[:nxt.start()]
         seg = seg.strip()
         if len(seg) > 8 and seg.replace("。", "").strip() not in ("无", "没有", "暂无"):
+            # 兜底：流程性事项不算决策点。角色偶尔会把「归档口径 / 是否结案 / 状态确认」
+            # 写进这一节，那类事控制台自己会处理，不该占 R0 的待决位（T-022 就这么白占了一条）。
+            head = seg.splitlines()[0] if seg else ""
+            if any(k in head for k in _PROCEDURAL_ASK):
+                continue
             out.append("【%s】\n%s" % ((r or {}).get("role") or "?", seg))
     return "\n\n".join(out)
 
@@ -659,9 +668,29 @@ def build_daily_report(task_no: str = None, datestr: str = None) -> dict:
         text = _merge_daily(old_text, text.strip(), task_no or "")   # 校验失败返回 "" → 走降级合并
     if not text or not text.strip():
         text = _daily_fallback(old_text, reps, task_no, datestr)
-    target.write_text(text.strip() + "\n", encoding="utf-8")
+    text = _unwrap_md(text)
+    target.write_text(text.strip() + chr(10), encoding="utf-8")
     return {"ok": True, "merged": has_old, "file": target.name,
             "rel": target.relative_to(config.ROOT).as_posix()}
+
+def _unwrap_md(text: str) -> str:
+    """剥掉模型爱加的包装：前置说明行 + ```markdown 围栏。
+
+    模型偶尔把**交付物当回复内容**写：「合并后的完整简报（已写入 xxx）：」+ 整篇塞进代码块。
+    直接落盘的话，简报页会把整份文档渲染成一个灰底等宽代码块（2026-09-11 那份就是这么坏的）。
+    围栏出现在开头附近才剥——正文中间的代码块是内容，不能动。"""
+    t = (text or "").strip()
+    m = re.search(r"```(?:markdown|md)?\s*\n([\s\S]*?)\n```", t)
+    if m and m.start() <= 200:
+        t = m.group(1).strip()
+    lines = t.splitlines()
+    for i, ln in enumerate(lines):          # 丢掉标题之前的说明行
+        if ln.startswith("# "):
+            return chr(10).join(lines[i:]).strip()
+        if i > 6:                            # 前 6 行还没有标题 → 不是这种包装，原样返回
+            break
+    return t
+
 
 def _kb_skim() -> str:
     """知识库已有档案简表（按分类）：让 R1 知道该 create 还是 merge（不重复沉淀）。"""
