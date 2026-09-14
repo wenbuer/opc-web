@@ -227,6 +227,13 @@ main{flex:1;overflow:hidden}
 .overview-bar{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch;padding:12px 20px 0;flex:none}
 .ov-item{flex:1;min-width:120px;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:11px;color:var(--dim)}
 .ov-item b{display:block;font-size:20px;font-weight:700;color:var(--gold);margin-top:3px}
+/* 任务状态：三个口径合并成一张卡（原来三张卡只放三个数，横向太占地方）。
+   卡里 b 装的是三个「标签 + 数值」对，所以不能沿用上面那条大字号块级样式 */
+.ov-item.ov-multi b{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;font-size:15px;margin-top:5px}
+.ov-item .ov-k{font-size:10.5px;font-weight:400;color:var(--dim)}
+.ov-item .ov-v{color:var(--gold);font-weight:700;margin-left:3px}
+/* 今日用量：主数值下面的一行小字 */
+.ov-item em{display:block;font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:3px}
 /* ===== 首页第三列：项目进度 + 公共项目区（文件树） ===== */
 .prog-panel{display:flex;flex-direction:column;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-y:auto}
 .prog-body{display:flex;flex-direction:column;gap:1px;flex:none}

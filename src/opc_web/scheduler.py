@@ -11,6 +11,7 @@ v1.15：任务/子任务/回报三张表由 SQLite 承载，md 只留正文与�
 """
 import datetime
 import json
+import os
 import re
 import subprocess
 import threading
@@ -1133,20 +1134,27 @@ def home_stats() -> dict:
     rows = token_rows()
     by_day = {}
     for r in rows:
-        b = by_day.setdefault(str(r.get("date") or "")[:10], {"in": 0, "out": 0})
+        # in 是「新输入 + 缓存读取」的合计（记账号里的原始口径），成本要拆开算 ——
+        # 缓存命中单价只有输入的零头，拿合计按输入价计费会高估近十倍。
+        # 先按含缓存累加，出账时再减，保证「新输入 = in - cache」处处一致。
+        b = by_day.setdefault(str(r.get("date") or "")[:10], {"in": 0, "out": 0, "cache": 0})
         b["in"] += int(r.get("tokensIn") or 0)
         b["out"] += int(r.get("tokensOut") or 0)
+        b["cache"] += int(r.get("tokensCache") or 0)
     today = datetime.date.today().isoformat()
     week = []
     for i in range(6, -1, -1):
         d = (datetime.date.today() - datetime.timedelta(days=i)).isoformat()
-        b = by_day.get(d) or {"in": 0, "out": 0}
-        week.append({"date": d[5:], "in": b["in"], "out": b["out"]})
-    tin = by_day.get(today, {}).get("in", 0)
-    tout = by_day.get(today, {}).get("out", 0)
-    cost_today = tin / 1e6 * config.TOKEN_PRICE_IN + tout / 1e6 * config.TOKEN_PRICE_OUT
+        b = by_day.get(d) or {"in": 0, "out": 0, "cache": 0}
+        week.append({"date": d[5:], "in": b["in"], "out": b["out"], "cache": b["cache"],
+                     "cost": round(config.token_cost(b["in"] - b["cache"], b["cache"], b["out"]), 4)})
+    tb = by_day.get(today) or {"in": 0, "out": 0, "cache": 0}
+    tin, tout, tcache = tb["in"], tb["out"], tb["cache"]
+    cost_today = config.token_cost(tin - tcache, tcache, tout)
     tot_in = sum(b["in"] for b in by_day.values())
     tot_out = sum(b["out"] for b in by_day.values())
+    tot_cache = sum(b["cache"] for b in by_day.values())
+    cost_total = config.token_cost(tot_in - tot_cache, tot_cache, tot_out)
     # —— 项目进度 ——
     tasks = store.tasks()
     done = [t for t in tasks if "完成" in str(t.get("status") or "")]
@@ -1165,8 +1173,13 @@ def home_stats() -> dict:
         # 项目目录下「.」开头的目录一律是本机环境/缓存（工具链、gradle 缓存、venv…），
         # 不是源码也不是交付物 —— 统计与文件树都跳过。这是通用规则，不逐个列举目录名：
         # 一个项目的环境动辄上千 MB、上万文件，混进来数字就完全失去意义。
-        proj_files = sum(1 for p in proj.rglob("*") if p.is_file()
-                         and not any(_skip_name(s) for s in p.relative_to(proj).parts))
+        # 必须用 os.walk **就地剪枝**：rglob("*") 是先走进去再过滤，「.local」下的
+        # 工具链 / gradle 缓存（几万个文件）照样要遍历一遍 —— 实测这一个统计就占
+        # 首页接口 28 秒里的 27 秒（数字是对的，但没人愿意为看一眼首页等半分钟）。
+        # 剪枝后 0.8 秒，计数与原来逐路径过滤完全一致（同为 1123）。
+        for _dp, _dirs, _files in os.walk(proj):
+            _dirs[:] = [d for d in _dirs if not _skip_name(d)]
+            proj_files += sum(1 for f in _files if not _skip_name(f))
     kb = 0
     kbd = config.ROOT / "知识库"
     if kbd.is_dir():
@@ -1178,9 +1191,11 @@ def home_stats() -> dict:
         "ok": True,
         "sched": {"busy": bool(st.get("busy")), "paused": bool(st.get("paused")),
                   "tag": str(st.get("tag") or ""), "running": running},
-        "tokens": {"todayIn": tin, "todayOut": tout, "costToday": round(cost_today, 4),
-                   "totalIn": tot_in, "totalOut": tot_out, "week": week,
-                   "priceIn": config.TOKEN_PRICE_IN, "priceOut": config.TOKEN_PRICE_OUT},
+        "tokens": {"todayIn": tin, "todayOut": tout, "todayCache": tcache,
+                   "costToday": round(cost_today, 4),
+                   "totalIn": tot_in, "totalOut": tot_out, "totalCache": tot_cache,
+                   "costTotal": round(cost_total, 4),
+                   "week": week, "prices": config.token_prices()},
         "progress": {"tasksTotal": len(tasks), "tasksDone": len(done),
                      "subsTotal": subs_total, "subsDone": subs_done, "blocked": blocked,
                      "projFiles": proj_files, "kbEntries": kb, "dailyReports": daily,

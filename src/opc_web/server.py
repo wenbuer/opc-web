@@ -494,7 +494,14 @@ class Handler(BaseHTTPRequestHandler):
                     raise ApiError(400, "未知备用引擎：%s（可用：%s）"
                                    % (fb, "、".join(engines.available()) or "无"))
                 kv["engineFallback"] = fb
+            # 三档单价（元/百万 token）与模型接入一起保存：它们描述的就是「这个接入怎么计费」
+            prices = {k: body.get(k) for k in ("priceIn", "priceCache", "priceOut") if k in body}
             out = {"ok": True}
+            if prices and not dry:
+                try:
+                    config.save_prices(prices)
+                except ValueError as e:
+                    raise ApiError(400, str(e))
             if kv and not dry:
                 config.save_cfg(kv)
                 config.reload()
@@ -510,8 +517,10 @@ class Handler(BaseHTTPRequestHandler):
                 res["configured"] = mi["configured"]
                 res["keyMasked"] = mi["keyMasked"]
                 out["model"] = res         # 放在 settings_info 之后，否则被其 model 字段盖掉
+            out["prices"] = config.token_prices()   # 只改单价（不动其他）时也要回带新价，界面立刻刷新
             out["msg"] = "；".join(x for x in (
                 "模型 API 配置已保存" if isinstance(mbody, dict) else "",
+                "单价已更新" if prices else "",
                 ("执行引擎已切换到 " + eng) if eng else "",
                 "opc-config.json 已更新并生效" if kv else "",
                 "端口修改需重启控制台" if "port" in kv else "",

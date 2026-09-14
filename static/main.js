@@ -39,12 +39,21 @@
 
   /* ================= 首页：组织架构 / 时间线 / 当前任务 ================= */
   function loadOverview(){
-    api("/api/summary").then(function(j){ if (j && j.ok){ var p=$("ovPending"); if(p) p.textContent = (j.pendingCount||0); } });
-    api("/api/queue").then(function(j){ if (j && j.ok){
-      var n=(j.queue||[]).filter(function(t){ return (t.status||"")!=="完成"; }).length; var r=$("ovRunning"); if(r) r.textContent=n;
-      var done=(j.queue||[]).filter(function(t){ return (t.status||"")==="完成"; }).length; var d=$("ovDone"); if(d) d.textContent=done;
-    } });
-    api("/api/tokens").then(function(j){ if (j && j.ok){ var rows=j.rows||[]; var o=$("ovToken"); if(!rows.length){ if(o) o.textContent="—"; return; } var t=0; rows.forEach(function(x){ t += (Number(x.tokensIn)||0)+(Number(x.tokensOut)||0); }); if(o) o.textContent = t>=1000 ? (t/1000).toFixed(1)+"k" : String(t); } });
+    // 「任务状态」三个口径来自两个接口（待决数在 summary，任务数在 queue）。
+    // 合到一张卡里就必须等两边都到齐再画 —— 各画各的会被后到的那次重绘盖掉。
+    Promise.all([
+      api("/api/summary").catch(function(){ return {}; }),
+      api("/api/queue").catch(function(){ return {}; })
+    ]).then(function(res){
+      var s = res[0] || {}, q = (res[1] || {}).queue || [];
+      function byStatus(done){ return q.filter(function(t){
+        return done ? (t.status || "") === "完成" : (t.status || "") !== "完成"; }).length; }
+      var el = $("ovTasks");
+      if (el) el.innerHTML =
+        "<span class='ov-k'>待办</span><span class='ov-v'>" + (Number(s.pendingCount) || 0) + "</span>" +
+        "<span class='ov-k'>进行中</span><span class='ov-v'>" + byStatus(false) + "</span>" +
+        "<span class='ov-k'>已完成</span><span class='ov-v'>" + byStatus(true) + "</span>";
+    });
     api("/api/kb-entries").then(function(j){ if (j && j.ok){ var k=(j.entries||[]).length; var o=$("ovOkf"); if(o) o.textContent=k; } });
     loadHomeStats();
     api("/api/daily").then(function(j){ if (j && j.ok){ var d=(j.daily||[])[0]; var o=$("ovDaily"); if(o) o.textContent = d ? d.date : "无"; } });
@@ -54,8 +63,21 @@
     api("/api/home-stats").then(function(j){
       if (!j || !j.ok) return;
       renderProg(j.progress || {});
+      renderTokens(j.tokens || {});
     }).catch(function(){});
     loadProjectShared();      // 公共项目区（文件树）也挂在首页第三列
+  }
+  /* 首页「Token 消耗 / 项目成本」：总额 + 今日。
+     口径与《设置 → Token 统计》同源（/api/home-stats 的 tokens 段），只是这里**必须换单位**——
+     原来的算法只做到 k，1.2 亿会显示成 "120713.1k"，这个数字读不出来。
+     成本按三档单价算（新输入 / 缓存命中 / 输出），缓存那段单独计价，见 config.token_prices。 */
+  function renderTokens(t){
+    var totalTok = (Number(t.totalIn) || 0) + (Number(t.totalOut) || 0);
+    var todayTok = (Number(t.todayIn) || 0) + (Number(t.todayOut) || 0);
+    var a = $("ovToken"); if (a) a.textContent = totalTok ? fmtTokUnit(totalTok) : "—";
+    var b = $("ovTokenToday"); if (b) b.textContent = "今日 " + fmtTokUnit(todayTok);
+    var c = $("ovCost"); if (c) c.textContent = fmtMoney(t.costTotal);
+    var d = $("ovCostToday"); if (d) d.textContent = "今日 " + fmtMoney(t.costToday);
   }
   function renderProg(p){
     var box = $("progBody"); if (!box) return;
@@ -2367,8 +2389,20 @@
       var ak = $("mApiKey"); if (ak) ak.value = "";
       var ab = $("mApiBase"); if (ab) ab.value = mi.baseURL || "";
       var am = $("mApiModel"); if (am) am.value = mi.model || "";
+      // 单价输入框回显的是**存盘原值**（可能为空），不是「缓存留空=按输入价」算出来的生效值 ——
+      // 把生效值填进框里，一保存就把"留空"变成了写死，以后改输入价它不再跟随。
+      var pr = j.prices || {}, prw = j.pricesRaw || {};
+      var pi = $("mPriceIn");  if (pi) pi.value = (prw.priceIn == null ? "" : prw.priceIn);
+      var po = $("mPriceOut"); if (po) po.value = (prw.priceOut == null ? "" : prw.priceOut);
+      var pc = $("mPriceCache");
+      if (pc){
+        pc.value = (prw.priceCache == null ? "" : prw.priceCache);
+        pc.placeholder = "留空 = 按新输入价（当前 " + fmtMoney(pr.cache) + "）";
+      }
       var an = $("mApiNote");
-      if (an) an.innerHTML = "<b>接入方式（同 dsh 模型 API）</b> 提供方 <code>" + esc(mi.provider || "deepseek") + "</code> → 凭据引用 <code>" + esc(mi.apiKeyEnv || "") + "</code><br>密钥状态：" + (mi.configured ? "已配置 ✓" : "未配置 — 密钥只写项目根 .env，不回显");
+      if (an) an.innerHTML = "<b>接入方式（同 dsh 模型 API）</b> 提供方 <code>" + esc(mi.provider || "deepseek") + "</code> → 凭据引用 <code>" + esc(mi.apiKeyEnv || "") + "</code><br>密钥状态：" + (mi.configured ? "已配置 ✓" : "未配置 — 密钥只写项目根 .env，不回显")
+        + "<br><b>单价</b> 元 / 百万 token，当前生效：新输入 " + pr.in + " · 缓存命中 " + pr.cache + " · 输出 " + pr.out
+        + "。首页「项目成本」按这三档算 —— meta 里的 tokensIn 是「新输入 + 缓存读取」的合计，缓存单列计费才不会把成本算高。";
       if (j.envOverride && j.activeProject && $("setMsg")) $("setMsg").textContent = "环境变量（OPC_KB_ROOT/OPC_CONFIG/OPC_PORT）优先于配置，请直接手改 opc-config.json";
       loadSchedules();
       loadRoles();
@@ -2456,13 +2490,6 @@
   }
 
 
-  /* ================= 设置：任务 Token 统计（输入/输出柱状，数据来自 meta.json） ================= */
-  function fmtTok(n){
-    n = Number(n) || 0;
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
-    if (n >= 1000) return (n / 1000).toFixed(1) + "k";
-    return String(n);
-  }
   /* ================= R1 助理悬浮窗（临时会话，不进任务流程） ================= */
   /* 卡通 R1：圆脸 + 耳麦 + 金色领结，纯 inline SVG —— 不用 emoji、不引外部图，两个主题下都清楚。 */
   /* 悬浮球里的图形：一个对话气泡 + 三个点。底色与光环由 CSS 给（跟随主题），
@@ -2474,7 +2501,27 @@
     + "<circle cx='31' cy='23.5' r='2.3' fill='#f4f8fc'/>"
     + "</svg>";
 
+  /* 精确计数（Token 柱状图用）：带千分位，柱子底下的合计要能逐位核对 */
   function fmtTok(n){ return (Number(n) || 0).toLocaleString(); }
+
+  /* 首页用的自动换单位：120713124 → "120.71M"。数一大，千分位反而读不出来 */
+  function fmtTokUnit(n){
+    n = Number(n) || 0;
+    var a = Math.abs(n);
+    if (a >= 1e9) return (n / 1e9).toFixed(2) + "B";
+    if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    if (a >= 1e4) return (n / 1e3).toFixed(1) + "k";
+    return String(Math.round(n));
+  }
+
+  /* 成本：一次任务常常只有几分钱，小额不能显示成 0.00 */
+  function fmtMoney(v){
+    v = Number(v) || 0;
+    if (v <= 0) return "¥0";
+    if (v < 1) return "¥" + v.toFixed(4);
+    if (v < 1000) return "¥" + v.toFixed(2);
+    return "¥" + (v / 1000).toFixed(2) + "k";
+  }
 
   function mountDock(){
     var fab = $("r1Fab"), ava = $("r1Ava");
@@ -3019,12 +3066,19 @@
       model: ($("mApiModel").value || "").trim()
     } };
     if (apiKey) payload.model.apiKey = apiKey;
+    // 单价跟模型配置一起存：留空 = 删掉该键（回落到默认 / 按新输入价）
+    function pval(id){ var e = $(id); return e ? (e.value || "").trim() : ""; }
+    payload.priceIn = pval("mPriceIn");
+    payload.priceCache = pval("mPriceCache");
+    payload.priceOut = pval("mPriceOut");
     post("/api/settings", payload).then(function(j){
       if (j && j.ok){
         var mi = j.model || {};
         if (m) m.textContent = "✓ 模型 API 配置已保存：提供方 " + esc(mi.provider) + " · 引用 " + esc(mi.apiKeyEnv)
           + (apiKey ? " · 密钥已写入项目根 .env（不回显）" : " · 密钥保持已配置值不变")
-          + (mi.configured ? "（状态：已配置 ✓）" : "（状态：未配置 — 保存密钥后 dsh 会话/subagent 自动继承）");
+          + (mi.configured ? "（状态：已配置 ✓）" : "（状态：未配置 — 保存密钥后 dsh 会话/subagent 自动继承）")
+          + "；单价 新输入 " + fmtMoney(j.prices && j.prices.in) + " / 缓存命中 " + fmtMoney(j.prices && j.prices.cache)
+          + " / 输出 " + fmtMoney(j.prices && j.prices.out) + "（元/百万 token）";
         var ak = $("mApiKey"); if (ak) ak.value = "";
         loadSettings();
       } else { if (m) m.textContent = "保存失败：" + esc(j && j.msg || "未知"); }

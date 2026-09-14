@@ -146,10 +146,60 @@ PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
 DEFAULT_ENGINE = "dsh"          # 默认用 DSH：自带工具沙箱与技能生态，能力最全
 DEFAULT_FALLBACK = "api"        # 本机没有 dsh 环境（或 dsh 没跑起来）时，直连 API 兜底
 ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or DEFAULT_ENGINE)
-# 首页「今日用量」的估算单价（元 / 百万 token）。默认值只是占位，按你实际模型价格改：
-# 环境变量 OPC_TOKEN_PRICE_IN / OPC_TOKEN_PRICE_OUT（或 opc-config.json 的 priceIn/priceOut）。
-TOKEN_PRICE_IN = float(os.environ.get("OPC_TOKEN_PRICE_IN") or _CFG.get("priceIn") or 1.0)
-TOKEN_PRICE_OUT = float(os.environ.get("OPC_TOKEN_PRICE_OUT") or _CFG.get("priceOut") or 2.0)
+# 首页「Token 消耗 / 项目成本」的估算单价（元 / 百万 token），三档：新输入 / 缓存命中 / 输出。
+# 在「设置 → 模型接入」里填（写 opc-config.json 的 priceIn/priceCache/priceOut），
+# 也可用环境变量 OPC_TOKEN_PRICE_IN / _CACHE / _OUT 覆盖。
+# 必须按三档算：meta 里的 tokensIn 是「新输入 + 缓存读取」的**合计**，而缓存命中单价通常
+# 只有输入的 1/10 —— 拿合计按输入价一律计费会把成本高估近十倍（T-028-S2 那次 1.03 亿输入
+# 里有 1.028 亿是缓存命中）。tokensCacheRead 单独记着，所以这里能算准。
+def token_prices() -> dict:
+    """当前生效的三档单价。缓存命中价留空则按新输入价算。
+
+    「留空就按输入价」是有意的：不知道折扣时按原价算会高估，不会低估 ——
+    替你猜一个折扣反而会让人以为成本比实际低。"""
+    def _num(key: str, env: str, default: float) -> float:
+        raw = os.environ.get(env)
+        if raw in (None, ""):
+            raw = _CFG.get(key)
+        try:
+            return max(0.0, float(raw))
+        except (TypeError, ValueError):
+            return default
+    pin = _num("priceIn", "OPC_TOKEN_PRICE_IN", 1.0)
+    return {"in": pin,
+            "cache": _num("priceCache", "OPC_TOKEN_PRICE_CACHE", pin),
+            "out": _num("priceOut", "OPC_TOKEN_PRICE_OUT", 2.0)}
+
+
+# 读取即生效（reload() 认得 _CFG）：不做成模块常量，否则设置页改完要重启控制台才换价。
+def token_cost(fresh: int, cache: int, out: int) -> float:
+    """三档用量 → 估算成本（元）。fresh=未命中缓存的新输入。"""
+    p = token_prices()
+    return (max(0, int(fresh or 0)) / 1e6 * p["in"]
+            + max(0, int(cache or 0)) / 1e6 * p["cache"]
+            + max(0, int(out or 0)) / 1e6 * p["out"])
+
+
+def save_prices(kv: dict) -> dict:
+    """设置页写三档单价。空值 = 删除该键（回落到默认 / 按输入价）；非法值当场报错。"""
+    patch = {}
+    for k in ("priceIn", "priceCache", "priceOut"):
+        if k not in kv:
+            continue
+        v = kv[k]
+        if v is None or (isinstance(v, str) and not v.strip()):
+            patch[k] = None
+            continue
+        try:
+            f = float(str(v).strip())
+        except (TypeError, ValueError):
+            raise ValueError("单价必须是数字：" + str(v))
+        if f < 0:
+            raise ValueError("单价不能为负：" + str(v))
+        patch[k] = f
+    if patch:
+        _write_cfg(patch)
+    return token_prices()
 
 
 # ---------- 配置读写（「设置」视图 /api/settings 使用） ----------
@@ -323,6 +373,10 @@ def settings_info() -> dict:
         "workspaceRoot": str(WORKSPACE_ROOT.resolve()) if WORKSPACE_ROOT.exists() else str(WORKSPACE_ROOT),
         "workspaceExists": WORKSPACE_ROOT.exists(),
         "model": model_info(),
+        "prices": token_prices(),        # 三档单价当前生效值（模型接入页里填，首页成本按它算）
+        # 原样存盘值：输入框要回显"用户填了什么"，不能把"缓存留空=按输入价"算出来的
+        # 生效值填进框里 —— 那样一保存就把留空变成了写死，以后改输入价它不再跟随。
+        "pricesRaw": {k: _CFG.get(k) for k in ("priceIn", "priceCache", "priceOut")},
         "projects": projects(),
         "activeProject": active_project(),
         "agentsDir": str(AGENTS_DIR),
