@@ -884,11 +884,41 @@ def _r1_respond(item: str, judge: str, opinion: str) -> dict:
     return {"dispatch": bool(d.get("dispatch")), "task": str(d.get("task") or "")}
 
 
+def _r1_triage(reps, task_text: str) -> dict:
+    """让 R1 **一次判完**：这批回报里有没有真正需要 R0 拍板的事项，有则整理成决策建议。
+
+    不再由规则判「有没有」——那是语义问题，规则匹配天然脆弱：角色写「无。」后补一句
+    「为什么无」是好事，却会被判成有决策点（T-022/T-023 就这么白占两条待决位），
+    而那段解释没有决策点结构，提炼不出建议，只能把原文塞进「决策建议」栏。
+    规则（_pending_items）在这里只作为**素材**喂给模型，判定交给语义理解。
+
+    返回 {"need": bool, "advice": str}；模型没给出可用结论时回退规则（宁可多问一次 R0，
+    也不要漏掉真决策点）。"""
+    pending = _pending_items(reps)
+    prompt = (
+        "你是老板助理 R1。任务：%s\n\n各角色回报：\n%s\n\n"
+        "角色在「## 需要 R0 拍板」小节里写的原文：\n%s\n\n"
+        "请判断：**有没有真正需要 R0 拍板的事项**？只有这四类算：方向取舍 / 花钱或对外 / "
+        "例外授权 / 验收定稿。\n"
+        "以下都**不算**（控制台自动处理，不该占 R0 的时间）：写「无」并在后面解释为什么无；"
+        "归档口径 / 是否结案 / 状态确认 / 要不要继续这类流程性事项；"
+        "「请 R0 拍板」「驳回将重新派发」这类流程空话。\n"
+        "若有，按《模板-决策建议》整理成一个决策点：现状背景 → 可选方案 → 你的建议；"
+        "没有则 need=false、advice 留空。\n"
+        '输出 JSON：{"need": true|false, "advice": "..."}。只输出 JSON。'
+        % (str(task_text or "")[:200], _digest_reps(reps, limit=1800), pending or "（空）"))
+    text = _headless_text(prompt, 600)
+    d = _parse_kb_digest(text) if text else None
+    if not isinstance(d, dict):
+        return {"need": bool(pending), "advice": ""}
+    return {"need": bool(d.get("need")), "advice": str(d.get("advice") or "")}
+
+
 def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: list) -> int:
     """任务自动执行完成后：R1 整理回报呈报 R0。
 
-    - 例行进展（默认）→ 追加「### 工作 N」到「## 工作内容」（查看即可，R0 可一键归档）；
-    - 命中决策信号（定价/拍板/是否…/请 R0）→ 追加「### 待决 N」到「## 决策裁决」（需 R0 拍板）。
+    - 每个任务都追加「### 工作 N」到「## 工作内容」（主体记录，R0 查看后可一键归档）；
+    - R1 判定确有需拍板事项时，**再附加**「### 待决 N」到「## 决策裁决」（沿用同一个号）。
     段落格式与 parsers.parse_piyuetai / review.write_piyue 兼容。返回编号（失败返回 None）。"""
     try:
         rel = config.PIYUETAI_REL
@@ -921,41 +951,31 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
             sum_rel = work_summary(task_no)      # R1 汇总全部 subagent 产出（代码类附变更与目录树）
         except Exception:
             sum_rel = ""
-        # 分界线（结构化判定）：只有角色在回报「## 需要 R0 拍板」小节里声明的事项才进决策裁决，
-        # 其余一律「工作内容」；角色已有建议、R1 能直接派发的按模板写在「## 后续动作」。
-        pending = _pending_items(reps)
-        need = bool(pending)
-        advice = ""
-        if need:
-            try:
-                advice = _advice_summary(reps, task_text)
-            except Exception:
-                advice = ""
+        # 有没有决策点**交给 R1 判**（语义问题）；规则只作为素材，不再由它拍板。
+        tri = _r1_triage(reps, task_text)
+        need = bool(tri.get("need"))
+        advice = str(tri.get("advice") or "")
         if need and not advice:
             # 判定要拍板但正文没写出来：摘要必须自报身份，不能冒充「决策建议」正文
             # （否则界面上看到的是各角色产出原文，读者以为就是模板化的建议）。
-            advice = "（R1 按《模板-决策建议》提炼未完成，以下为角色声明原文，仅供 R0 参考）\n" + pending
+            advice = ("（R1 判定需要拍板但未写出建议，以下为角色声明原文，仅供 R0 参考）\n"
+                      + (_pending_items(reps) or "（无可引用原文）"))
+        # ===== 工作内容是**每个任务都有**的主体记录；决策裁决是**附加** =====
+        # 原先是 if/else 二选一，导致有待决的任务在工作内容里完全看不到。
+        work = ["### 工作 %d｜任务 %s" % (n, task_no)]
+        work += _field_lines("任务", task_s[:160])
+        work += _field_lines("进展", prog)
+        if sum_rel:
+            work += ["- **汇总文件**：" + sum_rel]
+        text = insert_block(text, "## 工作内容", chr(10) + chr(10).join(work) + chr(10))
         if need:
-            lines_b = ["### 待决 %d｜任务 %s" % (n, task_no)]
-            lines_b += _field_lines("任务", task_s[:160])
-            lines_b += _field_lines("进展", prog)
-            # 原「决策内容 / 决策建议」两栏合并为一栏：拍什么（决策点+现状背景）与怎么看（建议+动作）同源生成
-            lines_b += _field_lines("决策建议", advice)
-            lines_b += ["- **R0 批阅**：待填"]
+            # 待决沿用同一个号：它属于那个任务，不另占编号（R0 引用「待决 #N」两边对得上）
+            dec = ["### 待决 %d｜任务 %s" % (n, task_no)]
+            dec += _field_lines("决策建议", advice)
+            dec += ["- **R0 批阅**：待填"]
             if sum_rel:
-                lines_b += ["- **汇总文件**：" + sum_rel]   # 待决也挂 R1 汇总
-            blk = chr(10) + chr(10).join(lines_b) + chr(10)
-            section = "## 决策裁决"
-        else:
-            head = "### 工作 %d｜任务 %s" % (n, task_no)
-            lines_b = [head]
-            lines_b += _field_lines("任务", task_s[:160])
-            lines_b += _field_lines("进展", prog)
-            if sum_rel:
-                lines_b += ["- **汇总文件**：" + sum_rel]
-            blk = chr(10) + chr(10).join(lines_b) + chr(10)
-            section = "## 工作内容"
-        text = insert_block(text, section, blk)
+                dec += ["- **汇总文件**：" + sum_rel]
+            text = insert_block(text, "## 决策裁决", chr(10) + chr(10).join(dec) + chr(10))
         p.write_text(text, encoding="utf-8")
         return n
     except Exception:
