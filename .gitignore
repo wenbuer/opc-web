@@ -33,3 +33,13 @@ build.ps1
 # ===== 测试与诊断脚本（本机保留，不入库）=====
 tests/
 .diag-regen.py
+server.out.log
+server.err.log
+
+# 本地探针与运行日志（截图/临时页/服务输出），不进仓库
+_*.png
+_*.html
+
+# 运行日志与本地脚本目录，不进仓库
+logs/
+scripts/

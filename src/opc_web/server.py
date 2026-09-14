@@ -7,12 +7,13 @@ import json
 import os
 import re
 import shutil
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
-from . import (bootstrap, chain, config, engines, knowledge, parsers, review, roles, runner,
-               scheduler, skills, store, templates)
+from . import (assistant, bootstrap, chain, config, engines, knowledge, parsers, review, roles,
+               runner, scheduler, skills, store, templates)
 
 
 def _strip_okf_frontmatter(text: str) -> str:
@@ -175,9 +176,10 @@ class Handler(BaseHTTPRequestHandler):
         """可导入的技能（扫本机技能源）：**与当前引擎无关** —— 技能是项目资产，不是引擎能力。
 
         技能 md 导入后进共享技能库 agents/skills/，角色卡登记装配，执行时由
-        agent_prompt() 拼进 prompt，所以两套引擎用的是同一份技能。引擎的差别只在
-        capabilities.skills：技能里那些「跑命令 / 读写文件」的步骤，dsh 自带工具沙箱能直接
-        执行，直连 API 引擎只有 4 个基础工具。"""
+        agent_prompt() 把技能清单与路径注入 prompt、正文由角色按需读，所以两套引擎
+        用的是同一份技能。引擎的差别只在 capabilities.skills：技能里那些「跑命令 /
+        读写文件」的步骤，dsh 自带工具沙箱能直接执行，直连 API 引擎只有 4 个基础工具
+        （含 read_file，按需读技能两套都成立）。"""
         eng = engines.get_engine()
         cap = bool((eng.capabilities() or {}).get("skills"))
         lib = config.AGENTS_DIR / config.SKILLS_REL
@@ -210,6 +212,17 @@ class Handler(BaseHTTPRequestHandler):
     def _get_daily(self):
         return {"ok": True, "daily": knowledge.latest_daily()}
 
+    def _get_runlog(self):
+        """某子任务的完整运行轨迹（面板「查看完整日志」用）。
+
+        事件流里的轨迹块有内存上限，超过的部分只在落盘文件里 —— 这里读的就是文件全文。"""
+        sub = str(self._qs().get("sub", [""])[0] or "").strip()
+        if not sub:
+            raise ApiError(400, "缺少子任务编号 sub")
+        text = runner.read_trace(sub)
+        return {"ok": True, "sub": sub, "text": text, "size": len(text),
+                "msg": "" if text else "还没有这个子任务的运行日志"}
+
     def _get_events(self):
         since = int(self._qs().get("since", ["0"])[0] or 0)
         return runner.events(since)
@@ -227,6 +240,8 @@ class Handler(BaseHTTPRequestHandler):
                               "entries": knowledge.kb_entries()})
         elif url == "/api/md":
             self._ok(self._get_md, err=400)
+        elif url == "/api/runlog":
+            self._ok(self._get_runlog)
         elif url == "/api/pending":
             self._ok(self._get_pending)
         elif url == "/api/summary":
@@ -243,11 +258,15 @@ class Handler(BaseHTTPRequestHandler):
         elif url == "/api/ws-files":
             self._ok(lambda: {"ok": True, "files": scheduler.ws_files()})
         elif url == "/api/project-files":
-            self._ok(lambda: {"ok": True, **scheduler.project_files()})
+            # 懒加载：不带 path 只给根层，前端点开目录时带 path 来要下一层
+            self._ok(lambda: {"ok": True, **scheduler.project_files(
+                unquote(self._qs().get("path", [""])[0]).strip())}, err=400)
         elif url == "/api/home-stats":
             self._ok(scheduler.home_stats)
         elif url == "/api/tokens":
-            self._ok(lambda: {"ok": True, "rows": scheduler.token_rows()})
+            # 任务用量 + 临时会话用量分开给：前者按子任务逐条，后者是悬浮窗问答的合计
+            self._ok(lambda: {"ok": True, "rows": scheduler.token_rows(),
+                              "assistant": assistant.totals()})
         elif url == "/api/ws-file":
             self._ok(self._get_ws_file, err=400)
         elif url == "/api/ws-html":
@@ -268,6 +287,9 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._get_skill_lib)
         elif url == "/api/skill-sources":
             self._ok(self._get_skill_sources)
+        elif url == "/api/assistant/history":
+            self._json({"ok": True, "items": assistant.records(limit=50),
+                        "totals": assistant.totals()})
         elif url == "/api/templates":
             self._json({"ok": True, "templates": templates.templates()})
         elif url == "/api/handbook":
@@ -335,6 +357,29 @@ class Handler(BaseHTTPRequestHandler):
         scheduler.scan_once()  # 立即生成 R1 拆解指令，不等 8s 轮询
         return {"ok": True, "no": no, "queue": self._queue_rows(), "state": scheduler.SCHED_STATE}
 
+    def _post_role_task(self):
+        """角色卡片上的终端入口：一条任务直接派给指定角色，**跳过 R1 拆解**。
+
+        走的是与自动执行链完全相同的下游（预置产出 → headless 执行 → 回报落库 →
+        归档 → token 记账），只是少了拆解那一步与它的一次模型调用。不做跨消息记忆：
+        每次下达都是独立执行，界面上的连续消息只是流水。"""
+        body = self._body()
+        if body is None:
+            raise ApiError(400, "JSON 解析失败")
+        role = str(body.get("role") or "").strip().upper()
+        text = str(body.get("task") or "").strip()
+        expect = str(body.get("expect") or "R1 判断").strip()
+        if not (role.startswith("R") and role[1:].isdigit()):
+            raise ApiError(400, "角色编号非法：" + role)
+        if not text:
+            raise ApiError(400, "任务内容不能为空")
+        no = store.add_task(text, expect)
+        store.set_task(no, "已派")      # 立刻离开「待派」——否则调度扫描会再拆解一遍
+        threading.Thread(target=chain.execute, daemon=True,
+                         args=(no, text, {"role": role, "sub": text, "expect": expect})).start()
+        return {"ok": True, "no": no, "role": role, "roleName": config.role_name(role),
+                "queue": self._queue_rows(), "state": scheduler.SCHED_STATE}
+
     def _post_task_delete(self):
         body = self._body()
         if body is None:
@@ -354,9 +399,12 @@ class Handler(BaseHTTPRequestHandler):
         rep_n = len(store.reports(no))            # 删除将连带移除回报/批阅依据
         store.delete_task(no)
         removed = scheduler.clean_task_files(no)
-        return {"ok": True, "no": no, "removedFiles": removed, "queue": self._queue_rows(),
+        piyue_n = scheduler.clean_piyuetai(no)     # 批阅台里该任务的条目块一并清掉
+        return {"ok": True, "no": no, "removedFiles": removed, "removedPiyue": piyue_n,
+                "queue": self._queue_rows(),
                 "msg": ("已删除任务 " + no + (" · 连带移除 " + str(rep_n) + " 条回报/批阅记录" if rep_n else "")
-                        + ((" · 清理工作区文件 " + str(removed) + " 个") if removed else ""))}
+                        + ((" · 清理工作区文件 " + str(removed) + " 个") if removed else "")
+                        + ((" · 清理批阅台条目 " + str(piyue_n) + " 条") if piyue_n else ""))}
 
     def _post_plan_pause(self):
         body = self._body() or {}
@@ -474,6 +522,11 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             raise ApiError(500, "保存设置失败: " + str(e)[:200])
 
+    def _post_assistant_ask(self):
+        """R1 助理的临时会话：只问答，不建任务、不派角色（用量单独记账）。"""
+        body = self._body() or {}
+        return assistant.ask(str(body.get("q") or ""))
+
     def _post_model_test(self):
         try:
             return config.test_model(self._body() or {}, timeout=20)
@@ -580,6 +633,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._post_retry)
         elif url == "/api/dispatch":
             self._ok(self._post_dispatch)
+        elif url == "/api/role-task":
+            self._ok(self._post_role_task)
         elif url == "/api/task-delete":
             self._ok(self._post_task_delete)
         elif url == "/api/plan-execute":
@@ -594,6 +649,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._post_project, err=400)
         elif url == "/api/settings":
             self._ok(self._post_settings)
+        elif url == "/api/assistant/ask":
+            self._ok(self._post_assistant_ask)
         elif url == "/api/model/test":
             self._ok(self._post_model_test)
         elif url == "/api/roles/delete":

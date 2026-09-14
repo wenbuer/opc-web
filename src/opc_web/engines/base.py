@@ -18,6 +18,9 @@ class Progress:
     lastText: str = ""        # 最近一段模型文本（单行、已压缩）
     session: str = ""         # 引擎侧的会话标识（dsh 给会话目录尾号；API 引擎给 request id）
     finished: bool = False    # 本次运行已结束：上层据此清掉「执行中」状态（引擎不直接碰上层状态）
+    trace: dict | None = None  # 完整轨迹块 {"kind": "reasoning"|"tool"|"text"|"final", "text": 全文}
+                               # —— 心跳只报「最近在干什么」，轨迹报「完整说了什么」：
+                               #    面板把它折进可展开的块里，事后还能从《批阅台/运行日志/》回看。
 
 
 @dataclass
@@ -44,6 +47,7 @@ class Engine:
     name = "base"
     label = "base"        # 设置页显示名
     description = ""      # 一句话说明（设置页与自检提示用）
+    cost = ""             # token 消耗特征一句话（设置页展示，供选引擎时判断花销）
 
     def capabilities(self) -> dict:
         """能力声明：控制台据此决定 UI 与提示词策略。
@@ -57,10 +61,13 @@ class Engine:
         return True, ""
 
     def run(self, prompt: str, *, timeout: float = 600, act: str = "",
-            cwd=None, on_progress=None) -> RunResult:
+            cwd=None, on_progress=None, max_steps=None) -> RunResult:
         """跑一次任务。
 
         - act：子任务号，用于注册/终止运行（删除任务/超时强杀）
+        - max_steps：覆盖引擎自己的步数上限（如工具循环轮数），None 用引擎默认。
+          轻问答（R1 助理的临时会话）会传一个小值：工具循环每轮都要重发完整历史，
+          步数一多输入就指数膨胀 —— 有一次问答光 input 就烧掉 100 万 token。
         - on_progress(Progress)：有活动时回调，控制台据此推进度行与心跳；
           **返回前必须再报一次 Progress(finished=True)**，否则上层会把这次运行
           一直当成「执行中」（状态残留）。
