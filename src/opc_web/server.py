@@ -11,7 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote
 
-from . import bootstrap, config, knowledge, parsers, review, roles, runner, scheduler, store
+from . import bootstrap, chain, config, knowledge, parsers, review, roles, runner, scheduler, store, templates
 
 
 def _strip_okf_frontmatter(text: str) -> str:
@@ -46,6 +46,15 @@ def _split_skills(v):
         if s and not (s.startswith("（") or s.startswith("(")):
             out.append(s)
     return out
+
+
+def _split_tags(v):
+    """body['tags']（空格/逗号分隔字符串 或 数组）→ 标签列表；None=未提交（edit 保留现卡标签）。"""
+    if v is None:
+        return None
+    if isinstance(v, list):
+        return [str(x).strip() for x in v if str(x).strip()]
+    return [t for t in re.split(r"[\s,，、;；]+", str(v).strip()) if t]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -85,6 +94,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
+
+    def _serve_html(self, q):
+        """把项目/工作区里的 .html 作为 text/html 直接 serve（供预览 iframe 内嵌打开）。"""
+        rel = unquote((q.get("rel") or [""])[0]).strip()
+        if not rel:
+            raise ApiError(400, "缺少文件路径")
+        p = (config.ROOT / rel).resolve()
+        if not str(p).startswith(str(config.ROOT.resolve())) or not p.is_file() or p.suffix.lower() != ".html":
+            raise ApiError(404, "文件不存在或非 html")
+        self._file(p, "text/html; charset=utf-8")
 
     def _ok(self, fn, err=500):
         """统一输出端点响应：fn 返回 dict → JSON；ApiError 按其状态码；其它异常按 err。"""
@@ -232,7 +251,7 @@ class Handler(BaseHTTPRequestHandler):
         elif url == "/api/org":
             self._ok(lambda: {"ok": True, "roles": parsers.parse_roles()})
         elif url == "/api/timeline":
-            self._ok(lambda: {"ok": True, "events": parsers.parse_timeline()})
+            self._ok(lambda: {"ok": True, **scheduler.get_timeline()})
         elif url == "/api/queue":
             self._ok(lambda: {"ok": True, "queue": store.tasks()})
         elif url == "/api/rn-outputs":
@@ -240,10 +259,14 @@ class Handler(BaseHTTPRequestHandler):
                               "groups": scheduler.rn_outputs(self._qs().get("no", [""])[0])})
         elif url == "/api/ws-files":
             self._ok(lambda: {"ok": True, "files": scheduler.ws_files()})
+        elif url == "/api/project-files":
+            self._ok(lambda: {"ok": True, **scheduler.project_files()})
         elif url == "/api/tokens":
             self._ok(lambda: {"ok": True, "rows": scheduler.token_rows()})
         elif url == "/api/ws-file":
             self._ok(self._get_ws_file, err=400)
+        elif url == "/api/ws-html":
+            self._serve_html(self._qs())
         elif url == "/api/plan-rows":
             self._ok(lambda: {"ok": True, "rows": store.subtasks()})
         elif url == "/api/task-output":
@@ -260,6 +283,10 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._get_skill_lib)
         elif url == "/api/dsh-skills":
             self._ok(self._get_dsh_skills)
+        elif url == "/api/templates":
+            self._json({"ok": True, "templates": templates.templates()})
+        elif url == "/api/handbook":
+            self._json({"ok": True, "text": templates.handbook_text()})
         elif url == "/api/projects":
             self._json({"ok": True, "projects": config.projects(),
                         "active": config.active_project(), "seedRoles": config.settings_info()["seedRoles"]})
@@ -328,9 +355,13 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "缺少任务编号 no")
         if not any(t["no"] == no for t in store.tasks()):
             raise ApiError(404, "任务 " + no + " 不在队列中")
-        st = scheduler.SCHED_STATE
-        if st.get("busy") and no in (st.get("tag") or ""):
-            raise ApiError(409, no + " 正在执行中，暂不可删除")
+        # 停止子任务再删除：对执行中/待派/已派子任务先终止其运行中的 headless 子进程，
+        # 并让执行链提前退出（不再执行剩余子任务、不重写产出），再删除任务，避免孤儿执行与产出残留。
+        live = [s for s in store.subtasks(no) if s.get("st") in ("执行中", "待派", "已派")]
+        if live:
+            chain.mark_stopped(no)
+            for s in live:
+                runner.kill_spawn(s["no"])
         rep_n = len(store.reports(no))            # 删除将连带移除回报/批阅依据
         store.delete_task(no)
         removed = scheduler.clean_task_files(no)
@@ -354,6 +385,7 @@ class Handler(BaseHTTPRequestHandler):
     def _post_role_add(self, edit=False):
         body = self._body() or {}
         skills = _split_skills(body.get("skills"))     # None=未提交（edit 保留现卡清单）；[]=清空
+        tags = _split_tags(body.get("tags"))           # None=未提交（edit 保留现卡标签）；[]=清空
         if edit:
             body_card = body.get("card")
             r = roles.edit_role(
@@ -363,6 +395,7 @@ class Handler(BaseHTTPRequestHandler):
                 position=str(body.get("position", "")).strip() or None,
                 type_=str(body.get("type", "")).strip() or None,
                 skills=skills,
+                tags=tags,
                 card=(str(body_card).strip() if isinstance(body_card, str) and str(body_card).strip() else None),
                 dry=bool(body.get("dry", False)))
         else:
@@ -372,6 +405,7 @@ class Handler(BaseHTTPRequestHandler):
                 str(body.get("position", "")).strip() or "一句话定位",
                 str(body.get("type", "")).strip() or "业务",
                 skills=skills or (),
+                tags=tags or (),
                 dry=bool(body.get("dry", False)))
         return {"ok": True, **({"preview": True} if body.get("dry") else {}), "result": r}
 
@@ -384,7 +418,8 @@ class Handler(BaseHTTPRequestHandler):
             # 切换会把 ROOT/台账/角色目录整体换掉，执行链跑一半时切会写串项目
             raise ApiError(409, "当前有任务正在执行，等执行链跑完再切换项目")
         if act == "add":
-            p = config.add_project(str(body.get("name") or ""), root)
+            p = config.add_project(str(body.get("name") or ""), root,
+                                   template=str(body.get("template") or "large_dev"))
             bootstrap.bootstrap()          # 建三目录 + 从 agents-seed 复制角色卡
             return {"ok": True, "project": p, "boot": bootstrap.BOOT_LOG, **config.settings_info()}
         if act == "switch":
@@ -497,16 +532,37 @@ class Handler(BaseHTTPRequestHandler):
         extra = {}
         try:
             verb = review.verb_of(judge)
-            if verb == "批准":
-                task_text = "执行 R0 决策（批阅台 待决 #%s）：%s" % (item, opinion or "按批阅意见执行")
-                note = "已建任务 %s，待 R1 派发执行"
+            # R1 自己判断：是否需要派发任务给员工执行（模型判断，判不了回退规则）
+            resp = scheduler._r1_respond(item, judge, opinion)
+            if resp is None:
+                # 模型未给出判断：回退规则（驳回不派；批准/修改派）
+                if verb == "驳回":
+                    review.append_r1_exec(item, "已驳回，不再派发执行")
+                    extra = {"task": None}
+                elif verb == "批准":
+                    task_text = "执行 R0 决策（批阅台 待决 #%s）：%s" % (item, opinion or "按批阅意见执行")
+                    no = store.add_task(task_text, "R1 判断")
+                    review.append_r1_exec(item, "已建任务 %s，待 R1 派发执行" % no)
+                    scheduler.scan_once()
+                    extra = {"task": no}
+                else:  # 修改：按批注修改后重报
+                    task_text = "按批阅修改（批阅台 待决 #%s，修改）：%s" % (item, opinion or "按批注修改后重报")
+                    no = store.add_task(task_text, "R1 判断")
+                    review.append_r1_exec(item, "已按批注重新派发执行 %s" % no)
+                    scheduler.scan_once()
+                    extra = {"task": no}
+            elif resp.get("dispatch"):
+                tt = str(resp.get("task") or "").strip() or ("执行 R0 决策（批阅台 待决 #%s）" % item)
+                try:
+                    no = store.add_task(tt, "R1 判断")
+                    review.append_r1_exec(item, "已按 R0 裁决派发任务 %s" % no)
+                    scheduler.scan_once()
+                    extra = {"task": no}
+                except Exception:
+                    extra = {"task": None}
             else:
-                task_text = "按批阅修改（批阅台 待决 #%s，%s）：%s" % (item, verb, opinion or "按批注修改后重报")
-                note = "已按批注重新派发执行 %s"
-            no = store.add_task(task_text, "R1 判断")
-            review.append_r1_exec(item, note % no)
-            scheduler.scan_once()   # 立即生成 R1 拆解指令（与下达任务同路径）
-            extra = {"task": no}
+                review.append_r1_exec(item, "已按 R0 裁决处理，未触发新派发")
+                extra = {"task": None}
         except Exception:
             extra = {"task": None}
         return {"ok": True, "line": new_line, "item": item, **extra}
@@ -543,6 +599,8 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError as e:
                     raise ApiError(409, str(e))
             self._ok(h)
+        elif url == "/api/timeline":
+            self._ok(lambda: scheduler.build_timeline())
         elif url == "/api/schedule":
             self._ok(self._post_schedule)
         elif url == "/api/work-archive":

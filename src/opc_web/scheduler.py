@@ -20,7 +20,7 @@ from . import agent, config, runner, store
 
 def _wb_role_dirs():
     """《工作区/》下所有角色输出目录（按角色名称命名）。"""
-    wb = config.wb_root()
+    wb = config.WORKSPACE_ROOT
     if not wb.is_dir():
         return []
     return sorted(d for d in wb.iterdir() if d.is_dir())
@@ -140,7 +140,7 @@ def r1_archive() -> dict:
         for f in sorted(d.glob("*.md")):
             if (d / (f.stem + ".meta.json")).exists():
                 continue
-            ledger.append(f.relative_to(config.wb_root()).as_posix())
+            ledger.append(f.relative_to(config.WORKSPACE_ROOT).as_posix())
     # 任务级回填：子任务全部完成 → 任务完成
     by_task = {}
     for s in store.subtasks():
@@ -331,6 +331,28 @@ def _decision_items(reps: list) -> str:
     return "\n\n".join(out)
 
 
+def _decision_summary(reps, task_text: str) -> str:
+    """R1 把各角色回报里需 R0 拍板的内容，总结成「像人话、以问句结尾」的完整决策点。
+
+    不再直接搬运回报原文的零碎片段（1)、0.3 这类）；失败返回 ""（由调用方回退）。"""
+    if not reps and not task_text:
+        return ""
+    digest = _digest_reps(reps, limit=1600) if reps else str(task_text or "")[:1200]
+    prompt = (
+        "你是老板助理 R1。下面是某任务的原文与各角色回报。\n"
+        "请把其中需要老板(R0)拍板的决策点，提炼成**完整、像人话、以问句结尾**的条目，"
+        "每条写清：现状背景 → 可选方案 → 你建议选哪个 → 一问句（如「是否按方案 B 执行？」）。\n"
+        "不要搬运回报里的零碎编号片段（如「1)」「0.3 差异化」这种），不要写流程套话；"
+        "只有确有需要拍板才输出，没有就输出「无」。\n"
+        "注意：只提炼需要 R0 拍板的取舍点（方案选择 / 预算 / 方向 / 是否推进 / 是否上线 之类）；"
+        "若回报只是设计说明、进展汇报，没有明确要 R0 决策的取舍，就输出「无」。"
+        "不要汇报任务状态、知识库进度或复盘结论。\n"
+        "只输出决策内容，不要多余文字。\n\n任务原文：%s\n\n各角色回报：\n%s"
+        % (str(task_text or "")[:800], digest))
+    text = _headless_text(prompt, 480)
+    return (text or "").strip() if text else ""
+
+
 def work_summary(task_no: str) -> str:
     """R1 汇总任务全部 subagent 产出 →《工作区/老板助理（枢纽）/T-xxx-工作汇总.md》。
 
@@ -438,40 +460,132 @@ def build_daily_report(datestr: str = None) -> dict:
     target.write_text(text.strip() + "\n", encoding="utf-8")
     return {"ok": True, "created": True, "file": target.name, "rel": target.relative_to(config.ROOT).as_posix()}
 
+def _kb_skim() -> str:
+    """知识库已有档案简表（按分类）：让 R1 知道该 create 还是 merge（不重复沉淀）。"""
+    out = []
+    for cat in config.KB_CATEGORIES:
+        d = config.KB_ROOT / cat
+        if not d.is_dir():
+            continue
+        files = [p.stem for p in sorted(d.glob("*.md"))]
+        if files:
+            out.append("%s：%s" % (cat, "、".join(files[:20])))
+    return "\n".join(out) if out else "（知识库暂未分类，各主题为空）"
+
+
+def _parse_kb_digest(text):
+    """解析 R1 的沉淀决策 JSON（容忍 json 代码块包裹 / 前后杂字）。"""
+    t = re.sub(_TRIPLE_BT + r"(?:json)?", "", (text or ""), flags=re.I).strip()
+    i, j = t.find("{"), t.rfind("}")
+    if i < 0 or j <= i:
+        return None
+    try:
+        obj = json.loads(t[i:j + 1])
+    except Exception:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
+def _slug_title(title: str) -> str:
+    """档案标题 → 安全文件名（保留中文/字母数字，去非法字符）。"""
+    return config.sanitize_dir(title) or "沉淀"
+
+
 def kb_digest(task_no: str) -> dict:
-    """从任务回报中抽取值得沉淀的知识，写入《知识库/<task_no>-沉淀.md》并登记《知识库索引.md》。"""
+    """R1 判断是否沉淀知识到知识库：按主题分类，有价值才入库；同主题有相关档案则合并补充。
+
+    - 不再每任务都生成 <任务号>-okf.md：R1 先判价值（none→跳过），再归类（create / merge）。
+    - 分类目录 = config.KB_CATEGORIES；文件名用语义化标题；OKF 只是每篇的知识型(type)标注。"""
     reps = store.reports(task_no)
     if not reps:
         return {"ok": True, "created": False, "msg": "该任务无回报，跳过知识沉淀"}
-    okf = config.KB_ROOT / "okf"
-    okf.mkdir(parents=True, exist_ok=True)
-    name = "%s-okf.md" % task_no
-    target = okf / name
     digest = _digest_reps(reps, limit=1200)
-    today = datetime.date.today().isoformat()
-    prompt = ("你是老板助理 R1。请从该任务回报中抽取值得沉淀的知识，生成一份 OKF（Open Knowledge Format）文档。" 
-              "以 YAML front-matter 开头：type 必填（取值 concept/decision/method/data/lesson/problem 之一）、"
-              "title、description、tags；正文用 Markdown 写结论/方法/数据并给出出处。只输出该文档，不要额外说明。"
-              "若无可沉淀内容，输出「无可沉淀内容」。\n\n任务 %s 回报：\n%s" % (task_no, digest))
+    skim = _kb_skim()
+    prompt = (
+        "你是老板助理 R1，负责知识库沉淀。请判断本次任务产出里有没有值得沉淀到知识库的知识，并归类。\n"
+        "知识库按主题分类，已有档案如下：\n%s\n\n"
+        "只沉淀真正有价值、可复用的知识（结论 / 方法 / 数据 / 教训 / 决策）；"
+        "流水账、一次性过程记录、只是把回报换个说法，都不要沉淀。\n"
+        "输出 JSON（不要多余文字，body 用简洁 markdown）：\n"
+        '{"action":"none|create|merge","category":"<分类名，取自上面主题列表>",'
+        '"title":"<档案标题(≤40字)>","type":"concept|decision|method|data|lesson|problem",'
+        '"body":"<markdown 正文>","merge_target":"<merge 时填已存在文件名，create 留空>"}\n'
+        "规则：action=none 无可沉淀知识；action=create 有知识且该分类无相关档案；"
+        "action=merge 该分类已有相关档案（merge_target 填已有文件名，body 给合并后的完整正文）。\n\n"
+        "任务 %s 回报：\n%s" % (skim, task_no, digest))
     text = _headless_text(prompt, 600)
-    if not text or "无可沉淀内容" in text:
-        return {"ok": True, "created": False, "msg": "该任务产出无可复用价值（或模型未提取），未入库"}
-    if not text.lstrip().startswith("---"):
-        text = ("---\ntype: lesson\ntitle: %s 产出沉淀\ndescription: 任务 %s\n"
-                "source:\n  type: task\n  task: %s\nfreshness: %s\nstatus: archive\n---\n\n"
-                % (task_no, task_no, task_no, today)) + text
-    target.write_text(text.strip() + "\n", encoding="utf-8")
-    # 登记《知识库索引.md》
-    try:
-        idx = config.ROOT / config.INDEX_REL
-        idx.parent.mkdir(parents=True, exist_ok=True)
-        cur = config.read_text(idx) if idx.exists() else "# 知识库索引"
-        if name not in cur:
-            with open(idx, "a", encoding="utf-8") as fh:
-                fh.write("- [%s](知识库/okf/%s)\n" % (name, name))
-    except Exception:
-        pass
-    return {"ok": True, "created": True, "file": "okf/" + name, "rel": "知识库/okf/" + name}
+    if not text:
+        return {"ok": True, "created": False, "msg": "模型未返回，未沉淀"}
+    d = _parse_kb_digest(text)
+    if not d:
+        return {"ok": True, "created": False, "msg": "沉淀决策解析失败，未入库"}
+    action = str(d.get("action") or "").strip()
+    if action not in ("create", "merge"):
+        return {"ok": True, "created": False, "msg": "R1 判定无可沉淀知识，未入库"}
+    cat = str(d.get("category") or "").strip()
+    if cat not in config.KB_CATEGORIES:
+        return {"ok": True, "created": False, "msg": "分类「%s」不在知识库分类里，未入库" % cat}
+    title = str(d.get("title") or "").strip()[:40] or ("%s 沉淀" % task_no)
+    body = str(d.get("body") or "").strip()
+    if not body:
+        return {"ok": True, "created": False, "msg": "正文为空，未入库"}
+    catdir = config.KB_ROOT / cat
+    catdir.mkdir(parents=True, exist_ok=True)
+    target = catdir / (_slug_title(title) + ".md")
+    if action == "merge":
+        mt = str(d.get("merge_target") or "").strip()
+        cand = None
+        if mt:
+            cand = catdir / (mt if mt.endswith(".md") else mt + ".md")
+        cand = cand if (cand is not None and cand.is_file()) else target
+        target = cand if cand.is_file() else target
+    # OKF 知识型标注落盘：front-matter 记录 type（concept/decision/method/data/lesson/problem），
+    # knowledge._strip_front / _strip_okf_frontmatter 读取时会剥离，不影响正文渲染，供后续按知识型细分统计。
+    _kb_types = {"concept", "decision", "method", "data", "lesson", "problem"}
+    _tp = str(d.get("type") or "concept").strip().lower()
+    if _tp not in _kb_types:
+        _tp = "concept"
+    front = "---\ntype: %s\ncreated: %s\n---\n" % (_tp, datetime.date.today().isoformat())
+    target.write_text(front + body.strip() + "\n", encoding="utf-8")
+    rel = target.relative_to(config.ROOT).as_posix()
+    return {"ok": True, "created": True, "action": action, "rel": rel,
+            "msg": ("已合并补充到知识库「%s/%s」" % (cat, target.name)) if action == "merge"
+                   else ("已沉淀到知识库「%s/%s」" % (cat, target.name))}
+
+def _advice_summary(reps, task_text: str) -> str:
+    """R1 提炼「决策建议」：一段完整、像人话的建议，不搬运回报原文、不截断。失败返回 ""。"""
+    if not reps and not task_text:
+        return ""
+    digest = _digest_reps(reps, limit=2400) if reps else str(task_text or "")[:1600]
+    prompt = (
+        "你是老板助理 R1。下面是某任务原文与各角色回报。请以 R1 视角给老板(R0)一段**完整**的「决策建议」："
+        "说明任务完成情况、关键结论、你建议 R0 怎么定（若无可拍板就给出下一步建议）。"
+        "要求：用连贯、像人话的**完整段落**写全，不要只摘回报原文的零碎句、不要截断成短摘要。\n\n"
+        "任务原文：%s\n\n各角色回报：\n%s" % (str(task_text or "")[:900], digest))
+    text = _headless_text(prompt, 480)
+    return (text or "").strip() if text else ""
+
+
+def _r1_respond(item: str, judge: str, opinion: str) -> dict:
+    """R0 批阅（批准/驳回/修改）后，R1 自己判断是否需要重新派发任务给员工执行。
+
+    返回 {"dispatch": bool, "task": str}；判不了返回 None（调用方回退规则）。"""
+    prompt = (
+        "你是老板助理 R1。R0 对批阅台待决 #%s 的裁决：%s。批注意见：%s。\n"
+        "请判断是否需要**新派发任务给员工执行**：\n"
+        "- 批准：通常需派发执行该决策（落地/上线等）；若只是记录性确认、无需新执行，则不派发。\n"
+        "- 修改：通常需派发让执行角色按批注修改后重报。\n"
+        "- 驳回：一般=否掉该项，无需再派发。\n"
+        "输出 JSON：{\"dispatch\": true|false, \"task\": \"<若要派发的任务文本，不派发则留空>\"}。只输出 JSON。"
+        % (item, judge, opinion))
+    text = _headless_text(prompt, 300)
+    if not text:
+        return None
+    d = _parse_kb_digest(text)
+    if not isinstance(d, dict):
+        return None
+    return {"dispatch": bool(d.get("dispatch")), "task": str(d.get("task") or "")}
+
 
 def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: list) -> int:
     """任务自动执行完成后：R1 整理回报呈报 R0。
@@ -509,30 +623,46 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
         task_s = (task_text or "").replace(chr(10), " ").replace("|", "／")
         # 条目 schema：标题只到任务号；长内容字段（回报摘要 / R 建议）保留原始 md 换行与标记，UI 按 markdown 渲染
         prog = "%d/%d 子任务完成%s，回报与产物已归档入库" % (ok_cnt, total, "" if not fail else "；阻塞 " + ",".join(fail))
+        # R1 汇总：无论例行进展还是待决，都生成（R0 查看/决策都需要全量产出汇总）
+        sum_rel = ""
+        try:
+            sum_rel = work_summary(task_no)      # R1 汇总全部 subagent 产出（代码类附变更与目录树）
+        except Exception:
+            sum_rel = ""
+        # 决策建议：R1 用模型提炼（完整、非原文搬运）；失败回退逐角色摘要
+        advice = ""
+        try:
+            advice = _advice_summary(reps, task_text)
+        except Exception:
+            advice = ""
+        if not advice:
+            advice = brief
         if _needs_decision(task_text, brief_hay or brief):
             lines_b = ["### 待决 %d｜任务 %s" % (n, task_no)]
             lines_b += _field_lines("任务", task_s[:160])
             lines_b += _field_lines("进展", prog)
-            lines_b += _field_lines("R 建议（R1）", brief)
+            lines_b += _field_lines("决策建议", advice)
             # “需要 R0 拍板什么”必须落具体内容：角色回报里写明就用回报原文；
             # 回报没写明时回退到任务原话（R0 自己下达时的决策请求）。
             # 绝不把“任务含决策信号…请 R0 裁决；驳回将触发重新派发”这类机制空话写进待决。
-            ask = decisions or task_s
-            lines_b += _field_lines("需要 R0 拍板什么", ask)
+            ask = ""
+            try:
+                ask = _decision_summary(reps, task_text)
+            except Exception:
+                ask = ""
+            if not ask:
+                ask = decisions or task_s
+            lines_b += _field_lines("决策内容", ask)
             lines_b += ["- **R0 批阅**：待填"]
+            if sum_rel:
+                lines_b += ["- **汇总文件**：" + sum_rel]   # 待决也挂 R1 汇总
             blk = chr(10) + chr(10).join(lines_b) + chr(10)
             section = "## 决策裁决"
         else:
             head = "### 工作 %d｜任务 %s" % (n, task_no)
-            sum_rel = ""
-            try:
-                sum_rel = work_summary(task_no)      # R1 汇总全部 subagent 产出（代码类附变更与目录树）
-            except Exception:
-                sum_rel = ""
             lines_b = [head]
             lines_b += _field_lines("任务", task_s[:160])
             lines_b += _field_lines("进展", prog)
-            lines_b += _field_lines("回报摘要", brief)
             if sum_rel:
                 lines_b += ["- **汇总文件**：" + sum_rel]
             blk = chr(10) + chr(10).join(lines_b) + chr(10)
@@ -553,12 +683,25 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
 
 
 def clean_task_files(no: str) -> int:
-    """删除某任务在工作区的产出文件（子任务正文 / .meta.json，含已归档/），返回删除数。
+    """删除某任务在工作区/公共项目区的产出文件（子任务正文 / .meta.json / 汇总 / 回报，含已归档/）。
 
-    只按 no + "-S" 前缀匹配（T-001-S1.md），不会误伤 T-0010 等其他任务。"""
+    按 no + "-" 前缀匹配（T-004-*），覆盖 T-004-S1.md、T-004-S1.meta.json、T-004-summary.md 等；
+    不会误伤 T-0010（它不是以 T-001- 开头）。"""
     removed = 0
+    # 公共项目区（项目/）下该任务的产物（T-xxx-*，含子目录）
+    if config.PROJECT_ROOT.is_dir():
+        import shutil as _sh
+        for p in sorted(config.PROJECT_ROOT.rglob(no + "-*"), key=lambda x: -len(x.parts)):
+            try:
+                if p.is_dir():
+                    _sh.rmtree(p, ignore_errors=True)
+                else:
+                    p.unlink()
+                removed += 1
+            except OSError:
+                pass
     for d in _wb_role_dirs():
-        for p in list(d.glob(no + "-S*.md")) + list(d.glob(no + "-S*.json")):
+        for p in list(d.glob(no + "-*.md")) + list(d.glob(no + "-*.json")):
             try:
                 p.unlink()
                 removed += 1
@@ -566,7 +709,7 @@ def clean_task_files(no: str) -> int:
                 pass
         arc = d / "已归档"
         if arc.is_dir():
-            for p in list(arc.glob(no + "-S*.md")) + list(arc.glob(no + "-S*.json")):
+            for p in list(arc.glob(no + "-*.md")) + list(arc.glob(no + "-*.json")):
                 try:
                     p.unlink()
                     removed += 1
@@ -721,7 +864,7 @@ def task_output(no: str) -> dict:
            "executions": store.executions(no),
            "files": [], "log": ""}
     for d in _wb_role_dirs():
-        for p in sorted(d.glob("*.md")) + sorted((d / "已归档").glob("*.md")):
+        for p in sorted((d / "已归档").glob("*.md")):      # 执行角色产物仅展示已归档文件
             if p.name.endswith("-summary.md"):
                 continue
             text = config.read_text(p)
@@ -763,3 +906,136 @@ def sub_output(sub_no: str) -> dict:
                     "text": config.read_text(p),
                     "meta": meta}
     return {}
+
+
+# ================= 05 OPC 时间轴：R1 模型提炼节点性/阶段性项目事件 =================
+# 原 parsers.parse_timeline() 靠正则从决策日志 + 每日简报拼节点（含死板的「日报」节点与固定启动模板句）。
+# 现改为：由 R1（dsh headless 模型）从各角色工作区产物 + 决策日志 D-NN + 任务台账里提炼
+# 真正的「节点性 / 阶段性」项目里程碑，并让模型自写「说明文字」；日报不再进时间轴。
+# 手动触发 + 缓存到《批阅台/时间轴.json》，模型不可用时返回空态提示。
+
+
+def _timeline_input() -> str:
+    """给 R1 模型汇总时间轴的输入：各角色工作区产物 + 决策日志 D-NN + 任务台账节点。"""
+    from . import knowledge
+    parts = []
+    for grp in rn_outputs():
+        lines = []
+        for f in grp["files"]:
+            st = f.get("status") or ""
+            head = (f.get("head") or "").strip().replace("\n", " ")
+            lines.append("- %s（%s）%s" % (f["name"], st, head[:120]))
+        if lines:
+            parts.append("## 角色工作区 · %s\n%s" % (grp["dir"], "\n".join(lines)))
+    try:
+        dtext = knowledge.read_md(config.LOG_REL)
+        d = [m.group(1).strip() for m in re.finditer(r"^##\s+D-\d+｜(.+?)（\d{4}-\d{2}-\d{2}", dtext, re.M)]
+        if d:
+            parts.append("## 决策日志（里程碑条目）\n" + "\n".join("- " + x for x in d))
+    except Exception:
+        pass
+    trows = []
+    for t in store.tasks():
+        subs = store.subtasks(t["no"])
+        done = sum(1 for s in subs if (s.get("st") or "") == "完成")
+        trows.append("- %s %s：%d/%d 子任务完成（%s）" % (t["no"], t.get("status") or "",
+                                                        done, len(subs), (t.get("task") or "")[:60].replace("\n", " ")))
+    if trows:
+        parts.append("## 任务台账（节点性任务）\n" + "\n".join(trows[-20:]))
+    return "\n\n".join(p for p in parts if p.strip())
+
+
+def _parse_timeline_json(text: str):
+    """从模型输出提取事件 JSON 数组（容忍模型用 json 代码块包裹 / 前后杂字）。"""
+    t = re.sub(_TRIPLE_BT + r"(?:json)?", "", (text or ""), flags=re.I).strip()
+    i, j = t.find("["), t.rfind("]")
+    if i < 0 or j <= i:
+        return None
+    try:
+        data = json.loads(t[i:j + 1])
+    except Exception:
+        return None
+    if not isinstance(data, list):
+        return None
+    out = []
+    for it in data:
+        if not isinstance(it, dict):
+            continue
+        date = str(it.get("date") or "").strip()[:10]
+        title = str(it.get("title") or "").strip()[:40]
+        detail = str(it.get("detail") or "").strip()[:400]
+        if date or title:
+            out.append({"date": date, "title": title, "detail": detail})
+    out.sort(key=lambda e: e["date"])
+    return out
+
+
+def _write_timeline(events) -> str:
+    p = config.ROOT / config.TIMELINE_REL
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"events": events,
+                             "generated_at": datetime.datetime.now().isoformat(timespec="seconds")},
+                            ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return p.relative_to(config.ROOT).as_posix()
+
+
+def get_timeline() -> dict:
+    """读时间轴缓存（模型上次生成的结果）；无缓存返回空态 + 提示，不自动生成。"""
+    p = config.ROOT / config.TIMELINE_REL
+    if not p.exists():
+        return {"generated_at": None, "events": [],
+                "msg": "尚未生成时间轴 — 点「生成时间轴」由 R1 从各角色工作区提炼"}
+    try:
+        obj = json.loads(config.read_text(p))
+    except Exception:
+        return {"generated_at": None, "events": [], "msg": "时间轴缓存不可读，请重新生成"}
+    evs = obj.get("events") if isinstance(obj, dict) else []
+    return {"generated_at": (obj.get("generated_at") if isinstance(obj, dict) else None),
+            "events": evs if isinstance(evs, list) else []}
+
+
+def build_timeline() -> dict:
+    """让 R1 模型提炼「节点性 / 阶段性」项目事件，写缓存 JSON，返回结果。
+
+    - 「说明文字」由模型总结；只列节点性里程碑，不列每日简报 / 流水账 / 例行任务。
+    - 模型不可用 / 未配置 → 返回 {ok:False, msg}，前端显示空态提示（不再硬编旧节点）。"""
+    data = _timeline_input()
+    if not data.strip():
+        return {"ok": False, "msg": "暂无可提炼的项目数据（角色工作区 / 决策日志 / 任务台账均为空）"}
+    prompt = ("你是老板助理 R1，能看见所有角色工作区与项目状态。请从下面项目数据里提炼该项目的"
+              "「节点性 / 阶段性重要事件」，用于 OPC 时间轴。"
+              "只保留对项目有节点意义的事件：项目启动、重大决策 / 里程碑、标志性交付物完成、"
+              "阶段性复盘 / 上线 / 归档等；不要把每日简报、流水账、例行任务当成事件。\n"
+              "输出 JSON 数组，每项 {\"date\":\"YYYY-MM-DD\",\"title\":\"事件名（≤20字）\","
+              "\"detail\":\"一两句说明（作为时间轴的说明文字）\"}，按 date 升序；"
+              "没有符合的事件就输出 []。只输出 JSON，不要任何多余文字。\n\n项目数据：\n%s" % data)
+    text = _headless_text(prompt, 300)
+    if not text:
+        return {"ok": False, "msg": "模型未返回结果（请确认 dsh 与模型 API 可用）"}
+    events = _parse_timeline_json(text)
+    if events is None:
+        return {"ok": False, "msg": "模型返回内容无法解析为事件列表，请重试"}
+    rel = _write_timeline(events)
+    return {"ok": True, "events": events, "msg": "已生成（" + rel + "）"}
+
+
+def project_files() -> dict:
+    """公共项目区（项目/）文件清单：源码/工程性产出。全员可读；仅「工程」标签角色可写。
+
+    writers = 当前具备《项目/》写权限的角色（工程标签），供前端展示。"""
+    from . import roles as _roles
+    out = []
+    root = config.PROJECT_ROOT
+    if root.is_dir():
+        for p in sorted(root.rglob("*")):
+            if not p.is_file() or any(seg in _WS_SKIP_PARTS for seg in p.relative_to(root).parts):
+                continue
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            out.append({"name": p.name, "rel": p.relative_to(config.ROOT).as_posix(),
+                        "ext": p.suffix.lower(), "size": st.st_size, "mtime": int(st.st_mtime)})
+    writers = [no for no, _ in _roles.role_files() if _roles.can_write_project(no)]
+    return {"files": out, "writers": writers}
+
