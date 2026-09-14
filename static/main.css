@@ -71,14 +71,22 @@ main{flex:1;overflow:hidden}
 
 /* ============ 批阅台 ============ */
 .piyue-layout{display:flex;height:100%}
+/* 三段各自滚动，整个 shelf 不再统一滚 —— 否则「已批阅归档」这个长列表会把上面两段一起
+   拖走，想翻归档得先滚过整个工作内容列表。前两段给上限（超出各自滚），归档段吃掉剩余高度。
+   注意：前两段也必须给上限，不然它们一长就把归档段顶出可视区，归档的滚动条等于没有。 */
 .shelf{
-  width:360px;min-width:360px;border-right:1px solid var(--line);overflow-y:auto;
+  width:360px;min-width:360px;border-right:1px solid var(--line);
   padding:18px 16px;background:linear-gradient(180deg,rgba(236,241,248,.6),rgba(228,235,244,.4));
+  display:flex;flex-direction:column;overflow:hidden;
 }
+#workList{flex:0 1 auto;max-height:26%;overflow-y:auto}
+#pendingList{flex:0 1 auto;max-height:34%;overflow-y:auto}
+#archiveList{flex:1 1 auto;min-height:88px;overflow-y:auto}
 .shelf-head{
   display:flex;justify-content:space-between;align-items:baseline;
   font-size:12px;letter-spacing:2px;color:var(--gold);margin:4px 0 10px;
   border-bottom:1px dashed var(--line2);padding-bottom:6px;
+  flex:none;      /* 标题行不参与压缩：压缩会让它被下面可滚动区挤没 */
 }
 .shelf-head em{font-style:normal;color:var(--dim);font-family:var(--mono);font-size:11px}
 .shelf-head.dim{color:var(--faint);margin-top:22px;border-color:var(--line)}
@@ -227,6 +235,13 @@ main{flex:1;overflow:hidden}
 .overview-bar{display:flex;gap:12px;flex-wrap:wrap;align-items:stretch;padding:12px 20px 0;flex:none}
 .ov-item{flex:1;min-width:120px;padding:10px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:11px;color:var(--dim)}
 .ov-item b{display:block;font-size:20px;font-weight:700;color:var(--gold);margin-top:3px}
+/* 任务状态：三个口径合并成一张卡（原来三张卡只放三个数，横向太占地方）。
+   卡里 b 装的是三个「标签 + 数值」对，所以不能沿用上面那条大字号块级样式 */
+.ov-item.ov-multi b{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;font-size:15px;margin-top:5px}
+.ov-item .ov-k{font-size:10.5px;font-weight:400;color:var(--dim)}
+.ov-item .ov-v{color:var(--gold);font-weight:700;margin-left:3px}
+/* 今日用量：主数值下面的一行小字 */
+.ov-item em{display:block;font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-top:3px}
 /* ===== 首页第三列：项目进度 + 公共项目区（文件树） ===== */
 .prog-panel{display:flex;flex-direction:column;min-height:0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow-y:auto}
 .prog-body{display:flex;flex-direction:column;gap:1px;flex:none}
@@ -1233,11 +1248,34 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .tok-bar.in{background:#2f7fd4}
 .tok-bar.out{background:linear-gradient(180deg,#34d399,var(--ok))}
 .tok-lab{font-family:var(--mono);font-size:9.5px;color:var(--gold);margin-top:4px;white-space:nowrap}
+/* 柱下合计：此前没有规则，继承浏览器默认 16px，比上面的编号还大一截 */
+.tok-val{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:2px;white-space:nowrap}
 /* 临时会话：不进任务流程，所以不并入任何任务柱 —— 在末尾单列一组，用分隔线隔开 */
 .tok-col.alt{border-right:1px dashed var(--line2);padding-right:14px;width:auto;min-width:64px}
 .tok-col.alt .tok-lab{color:var(--dim)}
 .tok-bar.alt.in{background:linear-gradient(180deg,#a78bfa,#7c5cf0)}
 .tok-bar.alt.out{background:linear-gradient(180deg,#e9a6f5,#a855c7)}
+/* 柱状图 hover 提示：原生 title 延迟约 1 秒、样式不可控，做不了色块与对齐，改自绘。
+   挂 body + fixed —— .tok-zone 是 overflow 容器，放里面会被裁掉 */
+.tok-tip{position:fixed;z-index:80;pointer-events:none;min-width:178px;padding:8px 10px;
+  background:var(--panel);border:1px solid var(--line2);border-radius:8px;
+  box-shadow:0 10px 26px rgba(0,0,0,.18);font-size:11.5px;color:var(--txt)}
+.tok-tip[hidden]{display:none}
+.tok-tip .tt-h{font-family:var(--mono);font-size:11px;color:var(--gold);margin-bottom:6px;
+  padding-bottom:5px;border-bottom:1px solid var(--line)}
+.tok-tip .tt-row{display:flex;align-items:center;gap:8px;line-height:1.8}
+.tok-tip .tt-row i{width:9px;height:9px;border-radius:2px;flex:none}
+.tok-tip .tt-row .tt-k{color:var(--dim);flex:1}
+.tok-tip .tt-row b{font-family:var(--mono);font-weight:600}
+.tok-tip .tt-f{display:flex;justify-content:space-between;gap:12px;margin-top:6px;padding-top:5px;
+  border-top:1px solid var(--line);font-size:11px;color:var(--dim)}
+.tok-tip .tt-f b{color:var(--ok);font-family:var(--mono)}
+.tok-tip .sw-in{background:#2f7fd4}
+.tok-tip .sw-cache{background:#cfe1f7;border:1px solid #9dc0e8}
+.tok-tip .sw-out{background:var(--ok)}
+.tok-tip .sw-in.alt{background:#7c5cf0}
+.tok-tip .sw-cache.alt{background:#ddd6fe;border-color:#c4b5fd}
+.tok-tip .sw-out.alt{background:#a855c7}
 
 /* ===== 全部静止时的「最近完成」列表（替代看板） ===== */
 .board.list-mode{grid-template-columns:minmax(0,1fr)}

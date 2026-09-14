@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260913a">
+<link rel="stylesheet" href="/static/main.css?v=20260914d">
 </head>
 <body>
 <div class="shell">
@@ -40,11 +40,10 @@
     <!-- ===== 作战面板：组织架构 + 角色工作区 ===== -->
     <section id="view-home" class="view active">
       <div class="overview-bar">
-        <span class="ov-item">待办 <b id="ovPending">—</b></span>
-        <span class="ov-item">进行中 <b id="ovRunning">—</b></span>
-        <span class="ov-item">已完成 <b id="ovDone">—</b></span>
-        <span class="ov-item">Token 消耗 <b id="ovToken">—</b></span>
-        <span class="ov-item">OKF 知识 <b id="ovOkf">—</b></span>
+        <span class="ov-item ov-multi">任务状态 <b id="ovTasks">—</b></span>
+        <span class="ov-item">Token 消耗 <b id="ovToken">—</b><em id="ovTokenToday">今日 —</em></span>
+        <span class="ov-item">项目成本 <b id="ovCost">—</b><em id="ovCostToday">今日 —</em></span>
+        <span class="ov-item">知识库文件 <b id="ovKbFiles">—</b></span>
         <span class="ov-item">最近简报 <b id="ovDaily">—</b></span>
       </div>
       <div class="home-grid">
@@ -277,6 +276,17 @@
                 <input id="mApiModel" placeholder="deepseek-chat / gpt-4o-mini / claude-sonnet-4-5">
               </label>
             </div>
+            <div class="mapi-row">
+              <label>单价 · 新输入（元 / 百万 token）
+                <input id="mPriceIn" type="text" inputmode="decimal" placeholder="1.00">
+              </label>
+              <label>单价 · 缓存命中
+                <input id="mPriceCache" type="text" inputmode="decimal" placeholder="留空 = 按新输入价">
+              </label>
+              <label>单价 · 输出
+                <input id="mPriceOut" type="text" inputmode="decimal" placeholder="2.00">
+              </label>
+            </div>
             <div class="mapi-row mapi-actions">
               <button id="btnSaveModelApi">保存模型 API 配置</button>
               <button id="btnTestModelApi">测试连通（真实请求 1 token）</button>
@@ -460,6 +470,6 @@
   </div>
   <button id="r1Fab" class="r1-fab" data-tip="问我项目的事 · 临时会话" title="R1 助理（临时会话，可拖动）"></button>
 </div>
-<script src="/static/main.js?v=20260913a"></script>
+<script src="/static/main.js?v=20260914d"></script>
 </body>
 </html>

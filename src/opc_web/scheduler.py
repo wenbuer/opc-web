@@ -11,6 +11,7 @@ v1.15：任务/子任务/回报三张表由 SQLite 承载，md 只留正文与�
 """
 import datetime
 import json
+import os
 import re
 import subprocess
 import threading
@@ -311,6 +312,10 @@ def _field_lines(key: str, value: str) -> list:
     return out
 
 
+# 「需要 R0 拍板」这节的准入清单之外、但角色偶尔会写进来的流程性事项 —— 不算决策点
+_PROCEDURAL_ASK = ("归档口径", "是否归档", "是否结案", "可否结案", "状态确认", "确认无误", "是否继续", "是否收口")
+
+
 def _pending_items(reps) -> str:
     """回报里「## 需要 R0 拍板」小节的实质内容（多角色拼接）。
 
@@ -328,8 +333,19 @@ def _pending_items(reps) -> str:
         if nxt:
             seg = seg[:nxt.start()]
         seg = seg.strip()
-        if len(seg) > 8 and seg.replace("。", "").strip() not in ("无", "没有", "暂无"):
-            out.append("【%s】\n%s" % ((r or {}).get("role") or "?", seg))
+        if len(seg) <= 8:
+            continue
+        # 判「无」只看**第一句**：角色写「无。」之后补一句解释「为什么无」是好事，
+        # 不能因此判定「有拍板事项」。原先要求整节去掉句号后恰好等于「无」，
+        # 于是「无。（本轮无方向取舍…）」被当成有决策点 —— T-022/T-023 白占两条待决位，
+        # 而这段解释没有决策点结构，R1 提炼不出建议，只能把原文塞进「决策建议」栏。
+        first = re.split(r"[。；;\n]", seg, 1)[0].strip().strip("（）()：: ")
+        if first in ("无", "没有", "暂无", "无需", "不需要", "无需要", "none", "None"):
+            continue
+        # 兜底：流程性事项不算决策点（归档口径 / 是否结案这类控制台自己会处理）。
+        if any(k in first for k in _PROCEDURAL_ASK):
+            continue
+        out.append("【%s】\n%s" % ((r or {}).get("role") or "?", seg))
     return "\n\n".join(out)
 
 
@@ -521,7 +537,6 @@ def work_summary(task_no: str) -> str:
         return None
 
 
-
 def _headless_text(prompt: str, timeout: float = 600) -> str:
     """尝试用 dsh headless 让 R1 做文本类收尾（汇总/抽取）；失败返回空串。"""
     try:
@@ -659,9 +674,29 @@ def build_daily_report(task_no: str = None, datestr: str = None) -> dict:
         text = _merge_daily(old_text, text.strip(), task_no or "")   # 校验失败返回 "" → 走降级合并
     if not text or not text.strip():
         text = _daily_fallback(old_text, reps, task_no, datestr)
-    target.write_text(text.strip() + "\n", encoding="utf-8")
+    text = _unwrap_md(text)
+    target.write_text(text.strip() + chr(10), encoding="utf-8")
     return {"ok": True, "merged": has_old, "file": target.name,
             "rel": target.relative_to(config.ROOT).as_posix()}
+
+def _unwrap_md(text: str) -> str:
+    """剥掉模型爱加的包装：前置说明行 + ```markdown 围栏。
+
+    模型偶尔把**交付物当回复内容**写：「合并后的完整简报（已写入 xxx）：」+ 整篇塞进代码块。
+    直接落盘的话，简报页会把整份文档渲染成一个灰底等宽代码块（2026-09-11 那份就是这么坏的）。
+    围栏出现在开头附近才剥——正文中间的代码块是内容，不能动。"""
+    t = (text or "").strip()
+    m = re.search(r"```(?:markdown|md)?\s*\n([\s\S]*?)\n```", t)
+    if m and m.start() <= 200:
+        t = m.group(1).strip()
+    lines = t.splitlines()
+    for i, ln in enumerate(lines):          # 丢掉标题之前的说明行
+        if ln.startswith("# "):
+            return chr(10).join(lines[i:]).strip()
+        if i > 6:                            # 前 6 行还没有标题 → 不是这种包装，原样返回
+            break
+    return t
+
 
 def _kb_skim() -> str:
     """知识库已有档案简表（按分类）：让 R1 知道该 create 还是 merge（不重复沉淀）。"""
@@ -766,29 +801,6 @@ def kb_digest(task_no: str) -> dict:
             "msg": ("已合并补充到知识库「%s/%s」" % (cat, target.name)) if action == "merge"
                    else ("已沉淀到知识库「%s/%s」" % (cat, target.name))}
 
-def _advice_summary(reps, task_text: str) -> str:
-    """R1 按《模板-决策建议》把角色声明的待拍板事项提炼成「决策建议」栏正文。
-
-    只在 _pending_items 非空（确有需 R0 定的事项）时才被调用；模型不可用返回 "" 由调用方回退。"""
-    if not reps and not task_text:
-        return ""
-    digest = _digest_reps(reps, limit=2400) if reps else str(task_text or "")[:1600]
-    # _decision_items 收的是 (role, body) 元组列表；直接传整条记录会当场 ValueError
-    # （too many values to unpack），被上层 except 吞掉后永远走回退摘要 —— 「决策建议没按模板走」即此因。
-    ask = _decision_items([(r.get("role"), r.get("body")) for r in reps]) if reps else ""
-    prompt = (
-        "你是老板助理 R1。请按《模板-决策建议》为批阅台待决条目写「决策建议」栏："
-        "依次含小节 决策点（一句话问句）/ 现状背景（2~4 句）/ 建议（明确选哪个 + 一两句理由；"
-        "无可拍板事项就给下一步动作建议）/ 拍板后动作（批准/驳回/修改后 R1 分别怎么转）/ 附注（可省略）。\n"
-        "要求：完整、像人话，不搬运回报原文的零碎句，不写机制套话；**只围绕角色在"
-        "「需要 R0 拍板」小节里声明的事项提炼**，不要扩散到任务的其他部分。\n"
-        "只输出「决策建议」栏正文（各小节），不要多余解释。\n\n"
-        "《模板-决策建议》：\n%s\n\n任务原文：%s\n\n各角色回报：\n%s\n\n各角色「需要 R0 拍板」原文：\n%s"
-        % (templates.doc_template("决策建议"), str(task_text or "")[:900], digest, ask or "（无）"))
-    text = _headless_text(prompt, 600)
-    return (text or "").strip()
-
-
 def decision_context(task_text: str, limit: int = 2400) -> str:
     """从任务文本提取「待决 #N」引用 → 读批阅台对应条目的「决策建议」全文。
 
@@ -849,11 +861,41 @@ def _r1_respond(item: str, judge: str, opinion: str) -> dict:
     return {"dispatch": bool(d.get("dispatch")), "task": str(d.get("task") or "")}
 
 
+def _r1_triage(reps, task_text: str) -> dict:
+    """让 R1 **一次判完**：这批回报里有没有真正需要 R0 拍板的事项，有则整理成决策建议。
+
+    不再由规则判「有没有」——那是语义问题，规则匹配天然脆弱：角色写「无。」后补一句
+    「为什么无」是好事，却会被判成有决策点（T-022/T-023 就这么白占两条待决位），
+    而那段解释没有决策点结构，提炼不出建议，只能把原文塞进「决策建议」栏。
+    规则（_pending_items）在这里只作为**素材**喂给模型，判定交给语义理解。
+
+    返回 {"need": bool, "advice": str}；模型没给出可用结论时回退规则（宁可多问一次 R0，
+    也不要漏掉真决策点）。"""
+    pending = _pending_items(reps)
+    prompt = (
+        "你是老板助理 R1。任务：%s\n\n各角色回报：\n%s\n\n"
+        "角色在「## 需要 R0 拍板」小节里写的原文：\n%s\n\n"
+        "请判断：**有没有真正需要 R0 拍板的事项**？只有这四类算：方向取舍 / 花钱或对外 / "
+        "例外授权 / 验收定稿。\n"
+        "以下都**不算**（控制台自动处理，不该占 R0 的时间）：写「无」并在后面解释为什么无；"
+        "归档口径 / 是否结案 / 状态确认 / 要不要继续这类流程性事项；"
+        "「请 R0 拍板」「驳回将重新派发」这类流程空话。\n"
+        "若有，按《模板-决策建议》整理成一个决策点：现状背景 → 可选方案 → 你的建议；"
+        "没有则 need=false、advice 留空。\n"
+        '输出 JSON：{"need": true|false, "advice": "..."}。只输出 JSON。'
+        % (str(task_text or "")[:200], _digest_reps(reps, limit=1800), pending or "（空）"))
+    text = _headless_text(prompt, 600)
+    d = _parse_kb_digest(text) if text else None
+    if not isinstance(d, dict):
+        return {"need": bool(pending), "advice": ""}
+    return {"need": bool(d.get("need")), "advice": str(d.get("advice") or "")}
+
+
 def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: list) -> int:
     """任务自动执行完成后：R1 整理回报呈报 R0。
 
-    - 例行进展（默认）→ 追加「### 工作 N」到「## 工作内容」（查看即可，R0 可一键归档）；
-    - 命中决策信号（定价/拍板/是否…/请 R0）→ 追加「### 待决 N」到「## 决策裁决」（需 R0 拍板）。
+    - 每个任务都追加「### 工作 N」到「## 工作内容」（主体记录，R0 查看后可一键归档）；
+    - R1 判定确有需拍板事项时，**再附加**「### 待决 N」到「## 决策裁决」（沿用同一个号）。
     段落格式与 parsers.parse_piyuetai / review.write_piyue 兼容。返回编号（失败返回 None）。"""
     try:
         rel = config.PIYUETAI_REL
@@ -886,41 +928,31 @@ def piyue_report(task_no: str, task_text: str, ok_cnt: int, total: int, fail: li
             sum_rel = work_summary(task_no)      # R1 汇总全部 subagent 产出（代码类附变更与目录树）
         except Exception:
             sum_rel = ""
-        # 分界线（结构化判定）：只有角色在回报「## 需要 R0 拍板」小节里声明的事项才进决策裁决，
-        # 其余一律「工作内容」；角色已有建议、R1 能直接派发的按模板写在「## 后续动作」。
-        pending = _pending_items(reps)
-        need = bool(pending)
-        advice = ""
-        if need:
-            try:
-                advice = _advice_summary(reps, task_text)
-            except Exception:
-                advice = ""
+        # 有没有决策点**交给 R1 判**（语义问题）；规则只作为素材，不再由它拍板。
+        tri = _r1_triage(reps, task_text)
+        need = bool(tri.get("need"))
+        advice = str(tri.get("advice") or "")
         if need and not advice:
             # 判定要拍板但正文没写出来：摘要必须自报身份，不能冒充「决策建议」正文
             # （否则界面上看到的是各角色产出原文，读者以为就是模板化的建议）。
-            advice = "（R1 按《模板-决策建议》提炼未完成，以下为角色声明原文，仅供 R0 参考）\n" + pending
+            advice = ("（R1 判定需要拍板但未写出建议，以下为角色声明原文，仅供 R0 参考）\n"
+                      + (_pending_items(reps) or "（无可引用原文）"))
+        # ===== 工作内容是**每个任务都有**的主体记录；决策裁决是**附加** =====
+        # 原先是 if/else 二选一，导致有待决的任务在工作内容里完全看不到。
+        work = ["### 工作 %d｜任务 %s" % (n, task_no)]
+        work += _field_lines("任务", task_s[:160])
+        work += _field_lines("进展", prog)
+        if sum_rel:
+            work += ["- **汇总文件**：" + sum_rel]
+        text = insert_block(text, "## 工作内容", chr(10) + chr(10).join(work) + chr(10))
         if need:
-            lines_b = ["### 待决 %d｜任务 %s" % (n, task_no)]
-            lines_b += _field_lines("任务", task_s[:160])
-            lines_b += _field_lines("进展", prog)
-            # 原「决策内容 / 决策建议」两栏合并为一栏：拍什么（决策点+现状背景）与怎么看（建议+动作）同源生成
-            lines_b += _field_lines("决策建议", advice)
-            lines_b += ["- **R0 批阅**：待填"]
+            # 待决沿用同一个号：它属于那个任务，不另占编号（R0 引用「待决 #N」两边对得上）
+            dec = ["### 待决 %d｜任务 %s" % (n, task_no)]
+            dec += _field_lines("决策建议", advice)
+            dec += ["- **R0 批阅**：待填"]
             if sum_rel:
-                lines_b += ["- **汇总文件**：" + sum_rel]   # 待决也挂 R1 汇总
-            blk = chr(10) + chr(10).join(lines_b) + chr(10)
-            section = "## 决策裁决"
-        else:
-            head = "### 工作 %d｜任务 %s" % (n, task_no)
-            lines_b = [head]
-            lines_b += _field_lines("任务", task_s[:160])
-            lines_b += _field_lines("进展", prog)
-            if sum_rel:
-                lines_b += ["- **汇总文件**：" + sum_rel]
-            blk = chr(10) + chr(10).join(lines_b) + chr(10)
-            section = "## 工作内容"
-        text = insert_block(text, section, blk)
+                dec += ["- **汇总文件**：" + sum_rel]
+            text = insert_block(text, "## 决策裁决", chr(10) + chr(10).join(dec) + chr(10))
         p.write_text(text, encoding="utf-8")
         return n
     except Exception:
@@ -1102,20 +1134,27 @@ def home_stats() -> dict:
     rows = token_rows()
     by_day = {}
     for r in rows:
-        b = by_day.setdefault(str(r.get("date") or "")[:10], {"in": 0, "out": 0})
+        # in 是「新输入 + 缓存读取」的合计（记账号里的原始口径），成本要拆开算 ——
+        # 缓存命中单价只有输入的零头，拿合计按输入价计费会高估近十倍。
+        # 先按含缓存累加，出账时再减，保证「新输入 = in - cache」处处一致。
+        b = by_day.setdefault(str(r.get("date") or "")[:10], {"in": 0, "out": 0, "cache": 0})
         b["in"] += int(r.get("tokensIn") or 0)
         b["out"] += int(r.get("tokensOut") or 0)
+        b["cache"] += int(r.get("tokensCache") or 0)
     today = datetime.date.today().isoformat()
     week = []
     for i in range(6, -1, -1):
         d = (datetime.date.today() - datetime.timedelta(days=i)).isoformat()
-        b = by_day.get(d) or {"in": 0, "out": 0}
-        week.append({"date": d[5:], "in": b["in"], "out": b["out"]})
-    tin = by_day.get(today, {}).get("in", 0)
-    tout = by_day.get(today, {}).get("out", 0)
-    cost_today = tin / 1e6 * config.TOKEN_PRICE_IN + tout / 1e6 * config.TOKEN_PRICE_OUT
+        b = by_day.get(d) or {"in": 0, "out": 0, "cache": 0}
+        week.append({"date": d[5:], "in": b["in"], "out": b["out"], "cache": b["cache"],
+                     "cost": round(config.token_cost(b["in"] - b["cache"], b["cache"], b["out"]), 4)})
+    tb = by_day.get(today) or {"in": 0, "out": 0, "cache": 0}
+    tin, tout, tcache = tb["in"], tb["out"], tb["cache"]
+    cost_today = config.token_cost(tin - tcache, tcache, tout)
     tot_in = sum(b["in"] for b in by_day.values())
     tot_out = sum(b["out"] for b in by_day.values())
+    tot_cache = sum(b["cache"] for b in by_day.values())
+    cost_total = config.token_cost(tot_in - tot_cache, tot_cache, tot_out)
     # —— 项目进度 ——
     tasks = store.tasks()
     done = [t for t in tasks if "完成" in str(t.get("status") or "")]
@@ -1134,12 +1173,21 @@ def home_stats() -> dict:
         # 项目目录下「.」开头的目录一律是本机环境/缓存（工具链、gradle 缓存、venv…），
         # 不是源码也不是交付物 —— 统计与文件树都跳过。这是通用规则，不逐个列举目录名：
         # 一个项目的环境动辄上千 MB、上万文件，混进来数字就完全失去意义。
-        proj_files = sum(1 for p in proj.rglob("*") if p.is_file()
-                         and not any(_skip_name(s) for s in p.relative_to(proj).parts))
+        # 必须用 os.walk **就地剪枝**：rglob("*") 是先走进去再过滤，「.local」下的
+        # 工具链 / gradle 缓存（几万个文件）照样要遍历一遍 —— 实测这一个统计就占
+        # 首页接口 28 秒里的 27 秒（数字是对的，但没人愿意为看一眼首页等半分钟）。
+        # 剪枝后 0.8 秒，计数与原来逐路径过滤完全一致（同为 1123）。
+        for _dp, _dirs, _files in os.walk(proj):
+            _dirs[:] = [d for d in _dirs if not _skip_name(d)]
+            proj_files += sum(1 for f in _files if not _skip_name(f))
     kb = 0
     kbd = config.ROOT / "知识库"
     if kbd.is_dir():
-        kb = sum(1 for p in kbd.rglob("*.md") if p.is_file())
+        # 「知识库文件数」而不是「OKF 条目数」：条目要解析 front-matter，少一个字段就少算一条，
+        # 数字跟目录里看得见的文件对不上；文件数才是能一眼核对的量。
+        for _dp, _dirs, _files in os.walk(kbd):
+            _dirs[:] = [d for d in _dirs if not _skip_name(d)]
+            kb += sum(1 for f in _files if not _skip_name(f))
     daily = len(list((config.ROOT / "批阅台").glob("每日简报-*.md")))
     recent = [{"no": t.get("no"), "title": str(t.get("task") or "")[:46]}
               for t in done[-3:]]
@@ -1147,12 +1195,14 @@ def home_stats() -> dict:
         "ok": True,
         "sched": {"busy": bool(st.get("busy")), "paused": bool(st.get("paused")),
                   "tag": str(st.get("tag") or ""), "running": running},
-        "tokens": {"todayIn": tin, "todayOut": tout, "costToday": round(cost_today, 4),
-                   "totalIn": tot_in, "totalOut": tot_out, "week": week,
-                   "priceIn": config.TOKEN_PRICE_IN, "priceOut": config.TOKEN_PRICE_OUT},
+        "tokens": {"todayIn": tin, "todayOut": tout, "todayCache": tcache,
+                   "costToday": round(cost_today, 4),
+                   "totalIn": tot_in, "totalOut": tot_out, "totalCache": tot_cache,
+                   "costTotal": round(cost_total, 4),
+                   "week": week, "prices": config.token_prices()},
         "progress": {"tasksTotal": len(tasks), "tasksDone": len(done),
                      "subsTotal": subs_total, "subsDone": subs_done, "blocked": blocked,
-                     "projFiles": proj_files, "kbEntries": kb, "dailyReports": daily,
+                     "projFiles": proj_files, "kbFiles": kb, "dailyReports": daily,
                      "recent": recent},
     }
 
@@ -1460,4 +1510,3 @@ def project_files(path: str = "") -> dict:
                             "size": st.st_size, "mtime": int(st.st_mtime)})
     writers = [no for no, _ in _roles.role_files() if _roles.can_write_project(no)]
     return {"files": out, "writers": writers, "path": path}
-

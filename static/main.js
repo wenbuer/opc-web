@@ -39,14 +39,22 @@
 
   /* ================= 首页：组织架构 / 时间线 / 当前任务 ================= */
   function loadOverview(){
-    api("/api/summary").then(function(j){ if (j && j.ok){ var p=$("ovPending"); if(p) p.textContent = (j.pendingCount||0); } });
-    api("/api/queue").then(function(j){ if (j && j.ok){
-      var n=(j.queue||[]).filter(function(t){ return (t.status||"")!=="完成"; }).length; var r=$("ovRunning"); if(r) r.textContent=n;
-      var done=(j.queue||[]).filter(function(t){ return (t.status||"")==="完成"; }).length; var d=$("ovDone"); if(d) d.textContent=done;
-    } });
-    api("/api/tokens").then(function(j){ if (j && j.ok){ var rows=j.rows||[]; var o=$("ovToken"); if(!rows.length){ if(o) o.textContent="—"; return; } var t=0; rows.forEach(function(x){ t += (Number(x.tokensIn)||0)+(Number(x.tokensOut)||0); }); if(o) o.textContent = t>=1000 ? (t/1000).toFixed(1)+"k" : String(t); } });
-    api("/api/kb-entries").then(function(j){ if (j && j.ok){ var k=(j.entries||[]).length; var o=$("ovOkf"); if(o) o.textContent=k; } });
-    loadHomeStats();
+    // 「任务状态」三个口径来自两个接口（待决数在 summary，任务数在 queue）。
+    // 合到一张卡里就必须等两边都到齐再画 —— 各画各的会被后到的那次重绘盖掉。
+    Promise.all([
+      api("/api/summary").catch(function(){ return {}; }),
+      api("/api/queue").catch(function(){ return {}; })
+    ]).then(function(res){
+      var s = res[0] || {}, q = (res[1] || {}).queue || [];
+      function byStatus(done){ return q.filter(function(t){
+        return done ? (t.status || "") === "完成" : (t.status || "") !== "完成"; }).length; }
+      var el = $("ovTasks");
+      if (el) el.innerHTML =
+        "<span class='ov-k'>待办</span><span class='ov-v'>" + (Number(s.pendingCount) || 0) + "</span>" +
+        "<span class='ov-k'>进行中</span><span class='ov-v'>" + byStatus(false) + "</span>" +
+        "<span class='ov-k'>已完成</span><span class='ov-v'>" + byStatus(true) + "</span>";
+    });
+    loadHomeStats();      // 知识库文件数与「项目进度」同源（home-stats 的 progress.kbFiles），不另开请求
     api("/api/daily").then(function(j){ if (j && j.ok){ var d=(j.daily||[])[0]; var o=$("ovDaily"); if(o) o.textContent = d ? d.date : "无"; } });
   }
   /* ===== 首页右侧：项目进度（/api/home-stats 的 progress 段） ===== */
@@ -54,8 +62,21 @@
     api("/api/home-stats").then(function(j){
       if (!j || !j.ok) return;
       renderProg(j.progress || {});
+      renderTokens(j.tokens || {});
     }).catch(function(){});
     loadProjectShared();      // 公共项目区（文件树）也挂在首页第三列
+  }
+  /* 首页「Token 消耗 / 项目成本」：总额 + 今日。
+     口径与《设置 → Token 统计》同源（/api/home-stats 的 tokens 段），只是这里**必须换单位**——
+     原来的算法只做到 k，1.2 亿会显示成 "120713.1k"，这个数字读不出来。
+     成本按三档单价算（新输入 / 缓存命中 / 输出），缓存那段单独计价，见 config.token_prices。 */
+  function renderTokens(t){
+    var totalTok = (Number(t.totalIn) || 0) + (Number(t.totalOut) || 0);
+    var todayTok = (Number(t.todayIn) || 0) + (Number(t.todayOut) || 0);
+    var a = $("ovToken"); if (a) a.textContent = totalTok ? fmtTokUnit(totalTok) : "—";
+    var b = $("ovTokenToday"); if (b) b.textContent = "今日 " + fmtTokUnit(todayTok);
+    var c = $("ovCost"); if (c) c.textContent = fmtMoney(t.costTotal);
+    var d = $("ovCostToday"); if (d) d.textContent = "今日 " + fmtMoney(t.costToday);
   }
   function renderProg(p){
     var box = $("progBody"); if (!box) return;
@@ -68,9 +89,12 @@
       + (p.blocked ? "<em class='bad'>阻塞 " + p.blocked + "</em>" : "") + "</div>"
       + "<div class='hp-track'><i style='width:" + sp + "%'></i></div></div>"
       + "<div class='hp-facts'><span>项目文件 <b>" + (p.projFiles || 0) + "</b></span>"
-      + "<span>知识库 <b>" + (p.kbEntries || 0) + "</b></span>"
+      + "<span>知识库 <b>" + (p.kbFiles || 0) + "</b></span>"
       + "<span>每日简报 <b>" + (p.dailyReports || 0) + "</b></span></div>";
     box.innerHTML = h;
+    // 总览条那张「知识库文件」卡与这里是同一个数（progress.kbFiles），一起更新，
+    // 免得两个地方各取一次、还可能对不上。
+    var okf = $("ovKbFiles"); if (okf) okf.textContent = (p.kbFiles || 0);
   }
   function loadHome(){
     cacheRoles();
@@ -1972,6 +1996,10 @@
           if (o.value === want || o.value === alt || o.value.indexOf(want + "（") === 0) hit = o.value;
         });
         if (hit){ rs.value = hit; wsRole = hit; }
+      } else if (rs){
+        // 默认落在「项目/」：进这一页十有八九是看工程产出，
+        // 「全部角色」会把工作区里那堆回报一起倒出来，先得自己筛一遍。
+        rs.value = "项目"; wsRole = "项目";
       }
       renderWsList();
     }).catch(function(e){ if (box) box.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
@@ -2367,8 +2395,20 @@
       var ak = $("mApiKey"); if (ak) ak.value = "";
       var ab = $("mApiBase"); if (ab) ab.value = mi.baseURL || "";
       var am = $("mApiModel"); if (am) am.value = mi.model || "";
+      // 单价输入框回显的是**存盘原值**（可能为空），不是「缓存留空=按输入价」算出来的生效值 ——
+      // 把生效值填进框里，一保存就把"留空"变成了写死，以后改输入价它不再跟随。
+      var pr = j.prices || {}, prw = j.pricesRaw || {};
+      var pi = $("mPriceIn");  if (pi) pi.value = (prw.priceIn == null ? "" : prw.priceIn);
+      var po = $("mPriceOut"); if (po) po.value = (prw.priceOut == null ? "" : prw.priceOut);
+      var pc = $("mPriceCache");
+      if (pc){
+        pc.value = (prw.priceCache == null ? "" : prw.priceCache);
+        pc.placeholder = "留空 = 按新输入价（当前 " + fmtMoney(pr.cache) + "）";
+      }
       var an = $("mApiNote");
-      if (an) an.innerHTML = "<b>接入方式（同 dsh 模型 API）</b> 提供方 <code>" + esc(mi.provider || "deepseek") + "</code> → 凭据引用 <code>" + esc(mi.apiKeyEnv || "") + "</code><br>密钥状态：" + (mi.configured ? "已配置 ✓" : "未配置 — 密钥只写项目根 .env，不回显");
+      if (an) an.innerHTML = "<b>接入方式（同 dsh 模型 API）</b> 提供方 <code>" + esc(mi.provider || "deepseek") + "</code> → 凭据引用 <code>" + esc(mi.apiKeyEnv || "") + "</code><br>密钥状态：" + (mi.configured ? "已配置 ✓" : "未配置 — 密钥只写项目根 .env，不回显")
+        + "<br><b>单价</b> 元 / 百万 token，当前生效：新输入 " + pr.in + " · 缓存命中 " + pr.cache + " · 输出 " + pr.out
+        + "。首页「项目成本」按这三档算 —— meta 里的 tokensIn 是「新输入 + 缓存读取」的合计，缓存单列计费才不会把成本算高。";
       if (j.envOverride && j.activeProject && $("setMsg")) $("setMsg").textContent = "环境变量（OPC_KB_ROOT/OPC_CONFIG/OPC_PORT）优先于配置，请直接手改 opc-config.json";
       loadSchedules();
       loadRoles();
@@ -2456,13 +2496,6 @@
   }
 
 
-  /* ================= 设置：任务 Token 统计（输入/输出柱状，数据来自 meta.json） ================= */
-  function fmtTok(n){
-    n = Number(n) || 0;
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + "M";
-    if (n >= 1000) return (n / 1000).toFixed(1) + "k";
-    return String(n);
-  }
   /* ================= R1 助理悬浮窗（临时会话，不进任务流程） ================= */
   /* 卡通 R1：圆脸 + 耳麦 + 金色领结，纯 inline SVG —— 不用 emoji、不引外部图，两个主题下都清楚。 */
   /* 悬浮球里的图形：一个对话气泡 + 三个点。底色与光环由 CSS 给（跟随主题），
@@ -2474,7 +2507,27 @@
     + "<circle cx='31' cy='23.5' r='2.3' fill='#f4f8fc'/>"
     + "</svg>";
 
+  /* 精确计数（Token 柱状图用）：带千分位，柱子底下的合计要能逐位核对 */
   function fmtTok(n){ return (Number(n) || 0).toLocaleString(); }
+
+  /* 首页用的自动换单位：120713124 → "120.71M"。数一大，千分位反而读不出来 */
+  function fmtTokUnit(n){
+    n = Number(n) || 0;
+    var a = Math.abs(n);
+    if (a >= 1e9) return (n / 1e9).toFixed(2) + "B";
+    if (a >= 1e6) return (n / 1e6).toFixed(2) + "M";
+    if (a >= 1e4) return (n / 1e3).toFixed(1) + "k";
+    return String(Math.round(n));
+  }
+
+  /* 成本：一次任务常常只有几分钱，小额不能显示成 0.00 */
+  function fmtMoney(v){
+    v = Number(v) || 0;
+    if (v <= 0) return "¥0";
+    if (v < 1) return "¥" + v.toFixed(4);
+    if (v < 1000) return "¥" + v.toFixed(2);
+    return "¥" + (v / 1000).toFixed(2) + "k";
+  }
 
   function mountDock(){
     var fab = $("r1Fab"), ava = $("r1Ava");
@@ -2641,8 +2694,60 @@
       if (m) m.textContent = "";
     }).then(function(){ r1State("busy", false); if (s) s.disabled = false; });
   }
+  /* Token 柱状图的自定义 hover 提示（原生 title 延迟约 1 秒、样式不可控，做不了色块与对齐）。
+     一个共享节点挂在 body 上：.tok-zone 是 overflow 容器，提示放它里面会被裁掉。
+     内容按需现从列的 data-* 拼，DOM 里不用预先塞一份 HTML。 */
+  var TOK_TIP = null;
+  function tokTipHide(){ if (TOK_TIP) TOK_TIP.hidden = true; }
+  function tokTipFill(col){
+    if (!TOK_TIP){
+      TOK_TIP = document.createElement("div");
+      TOK_TIP.className = "tok-tip";
+      TOK_TIP.hidden = true;
+      document.body.appendChild(TOK_TIP);
+    }
+    var fresh = Number(col.getAttribute("data-fresh")) || 0;
+    var cache = Number(col.getAttribute("data-cache")) || 0;
+    var out   = Number(col.getAttribute("data-out")) || 0;
+    var sw = col.getAttribute("data-alt") === "1" ? " alt" : "";
+    var tin = fresh + cache;
+    var rate = tin ? Math.round(cache / tin * 100) : 0;
+    function row(cls, name, v){
+      return "<div class='tt-row'><i class='sw-" + cls + sw + "'></i><span class='tt-k'>" + name
+           + "</span><b>" + fmtTok(v) + "</b></div>";
+    }
+    TOK_TIP.innerHTML = "<div class='tt-h'>" + esc(col.getAttribute("data-lab") || "") + "</div>"
+      + row("in", "新输入", fresh) + row("cache", "缓存命中", cache) + row("out", "输出", out)
+      + "<div class='tt-f'><span>输入合计 " + fmtTok(tin) + "</span><b>命中 " + rate + "%</b></div>";
+    TOK_TIP.hidden = false;
+  }
+  function tokTipMove(e){
+    if (!TOK_TIP || TOK_TIP.hidden) return;
+    var pad = 14, w = TOK_TIP.offsetWidth, h = TOK_TIP.offsetHeight;
+    var x = e.clientX + pad, y = e.clientY + pad;
+    if (x + w > window.innerWidth - 8) x = e.clientX - w - pad;      // 右边放不下就翻到左边
+    if (y + h > window.innerHeight - 8) y = e.clientY - h - pad;     // 下面放不下就翻到上面
+    TOK_TIP.style.left = Math.max(8, x) + "px";
+    TOK_TIP.style.top = Math.max(8, y) + "px";
+  }
+  function tokTipBind(chart){
+    if (chart.__tipBound) return;               // 每次重绘都会走到这里，只能绑一次
+    chart.__tipBound = true;
+    var cur = null;
+    chart.addEventListener("mouseover", function(e){
+      var col = e.target && e.target.closest ? e.target.closest(".tok-col") : null;
+      if (!col) return;
+      if (col !== cur){ cur = col; tokTipFill(col); }   // 同列内换段不重绘，免得闪
+      tokTipMove(e);
+    });
+    chart.addEventListener("mousemove", tokTipMove);
+    chart.addEventListener("mouseleave", function(){ cur = null; tokTipHide(); });
+    // 横向滚动时列会从鼠标底下走开，提示留在原地就是错的
+    chart.addEventListener("scroll", function(){ cur = null; tokTipHide(); }, true);
+  }
   function loadTokenStats(){
     var sum = $("tokSum"), chart = $("tokChart");
+    tokTipHide();                    // 重绘会把列换掉，旧提示不能留在屏幕上
     if (sum) sum.textContent = "";
     if (chart) chart.innerHTML = "<div class='placeholder'>加载中…</div>";
     api("/api/tokens").then(function(j){
@@ -2682,12 +2787,13 @@
         var hFresh = Math.max(2, Math.round(fresh / max * 180));
         var hCache = Math.round(v.cache / max * 180);
         var hOut = Math.max(2, Math.round(v.out / max * 180));
-        return "<div class='tok-col'><div class='tok-bars'>"
+        return "<div class='tok-col' data-lab='" + esc(t) + "' data-fresh='" + fresh
+          + "' data-cache='" + (v.cache || 0) + "' data-out='" + (v.out || 0) + "'><div class='tok-bars'>"
           + "<span class='tok-stack'>"
-          + "<span class='tok-bar in' style='height:" + hFresh + "px' title='" + esc(t) + " 新输入 " + fmtTok(fresh) + "'></span>"
-          + (hCache ? "<span class='tok-bar cache' style='height:" + hCache + "px' title='" + esc(t) + " 缓存命中 " + fmtTok(v.cache) + "'></span>" : "")
+          + "<span class='tok-bar in' style='height:" + hFresh + "px'></span>"
+          + (hCache ? "<span class='tok-bar cache' style='height:" + hCache + "px'></span>" : "")
           + "</span>"
-          + "<span class='tok-bar out' style='height:" + hOut + "px' title='" + esc(t) + " 输出 " + fmtTok(v.out) + "'></span>"
+          + "<span class='tok-bar out' style='height:" + hOut + "px'></span>"
           + "</div><div class='tok-lab'>" + esc(t) + "</div><div class='tok-val'>" + fmtTok(v.inn + v.out) + "</div></div>";
       }).join("");
       if (aIn || aOut){
@@ -2695,11 +2801,12 @@
         var ahIn = Math.max(2, Math.round(aFresh / max * 180));
         var ahCache = Math.round(aCache / max * 180);
         var ahOut = Math.max(2, Math.round(aOut / max * 180));
-        altBars = "<div class='tok-col alt'><div class='tok-bars'><span class='tok-stack'>"
-          + "<span class='tok-bar in alt' style='height:" + ahIn + "px' title='临时会话 新输入 " + fmtTok(aFresh) + "'></span>"
-          + (ahCache ? "<span class='tok-bar cache alt' style='height:" + ahCache + "px' title='临时会话 缓存命中 " + fmtTok(aCache) + "'></span>" : "")
+        altBars = "<div class='tok-col alt' data-lab='临时会话' data-alt='1' data-fresh='" + aFresh
+          + "' data-cache='" + aCache + "' data-out='" + aOut + "'><div class='tok-bars'><span class='tok-stack'>"
+          + "<span class='tok-bar in alt' style='height:" + ahIn + "px'></span>"
+          + (ahCache ? "<span class='tok-bar cache alt' style='height:" + ahCache + "px'></span>" : "")
           + "</span>"
-          + "<span class='tok-bar out alt' style='height:" + ahOut + "px' title='临时会话 输出 " + fmtTok(aOut) + "'></span>"
+          + "<span class='tok-bar out alt' style='height:" + ahOut + "px'></span>"
           + "</div><div class='tok-lab'>临时会话</div><div class='tok-val'>" + fmtTok(aIn + aOut) + "</div></div>";
       }
       var bars = altBars + tCol;                   // 临时会话排最前：它是唯一特殊的一组
@@ -2707,6 +2814,7 @@
         + "<span class='lg-out'>输出</span>"
         + "<span class='lg-alt'>临时会话（单列一组，不进任务统计）</span></div>"
         + "<div class='tok-zone'>" + bars + "</div>";
+      tokTipBind(chart);
     }).catch(function(e){ if (chart) chart.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
   }
 
@@ -2964,12 +3072,19 @@
       model: ($("mApiModel").value || "").trim()
     } };
     if (apiKey) payload.model.apiKey = apiKey;
+    // 单价跟模型配置一起存：留空 = 删掉该键（回落到默认 / 按新输入价）
+    function pval(id){ var e = $(id); return e ? (e.value || "").trim() : ""; }
+    payload.priceIn = pval("mPriceIn");
+    payload.priceCache = pval("mPriceCache");
+    payload.priceOut = pval("mPriceOut");
     post("/api/settings", payload).then(function(j){
       if (j && j.ok){
         var mi = j.model || {};
         if (m) m.textContent = "✓ 模型 API 配置已保存：提供方 " + esc(mi.provider) + " · 引用 " + esc(mi.apiKeyEnv)
           + (apiKey ? " · 密钥已写入项目根 .env（不回显）" : " · 密钥保持已配置值不变")
-          + (mi.configured ? "（状态：已配置 ✓）" : "（状态：未配置 — 保存密钥后 dsh 会话/subagent 自动继承）");
+          + (mi.configured ? "（状态：已配置 ✓）" : "（状态：未配置 — 保存密钥后 dsh 会话/subagent 自动继承）")
+          + "；单价 新输入 " + fmtMoney(j.prices && j.prices.in) + " / 缓存命中 " + fmtMoney(j.prices && j.prices.cache)
+          + " / 输出 " + fmtMoney(j.prices && j.prices.out) + "（元/百万 token）";
         var ak = $("mApiKey"); if (ak) ak.value = "";
         loadSettings();
       } else { if (m) m.textContent = "保存失败：" + esc(j && j.msg || "未知"); }
