@@ -14,20 +14,19 @@ v1.15 的改动只在存储层：
 import datetime
 import json
 import re
+import time
 
 from . import agent, config, runner, scheduler as sch, store
 
-EXEC_TIMEOUT = 900          # 单个子任务的 headless 执行超时（秒）
+EXEC_TIMEOUT = 900          # 单个子任务的「无活动」超时（秒）——有心跳后语义变了：会话事件
+                            # 持续增长即视为存活，只要在干活就不会被杀；900 秒只杀真挂死。
+                            # 总时长另有 hard 上限（timeout*3）兜底。
 
 _STOPPED = set()            # 已被删除/终止的任务号集合；执行链各阶段检查到即提前退出（防删除后重建产出）
 
 def mark_stopped(task_no):
     """终止任务前调用：执行链将据此提前退出，不再执行剩余子任务/重写产出与元数据。"""
     _STOPPED.add(task_no)
-
-
-def clear_stopped(task_no):
-    _STOPPED.discard(task_no)
 
 
 def _alive(task_no):
@@ -133,7 +132,7 @@ def decompose(task_no, task_text):
               "不要输出任何解释、提问或多余文字。任务：%s%s"
               % (max_subs, task_no, task_no, task_text, _decision_block(task_text)))
     try:
-        text = runner.run_headless_sync(prompt, config.tune("decomposeTimeout"))
+        text = runner.run_headless_sync(prompt, config.tune("decomposeTimeout"), purpose="prompt")
     except Exception:
         return []                       # 拆解通道不可用 → 走 execute 的统一兜底/阻塞，不留待派反复重触发
     return [row for row in parse_dispatch_rows(text) if row["role"] in ok][:max_subs]
@@ -162,6 +161,64 @@ def prepare_files(sub_no, task_no, sub, spec):
         "createdAt": datetime.datetime.now().isoformat(timespec="seconds"),
     }, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return body, meta
+
+
+def _put_run_info(meta: dict, sub_no: str) -> None:
+    """记下这次是谁跑的：引擎名 + 引擎侧会话标识。
+
+    meta.json 是子任务执行与用量的唯一凭据。少了「哪次会话」这一环，一旦用量对不上，
+    只能按时间与任务文本去猜（还会猜错：同一个会话被安到多个子任务头上）。
+    有了它，任何一次统计异常都能精确回到具体会话去核。"""
+    info = runner.run_info(sub_no)
+    if not info:
+        return
+    if info.get("engine"):
+        meta["engine"] = info["engine"]
+    if info.get("engineSession") or info.get("session"):
+        meta["engineSession"] = info.get("session") or info.get("engineSession")
+
+
+def _put_tokens(meta: dict, usage) -> None:
+    """把 headless 用量写进 meta（完成/阻塞两条路径共用）；usage 为空则不写。
+
+    阻塞（含被强杀）的执行同样消耗了 token，不记就等于统计里凭空少一块。"""
+    if not usage:
+        return
+    meta["tokensIn"] = usage["inputTokens"] + usage["cacheReadTokens"]
+    meta["tokensOut"] = usage["outputTokens"]
+    meta["tokensCacheRead"] = usage["cacheReadTokens"]
+    meta["tokensReasoning"] = usage["reasoningTokens"]
+
+
+def _landed_evidence(body_p, size0: int, t_exec: float, limit: int = 4) -> list:
+    """headless 无输出时的核盘证据。
+
+    判阻塞的语义是「本轮没落盘」——headless 没打印 final 文本不等于没干活：
+    T-007-S1 目录迁移已写入 25 个文件，却因为期末没有文本输出被判阻塞。
+    故无文本输出时先核盘：产出回报文件是否增长、《项目/》下是否有本轮写入的文件。"""
+    ev = []
+    try:
+        now_sz = body_p.stat().st_size
+        if now_sz > size0 + 20:
+            ev.append("产出回报文件已写入（%d → %d 字节）：%s" % (size0, now_sz, body_p.name))
+    except OSError:
+        pass
+    try:
+        proj = config.ROOT / "项目"
+        if proj.is_dir():
+            hits = []
+            for f in proj.rglob("*"):
+                try:
+                    if f.is_file() and f.stat().st_mtime >= t_exec - 60:
+                        hits.append(str(f.relative_to(config.ROOT)).replace("\\", "/"))
+                except OSError:
+                    continue
+            if hits:
+                ev.append("《项目/》下 %d 个文件在本轮写入（如 %s）"
+                          % (len(hits), "、".join(hits[:3])))
+    except Exception:
+        pass
+    return ev[:limit]
 
 
 def _meaningful_reply(text: str, min_len: int = 60) -> str:
@@ -199,7 +256,7 @@ def execute(task_no, task_text):
         runner.emit({"type": "run/start", "task": "%s · 自动执行链" % task_no,
                      "provider": "opc-web", "model": "chain"})
         runner.emit({"type": "step/start", "data": {"turn": 1, "step": 1}})
-        runner.emit({"type": "assistant/chunk", "data": {"text": "▶ R1 拆解 %s：%s" % (task_no, task_text[:80])}})
+        runner.emit({"type": "assistant/chunk", "data": {"text": "R1 拆解 %s：%s" % (task_no, task_text)}})
         set_state(tag="R1 拆解中…")
         # 指定 R1（含「请 R1 / 让 R1 …」）= R1 牵头派发：同样走模型拆解选业务角色（decompose 内已引导模型忽略 R1）
         head = head_named(task_text)
@@ -215,7 +272,7 @@ def execute(task_no, task_text):
             store.set_task(task_no, "阻塞", msg)
             runner.emit({"type": "assistant/chunk",
                          "data": {"text": "✗ " + msg + " —— 任务置阻塞，等待手动指派"}})
-            runner.emit({"type": "run/end", "text": "%s 拆解失败：%s" % (task_no, msg[:60])})
+            runner.emit({"type": "run/end", "text": "%s 拆解失败：%s" % (task_no, msg)})
             set_state(lastOk=False, tag="拆解失败 %s" % task_no)
             return
         total = len(subs)
@@ -227,10 +284,10 @@ def execute(task_no, task_text):
         for i, (sub_no, s) in enumerate(zip(sub_nos, subs)):
             if not _alive(task_no):          # 任务已被删除/终止 → 提前退出，不再执行剩余子任务
                 return
-            set_state(tag="执行 %d/%d：%s %s" % (i + 1, total, s["role"], s["sub"][:20]))
+            set_state(tag="执行 %d/%d：%s %s" % (i + 1, total, s["role"], s["sub"]))
             runner.emit({"type": "step/start", "data": {"turn": i + 2, "step": 1}})
             runner.emit({"type": "assistant/chunk",
-                         "data": {"text": "▶ 自动执行 %s（%s）：%s —— headless 直跑" % (sub_no, s["role"], s["sub"][:70])}})
+                         "data": {"text": "自动执行 %s（%s）：%s —— headless 直跑" % (sub_no, s["role"], s["sub"])}})
             spec = agent.subtask_spec(s["role"], "执行子任务：%s。期望产出：%s。%s" % (s["sub"], s["expect"], _decision_block(task_text)),
                                       expect=s["expect"], sub_no=sub_no)
             prepare_files(sub_no, task_no, s, spec)
@@ -239,25 +296,34 @@ def execute(task_no, task_text):
             store.set_subtask(sub_no, "执行中")
             store.open_execution(sub_no, task_no, s["role"])
             try:
-                text, usage = runner.run_headless_task(_flat(spec["prompt"]), EXEC_TIMEOUT, act=sub_no)
+                size0 = body_p.stat().st_size        # 核盘基线：执行前产出文件大小
+            except OSError:
+                size0 = 0
+            t_exec = time.time()
+            try:
+                text, usage = runner.run_headless_task(_flat(spec["prompt"]), EXEC_TIMEOUT, act=sub_no,
+                                           purpose="execute")
             except Exception:
                 text, usage = "", None
             if not _alive(task_no):          # 执行期间被删除 → 丢弃本次产出，直接退出
                 return
             raw = (text or "").strip()
             text = _meaningful_reply(text)   # 产出校验：过短/乱码 → 不予采信（T-006 事故教训）
+            if not text:
+                # 无文本输出先核盘：落盘了就不该判阻塞（T-007-S1 已完成 25 个文件写入，
+                # 只因 headless 期末没打印文本被判阻塞）。核盘成立即按完成处理。
+                ev = _landed_evidence(body_p, size0, t_exec)
+                if ev:
+                    text = ("【headless 未返回最终文本；核盘确认本轮产出已落盘，按完成处理】\n"
+                            + "\n".join("- " + x for x in ev))
             if text:
                 with open(body_p, "a", encoding="utf-8") as fh:          # 完成回报（唯一的子任务产出文件）
                     fh.write("\n\n## 完成回报（控制台自动执行 %s）\n\n%s\n" % (sub_no, text))
                 try:
                     meta = json.loads(meta_p.read_text(encoding="utf-8"))
                     meta["status"] = "完成"
-                    if usage:
-                        # token 用量写入 meta.json（输入=含缓存读取的计费口径，另存拆分）
-                        meta["tokensIn"] = usage["inputTokens"] + usage["cacheReadTokens"]
-                        meta["tokensOut"] = usage["outputTokens"]
-                        meta["tokensCacheRead"] = usage["cacheReadTokens"]
-                        meta["tokensReasoning"] = usage["reasoningTokens"]
+                    _put_run_info(meta, sub_no)  # 引擎名 + 会话标识，事后可追溯
+                    _put_tokens(meta, usage)     # 输入=含缓存读取的计费口径，另存拆分
                     meta_p.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 except Exception:
                     pass
@@ -273,6 +339,8 @@ def execute(task_no, task_text):
                         fh.write("\n\n## 执行结果\n\n【%s，置阻塞】\n" % reason)
                     meta = json.loads(meta_p.read_text(encoding="utf-8"))
                     meta["status"] = "阻塞"
+                    _put_run_info(meta, sub_no)  # 引擎名 + 会话标识，事后可追溯
+                    _put_tokens(meta, usage)     # 被强杀/无输出也烧了 token，照样记账
                     meta_p.write_text(json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
                 except Exception:
                     pass

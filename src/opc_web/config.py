@@ -21,6 +21,12 @@ from pathlib import Path
 BASE = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
         else Path(__file__).resolve().parent.parent.parent)
 
+# 随包资源目录：PyInstaller 6.x 的 onedir 布局把 datas（templates / static / agents-seed /
+# _seed / _dsh）放进 exe 同级的 _internal/，而 BASE 指的是 exe 同级 —— 那是用户放
+# opc-config.json 与 .env 的地方，不该混进程序资源。两者分开：配置与数据看 BASE，随包资源看 ASSET。
+# 开发运行时没有 _internal 目录，ASSET 就等于 BASE。
+ASSET = (BASE / "_internal") if (BASE / "_internal").is_dir() else BASE
+
 CONFIG_FILE = Path(os.environ.get("OPC_CONFIG") or (BASE / "opc-config.json"))
 
 
@@ -65,7 +71,7 @@ _CFG = _load_cfg()
 # BASE = 程序目录（代码 + opc-config.json + .env + agents-seed/）
 # ROOT = 当前激活项目的根（agents/ + 批阅台/ + 工作区/ + 知识库/），每个项目完全自包含。
 # 项目以 root 路径为唯一键 —— 项目就是一个目录，不再另造 slug/id 这层概念。
-AGENTS_SEED = BASE / "agents-seed"      # 角色卡模板库：新建项目时复制一份进项目自己的 agents/
+AGENTS_SEED = ASSET / "agents-seed"    # 角色卡模板库：新建项目时复制一份进项目自己的 agents/
 
 
 def projects() -> list:
@@ -112,7 +118,6 @@ PROJECT_ROOT = ROOT / "项目"        # 公共项目区（源码/工程性产出
 
 # 数据文件位置（相对根目录）
 WORKSPACE_REL = "工作区"
-PROJECT_REL = "项目"
 PIYUETAI_REL = "批阅台/批阅台.md"
 DB_REL = "批阅台/opc.db"               # 状态台账（任务/子任务/回报）—— 唯一真相，见 store.py
 LOG_REL = "批阅台/决策日志.md"          # R0 决策记录 + 派发单（parsers 读取）
@@ -122,8 +127,8 @@ TIMELINE_REL = "批阅台/时间轴.json"   # R1 模型提炼的时间轴缓存�
 HANDBOOK_REL = "知识库/OPC 规范/员工手册.md"   # 全员唯一行为准则（templates.handbook_text 写入，bootstrap 创建；归入「OPC 规范」分类）。
 # 注：OPC智能体角色架构.md / 知识库索引.md 已移除 —— 不作为知识档案入库（组织架构以首页 /api/org 实时为准，知识库看板由 kb_entries 实时聚合）
 
-TEMPLATES = BASE / "templates"
-STATIC = BASE / "static"
+TEMPLATES = ASSET / "templates"
+STATIC = ASSET / "static"
 # 角色阵容跟项目走；还没建项目时退回模板库，作战面板不至于空着（此时只读）
 AGENTS_DIR = (ROOT / "agents") if active_project() else AGENTS_SEED
 # 角色技能共享库（平铺共享）：agents/skills/<技能名>.md；角色卡「## 技能」段登记文件名即装配
@@ -133,10 +138,58 @@ LOG_FILE = ROOT / SCHED_LOG_REL
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
 
+# 执行引擎：谁在执行角色任务（engines/ 包）。缺省 api（直连大模型 API，不依赖 dsh）；
+# 可在「设置 → 执行引擎」里切到 dsh，或手改 opc-config.json 的 engine / 环境变量 OPC_ENGINE。
+# 取值必须是 engines.registry 里已注册的名字——写错会抛 EngineError，不静默回退（防配置错误被吞）。
+# 默认引擎与默认备用引擎提成常量：既给生产代码用，也让测试断言「默认值」而不必去读
+# 本机配置文件（那是用户的选择，会随设置页变化，拿它当断言依据必然时绿时红）。
+DEFAULT_ENGINE = "api"          # 直连大模型 API：不依赖 dsh，装好即可用
+DEFAULT_FALLBACK = "api"        # 主力 dsh 没跑起来时用直连 API 兜底
+ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or DEFAULT_ENGINE)
+# 首页「今日用量」的估算单价（元 / 百万 token）。默认值只是占位，按你实际模型价格改：
+# 环境变量 OPC_TOKEN_PRICE_IN / OPC_TOKEN_PRICE_OUT（或 opc-config.json 的 priceIn/priceOut）。
+TOKEN_PRICE_IN = float(os.environ.get("OPC_TOKEN_PRICE_IN") or _CFG.get("priceIn") or 1.0)
+TOKEN_PRICE_OUT = float(os.environ.get("OPC_TOKEN_PRICE_OUT") or _CFG.get("priceOut") or 2.0)
+
 
 # ---------- 配置读写（「设置」视图 /api/settings 使用） ----------
 
-SETTING_KEYS = ("root", "port")          # 设置页可写的字段；其余键只允许手改 opc-config.json
+# engine 的取值合法性由 server 校验（必须是已注册的引擎名），此处只负责存盘。
+SETTING_KEYS = ("root", "port", "engine", "engineFallback")   # 设置页可写的字段；其余键只允许手改 opc-config.json
+
+
+# 按用途路由：同一个控制台里，不同用途可以走不同引擎（opc-config.json 的 engineFor 段）。
+# 例：{"engineFor": {"prompt": "api", "execute": "dsh"}} —— 拆解/汇总用便宜的 API，
+# 角色任务交给带沙箱与技能的 dsh。留空即回退主引擎，不影响任何既有行为。
+def engine_for(purpose: str = "") -> str:
+    """按用途取引擎名：engineFor.<用途> 优先，空则回退主引擎。
+
+    用途约定：prompt = 拆解 / 汇总这类轻文本推理，execute = 角色任务执行。"""
+    key = str(purpose or "").strip()
+    if key:
+        want = str((_CFG.get("engineFor") or {}).get(key) or "").strip()
+        if want:
+            return want
+    return ENGINE
+
+
+def engine_fallback(main: str = "") -> str:
+    """备用引擎：主引擎失败时改用谁跑。默认 api —— DSH 是主力（工具沙箱 + 技能生态），
+    它没跑起来时用直连 API 兜底，避免整个执行链卡死在一个引擎上。
+
+    - 显式写空（opc-config.json 里 "engineFallback": ""）或设 OPC_ENGINE_FALLBACK="" = 关闭回退；
+    - 与主引擎相同 = 视为不启用（自己回退自己没有意义）；
+    - 环境变量 OPC_ENGINE_FALLBACK 优先于配置。"""
+    env = os.environ.get("OPC_ENGINE_FALLBACK")
+    if env is not None and env.strip():
+        want = env.strip()
+    elif "engineFallback" in _CFG:
+        want = str(_CFG.get("engineFallback") or "").strip()
+    else:
+        want = DEFAULT_FALLBACK
+    if not want or want == str(main or ENGINE).strip().lower():
+        return ""
+    return want
 
 # 运行调参：手改 opc-config.json 即时生效（每次读盘，文件几百字节，代价可忽略）。
 # 刻意不进 SETTING_KEYS —— 这些是调优旋钮，不该占设置页的位置。
@@ -144,6 +197,7 @@ _TUNABLES = {
     "pollSeconds": 8,           # 调度守护轮询间隔（秒）
     "decomposeTimeout": 480,    # 拆解任务时 headless 的无输出超时（秒）
     "maxSubtasks": 2,           # 单个任务最多拆成几个并行子任务
+    "fallbackMaxElapsed": 60,   # 主引擎「秒退无产出」的判定秒数：超过就当任务本身没做完，不回退重跑
 }
 
 
@@ -188,7 +242,7 @@ def save_cfg(kv: dict) -> dict:
 
 def reload() -> dict:
     """重新读取配置并刷新模块常量（保存后立即生效）。"""
-    global _CFG, ROOT, KB_ROOT, BATCH_ROOT, WORKSPACE_ROOT, PROJECT_ROOT, AGENTS_DIR, LOG_FILE, PORT
+    global _CFG, ROOT, KB_ROOT, BATCH_ROOT, WORKSPACE_ROOT, PROJECT_ROOT, AGENTS_DIR, LOG_FILE, PORT, ENGINE
     _CFG = _load_cfg()
     ROOT = _resolve_root()
     KB_ROOT = ROOT / "知识库"
@@ -198,6 +252,8 @@ def reload() -> dict:
     AGENTS_DIR = (ROOT / "agents") if active_project() else AGENTS_SEED
     LOG_FILE = ROOT / SCHED_LOG_REL
     PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
+    # 引擎也随配置热生效：设置页切换后下一次派发就用新引擎，无需重启控制台。
+    ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or DEFAULT_ENGINE)
     return settings_info()
 
 
@@ -311,6 +367,14 @@ def sanitize_dir(name: str) -> str:
     bad = set("\\/:*?<>|\"'\t\r\n ")
     s = "".join(c for c in str(name or "") if c not in bad).strip()
     return s or "未命名"
+
+
+def role_dir(no: str) -> str:
+    """角色工作区目录名 = 角色名（如《工作区/全栈开发/》）。
+
+    编号只用于界面标识（项目文件筛选里显示「R3（全栈开发）」），不进目录名——
+    目录名带编号会产生嵌套括号、也会让历史引用全部失效。"""
+    return sanitize_dir(role_name(str(no or "")) or str(no or ""))
 
 
 def role_name(no: str) -> str:

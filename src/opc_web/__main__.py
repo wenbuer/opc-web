@@ -33,7 +33,7 @@ def main():
         return
     # 捆绑分发（PyInstaller 打包）：exe 旁 _dsh/ 内置 dsh 运行时（node + @deepseek-ai/dsh），
     # 把其加入 PATH，使 shutil.which("dsh") 命中内置 dsh，实现"开箱即用"免装 dsh
-    _dsh = config.BASE / "_dsh"
+    _dsh = config.ASSET / "_dsh"
     if _dsh.is_dir():
         os.environ["PATH"] = str(_dsh) + os.pathsep + os.environ.get("PATH", "")
     bootstrap.bootstrap()
