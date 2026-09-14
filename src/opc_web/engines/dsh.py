@@ -417,8 +417,9 @@ def _spawn_headless(argv: list, timeout: float, act: str = "", on_progress=None)
 
     def _kill():
         try:
+            # 必须带超时：taskkill 在系统繁忙时能长时间不返回，卡住的是整个收尾流程
             subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
-                           capture_output=True, text=True)
+                           capture_output=True, text=True, timeout=10)
         except Exception:
             pass
         try:
@@ -475,7 +476,7 @@ def _kill_spawn(act: str) -> bool:
         return False
     try:
         subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, timeout=10)
         return True
     except Exception:
         return False

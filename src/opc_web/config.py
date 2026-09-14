@@ -514,26 +514,48 @@ def model_info() -> dict:
 # 执行语义同 README：控制台只把到期任务写入《任务下达队列.md》并记调度日志（生成调度指令），
 # 实际执行方 = 常驻主会话 R1（读取队列后拆解派发）。
 
+# 定时任务存**项目数据目录**（不是控制台配置）：它属于项目、跟着项目仓库备份与迁移，
+# 换机器 / 重装控制台都不会丢。原先存在 opc-config.json 的 projects[i].schedule，
+# 那是"每台机器各配各的"，定时任务会随本机配置一起消失。
+SCHEDULE_REL = "批阅台/定时任务.json"
+
+
+def schedule_file() -> Path:
+    return ROOT / SCHEDULE_REL
+
+
 def load_schedules() -> list:
-    """当前项目的定时任务（存在 projects[i].schedule —— 不同项目节奏不同）。"""
-    s = active_project().get("schedule")
-    if isinstance(s, list):
-        return s
-    s = _CFG.get("schedule")            # 兼容尚未建项目时的旧顶层字段
-    return s if isinstance(s, list) else []
+    """当前项目的定时任务（《批阅台/定时任务.json》）。
+
+    新位置没有文件时做一次**迁移**：把老位置（opc-config.json 的 projects[i].schedule
+    或旧顶层字段）里的任务搬过来，搬完就只认新位置 —— 否则老机器升级后任务会凭空消失。"""
+    p = schedule_file()
+    if p.is_file():
+        try:
+            d = json.loads(read_text(p))
+            if isinstance(d, list):
+                return d
+            if isinstance(d, dict) and isinstance(d.get("jobs"), list):
+                return d["jobs"]
+        except Exception:
+            pass
+    old = active_project().get("schedule")
+    if not isinstance(old, list):
+        old = _CFG.get("schedule")
+    if isinstance(old, list) and old:
+        try:
+            save_schedules(old)          # 落到新位置，此后只认它
+        except Exception:
+            pass
+        return old
+    return []
 
 
 def save_schedules(jobs: list) -> None:
-    """写回当前项目的定时任务（没有项目时退回顶层字段）。"""
-    cur = active_project()
-    if not cur:
-        _write_cfg({"schedule": jobs or []})
-        return
-    ps = [dict(p) for p in projects()]
-    for p in ps:
-        if str(p.get("root") or "") == str(cur.get("root") or ""):
-            p["schedule"] = jobs or []
-    _write_cfg({"projects": ps})
+    """写回当前项目的定时任务（项目数据目录，随项目走）。"""
+    p = schedule_file()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(jobs or [], ensure_ascii=False, indent=2) + chr(10), encoding="utf-8")
 
 
 def schedule_next(job: dict, now=None) -> object:
