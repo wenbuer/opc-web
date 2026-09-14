@@ -2,7 +2,7 @@
   "use strict";
   var $ = function(id){ return document.getElementById(id); };
   var NL10 = String.fromCharCode(10);
-  var state = { pending: [], archive: [], cur: null, daily: [], activeNo: null, activeSub: null,
+  var state = { pending: [], work: [], archive: [], cur: null, daily: [], activeNo: null, activeSub: null,
                 boardRows: [], runSeq: 0, runTimer: null, rolesMap: {}, lastDirPath: "" };
 
   function esc(s){
@@ -28,9 +28,6 @@
     if (!d) return;
     $("statPending").textContent = "待裁决 " + (d.pendingCount != null ? d.pendingCount : "—");
     $("statArchived").textContent = "已批阅 " + (d.archiveCount != null ? d.archiveCount : "—");
-    var dd = (d.daily && d.daily.length) ? " · " + d.daily.length + " 份简报" : "";
-    $("statSrv").textContent = "后端在线" + dd;
-    $("statSrv").className = "stat ok";
   }
 
   function tick(){
@@ -102,9 +99,9 @@
     var active = 0;
     (roles || []).forEach(function(r){
       if (r.code === "R0" || r.code === "R1") return;
-      var stCls = "off";
-      if (r.status === "执行中" || r.status === "指挥中"){ stCls = "on"; active++; }
-      else if (r.status === "暂不激活" || r.status === "待命"){ stCls = "wait"; }
+      /* 两态：执行中亮起，其余（待命中）暗置。顶部计数只统计真正在跑的角色。 */
+      var stCls = r.status === "执行中" ? "on" : "off";
+      if (r.status === "执行中") active++;
       var card = document.createElement("div");
       card.className = "role-card";
       card.innerHTML = "<span class='rc-st " + stCls + "'>" + esc(r.status || "") + "</span>"
@@ -118,8 +115,8 @@
       grid.appendChild(card);
     });
     /* 原「未激活角色」位已改为固定「＋ 新增角色」入口（orgAdd）：点击弹窗新增角色；
-       每张角色卡右上「✎ 编辑角色」弹窗编辑（openRoleModal("edit", code)）。
-       新增/编辑均走 /api/roles/add、/api/roles/edit（角色卡 + 工作区《名称/》 + preset 部署）。 */
+       每张角色卡右上「编辑角色」弹窗编辑（openRoleModal("edit", code)）。
+       新增/编辑均走 /api/roles/add、/api/roles/edit（角色卡 + 工作区《名称/》）。 */
   }
 
   function openRole(code){
@@ -195,6 +192,43 @@
     return fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data || {}) }).then(function(r){ return r.json(); });
   }
+  /* 任务行操作：阻塞可重试；非执行中可删除（删除 = 台账四表 + 工作区文件 + 实时事件段） */
+  function taskOps(t){
+    var st = t.status || "";
+    var ops = "";
+    if (st === "阻塞") ops += "<button class='dretry' title='重试：重置为待派并重新触发执行链'>↻ 重试</button>";
+    if (st !== "执行中") ops += "<button class='ddel' title='删除任务（含子任务 / 回报 / 工作区产物）'>删除</button>";
+    return ops ? "<span class='dops'>" + ops + "</span>" : "";
+  }
+  function bindTaskOps(row, t){
+    var btR = row.querySelector(".dretry");
+    if (btR) btR.addEventListener("click", function(ev){
+      ev.stopPropagation();
+      btR.disabled = true; btR.textContent = "↻ 重试中…";
+      api("/api/retry", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({no: t.no})}).then(function(j){
+        if (!j || !j.ok){ btR.disabled = false; btR.textContent = "↻ 重试"; alert((j && j.msg) || "重试失败"); return; }
+        btR.textContent = "✓ 已重置";
+        loadQueue(); loadBoard(); liveStart();
+        var st = $("dqState");
+        if (st && j.msg){ st.className = "dq-state ok"; st.textContent = j.msg; }
+      }).catch(function(){ btR.disabled = false; btR.textContent = "↻ 重试"; });
+    });
+    var btD = row.querySelector(".ddel");
+    if (btD) btD.addEventListener("click", function(ev){
+      ev.stopPropagation();
+      if (!confirm("删除任务 " + t.no + "？将移除其子任务 / 回报 / 执行记录 / 工作区产物（不可恢复）。")) return;
+      btD.disabled = true; btD.textContent = "删除中…";
+      api("/api/task-delete", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({no: t.no})}).then(function(j){
+        if (!j || !j.ok){ btD.disabled = false; btD.textContent = "删除"; alert((j && j.msg) || "删除失败"); return; }
+        var st = $("dqState");
+        if (st && j.msg){ st.className = "dq-state ok"; st.textContent = j.msg; }
+        if (state.activeNo === t.no){ state.activeNo = null; }
+        dropRunSec(t.no);
+        loadQueue(); loadBoard(); renderAct(null); refreshSched(0);
+      }).catch(function(){ btD.disabled = false; btD.textContent = "删除"; });
+    });
+  }
+
   function loadQueue(){
     api("/api/queue").then(function(j){
       if (!j || !j.ok) return;
@@ -210,21 +244,8 @@
           + "<span class='dexpect'>" + esc(t.expect) + "</span>"
           + "<span class='dstatus'>" + esc(t.status) + "</span>"
           + (t.report && t.report !== "—" ? "<em class='dreport'>" + esc(t.report) + "</em>" : "")
-          + (t.status === "阻塞" ? "<button class='dretry' title='重试：重置为待派并重新触发执行链'>↻ 重试</button>" : "");
-        var btR = row.querySelector(".dretry");
-        if (btR) btR.addEventListener("click", function(ev){
-          ev.stopPropagation();
-          btR.disabled = true; btR.textContent = "↻ 重试中…";
-          api("/api/retry", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({no: t.no})}).then(function(j){
-            if (!j || !j.ok){ btR.disabled = false; btR.textContent = "↻ 重试"; alert((j && j.msg) || "重试失败"); return; }
-            btR.textContent = "✓ 已重置";
-            loadQueue();
-            loadBoard();
-            liveStart();
-            var st = $("dqState");
-            if (st && j.msg) st.textContent = j.msg;
-          }).catch(function(){ btR.disabled = false; btR.textContent = "↻ 重试"; });
-        });
+          + (taskOps(t));
+        bindTaskOps(row, t);
         row.addEventListener("click", function(){ showTaskOutput(t.no, row); });
         box.appendChild(row);
       });
@@ -303,26 +324,24 @@
       st.textContent = paused ? "恢复执行中…" : "暂停中…";
       post("/api/plan-pause", { action: action }).then(function(r){
         if (r && r.ok){
-          if (paused){ st.textContent = "已恢复 —— 继续按派发单执行"; planExec(); }
-          else { st.textContent = "已暂停：当前行完成后停止，点击按钮继续"; refreshSched(0); }
-        } else { st.textContent = "操作失败：" + (r && r.msg || "未知"); }
+          if (paused){ st.className = "dq-state"; st.textContent = "已恢复 —— 继续按派发单执行"; planExec(); }
+          else { st.className = "dq-state paused"; st.textContent = "已暂停：当前行完成后停止，点击按钮继续"; refreshSched(0); }
+        } else { st.className = "dq-state"; st.textContent = "操作失败：" + (r && r.msg || "未知"); }
       }).catch(function(e){ st.textContent = "异常：" + e.message; });
     }).catch(function(){});
   }
 
   function refreshSched(show){
+    /* 调度引擎状态（空闲/调度中/暂停）统一显示在下方状态带 #dqState（schedStat 已并入移除）。 */
     api("/api/scheduler").then(function(j){
       var st = $("dqState");
-      if (!j || !j.ok){ st.textContent = "调度状态未知"; return; }
+      if (!j || !j.ok){ if (st) st.textContent = "调度状态未知"; return; }
       var s = j.state || {};
-      var txt = s.busy ? "调度中：" + (s.tag || "") + "（后台 headless 执行中）"
-        : (s.tag || "调度空闲") + (s.lastOk === true ? " ✓ 完成" : s.lastOk === false ? " ✗ 失败" : "");
-      st.className = "dq-state" + (s.busy ? " busy" : "") + (s.paused ? " paused" : "");
-      st.textContent = (s.paused ? "⏸ " : "") + txt;
-      var ps = $("schedStat");
-      if (ps){ ps.className = st.className; ps.textContent = st.textContent; }
+      var txt = s.busy ? "调度中：" + (s.tag || "") + "（后台执行中）"
+        : "调度空闲" + (s.lastOk === true ? " ✓ 上轮完成" : s.lastOk === false ? " ✗ 上轮失败" : "");
+      if (st){ st.className = "dq-state" + (s.busy ? " busy" : "") + (s.paused ? " paused" : ""); st.textContent = (s.paused ? "⏸ " : "") + txt; }
       var bt = $("btnToggleSched");
-      if (bt){ bt.innerHTML = s.paused ? "▶ 恢复执行" : "⏸ 暂停"; }
+      if (bt){ bt.innerHTML = s.paused ? "▶ 恢复" : "⏸ 暂停"; bt.title = s.paused ? "恢复自动执行链" : "暂停自动执行链"; }
       if (show){ loadQueue() }
     }).catch(function(){});
   }
@@ -333,11 +352,11 @@
     var stj = $("dqState");
     if (!v){ if (stj) stj.textContent = "请先填写任务内容"; return; }
     var ex = ($("dqExpect") && $("dqExpect").value.trim()) || "R1 判断";
-    if (stj) stj.textContent = "下达中…";
+    if (stj){ stj.className = "dq-state busy"; stj.textContent = "下达中…"; }
     post("/api/dispatch", { task: v, expect: ex }).then(function(j){
-      if (!j || !j.ok){ if (stj) stj.textContent = "下达失败：" + (j && j.msg || "未知"); return; }
+      if (!j || !j.ok){ if (stj){ stj.className = "dq-state"; stj.textContent = "下达失败：" + (j && j.msg || "未知"); } return; }
       $("dqInput").value = "";
-      if (stj) stj.innerHTML = "已下达 <b>" + esc(j.no) + "</b> —— 全自动流水线：R1 拆解 → subagent 派发各角色 → 回报落库";
+      if (stj){ stj.className = "dq-state busy"; stj.innerHTML = "已下达 <b>" + esc(j.no) + "</b> —— 全自动流水线：R1 拆解 → subagent 派发各角色 → 回报落库"; }
       loadQueue();
       loadBoard();
       pollAuto(j.no);
@@ -354,56 +373,32 @@
         if (row && stj){
           var st = row.status || "";
           var rep = row.report && row.report !== "—" ? String(row.report) : "";
-          if (rep){ stj.innerHTML = "<b>" + esc(no) + "</b> ✅ " + st + " · 回报：" + esc(rep.slice(0, 80)); }
-          else if (st !== seen.st && st){ seen.st = st; stj.innerHTML = "<b>" + esc(no) + "</b> · " + st + "（R1 拆解派发中，主会话开着即自动承接）"; }
+          if (rep){ stj.className = "dq-state ok"; stj.innerHTML = "<b>" + esc(no) + "</b> ✓ " + st + " · 回报：" + esc(rep.slice(0, 80)); }
+          else if (st !== seen.st && st){ seen.st = st; stj.className = "dq-state busy"; stj.innerHTML = "<b>" + esc(no) + "</b> · " + st + "（R1 拆解派发中，主会话开着即自动承接）"; }
         }
         loadQueue();
         if (row && row.report && row.report !== "—" && n2 >= 2){ clearInterval(timer); }
         else if (n2 >= 160){ clearInterval(timer); }
       }).catch(function(){});
-      api("/api/scheduler").then(function(s){
-        var el = $("schedStat");
-        var stj = $("dqState");
-        if (s && s.ok && s.state){
-          var sd = s.state;
-          var tag = sd.tag || "";
-          if (el){ el.textContent = (sd.paused ? "⏸ " : "") + (sd.busy ? "调度中 " : "") + tag; el.className = "dq-state" + (sd.busy ? " busy" : "") + (sd.paused ? " paused" : ""); }
-          if (stj && sd.busy){ stj.textContent = tag; stj.className = "dq-state busy"; }
-        }
-      }).catch(function(){});
     }, 2500);
   }
-  function archiveR1(){
-    $("dqState").textContent = "归档中…";
-    post("/api/r1-archive").then(function(j){
-      if (j && j.ok){
-        var r = j.result || {};
-        var parts = [];
-        if ((r.archived || []).length) parts.push("入库 " + r.archived.length + " 项：" + r.archived.join("；"));
-        if ((r.skipped || []).length) parts.push("跳过 " + r.skipped.length + " 项（未完成）");
-        if ((r.ledger || []).length) parts.push("待指定归档 " + r.ledger.length + " 项");
-        $("dqState").textContent = "归档完成：" + (parts.join(" · ") || "无可归档产出"); loadQueue();
-      }
-      else { $("dqState").textContent = "归档失败：" + (j && j.msg || "未知"); }
-    }).catch(function(e){ $("dqState").textContent = "归档异常：" + e.message; });
-  }
+
   function planExec(){
-    $("dqState").textContent = "按派发单启动子任务…";
+    var pe = $("dqState");
+    if (pe){ pe.className = "dq-state"; pe.textContent = "按派发单启动子任务…"; }
     post("/api/plan-execute").then(function(j){
-      if (j && j.ok){ $("dqState").textContent = "派发指令已生成：" + ((j.result || {}).issued || []).join(", "); }
-      else { $("dqState").textContent = "启动失败：" + (j && j.msg || "未知"); }
-    }).catch(function(e){ $("dqState").textContent = "异常：" + e.message; });
+      if (pe){ pe.className = "dq-state" + (j && j.ok ? " ok" : ""); pe.textContent = j && j.ok ? ("派发指令已生成：" + ((j.result || {}).issued || []).join(", ")) : ("启动失败：" + (j && j.msg || "未知")); }
+    }).catch(function(e){ if (pe){ pe.className = "dq-state"; pe.textContent = "异常：" + e.message; } });
   }
   var dqTicking = false;
   function dqTick(){
     if (dqTicking) return; dqTicking = true;
-    var st = $("dqState");
-    if (st && st.className.indexOf("busy") >= 0){ loadQueue() }
+    var sc = $("dqState");
+    if (sc && sc.className.indexOf("busy") >= 0){ loadQueue() }
     refreshSched(0);
     setTimeout(function(){ dqTicking = false; }, 4000);
   }
   document.getElementById("btnOneClick").addEventListener("click", oneClickDispatch);
-  document.getElementById("btnArchiveR1").addEventListener("click", archiveR1);
   var bt = document.getElementById("btnToggleSched");
   if (bt) bt.addEventListener("click", toggleSched);
   setInterval(dqTick, 12000);
@@ -412,6 +407,7 @@
     api("/api/pending").then(function(j){
       if (!j || !j.ok){ $("pendingList").innerHTML = "<div class='placeholder'>加载失败：" + esc(j && j.msg || "未知错误") + "</div>"; return; }
       state.pending = j.pending || [];
+      state.work = j.work || [];
       state.archive = j.archive || [];
       renderList();
       api("/api/summary").then(refreshStats).catch(function(){});
@@ -421,23 +417,43 @@
   }
 
   function renderList(){
-    var box = $("pendingList");
-    box.innerHTML = "";
-    $("pendingCount").textContent = "（" + state.pending.length + " 项待裁决）";
-    if (!state.pending.length){ box.innerHTML = "<div class='placeholder'>当前无待裁决项 —— 已全部批阅 ✓</div>"; }
-    state.pending.forEach(function(it, idx){
+    var cntW = $("workCount"); if (cntW) cntW.textContent = "（" + state.work.length + "）";
+    var cntP = $("pendingCount"); if (cntP) cntP.textContent = "（" + state.pending.length + "）";
+    function card(it, kind){
       var d = document.createElement("div");
+      if (kind === "work"){
+        // 工作内容卡片：紧凑 —— #编号(小) + 任务号 + 是否已阅
+        d.className = "p-card work compact";
+        d.dataset.kind = "work";
+        d.dataset.n = it.n;
+        d.title = it.title;
+        var mm = /任务\s+(T-\d+)/.exec(it.title || "");
+        var tno = mm ? mm[1] : String(it.title || "").slice(0, 16);
+        d.innerHTML = "<span class='num'>#" + it.n + "</span><span class='name'>" + esc(tno) + "</span>"
+          + "<span class='wst'>○ 未阅</span>";
+        d.addEventListener("click", function(){ showDetail(it, "work"); });
+        return d;
+      }
       d.className = "p-card";
-      d.style.animationDelay = (idx * 70) + "ms";
+      d.dataset.kind = "pending";
+      d.dataset.n = it.n;
       var prev = "";
       (it.lines || []).forEach(function(ln){
         if (ln.indexOf("背景") >= 0 || ln.indexOf("需要 R0 拍板") >= 0){ prev += ln.split("：").pop() + " "; }
       });
       d.innerHTML = "<span class='num'>#" + it.n + "</span><span class='name'>" + esc(it.title) + "</span>"
-        + (prev ? "<div class='preview'>" + esc(prev.trim()) + "</div>" : "");
-      d.addEventListener("click", function(){ showDetail(it); });
-      box.appendChild(d);
-    });
+        + (prev ? "<div class='preview'>" + esc(prev.trim().slice(0, 140)) + "</div>" : "");
+      d.addEventListener("click", function(){ showDetail(it, "pending"); });
+      return d;
+    }
+    var wb = $("workList");
+    wb.innerHTML = "";
+    if (!state.work.length){ wb.innerHTML = "<div class='placeholder'>暂无工作进展 —— 任务执行完成后自动呈报到这里</div>"; }
+    state.work.forEach(function(it){ wb.appendChild(card(it, "work")); });
+    var pb = $("pendingList");
+    pb.innerHTML = "";
+    if (!state.pending.length){ pb.innerHTML = "<div class='placeholder'>当前无待裁决 —— R1 认为需拍板时才呈报</div>"; }
+    state.pending.forEach(function(it){ pb.appendChild(card(it, "pending")); });
     var ar = $("archiveList");
     ar.innerHTML = "";
     (state.archive || []).forEach(function(it){
@@ -445,47 +461,175 @@
       a.className = "a-item";
       a.title = "点击查看已批阅原文（只读）";
       a.innerHTML = "<span class='n'>#" + it.n + "</span><span class='t'>" + esc(it.title) + "</span>";
-      a.addEventListener("click", function(){ showDetail(it, true); });
+      a.addEventListener("click", function(){ showDetail(it, "archive"); });
       ar.appendChild(a);
     });
-    showDetail(state.pending[0]);
+    if (state.pending.length){ showDetail(state.pending[0], "pending"); }
+    else if (state.work.length){ showDetail(state.work[0], "work"); }
+    else { showDetail(null, "pending"); }
   }
 
-  function showDetail(it, archived){
+  function showDetail(it, kind){
+    kind = kind || "pending";
     state.cur = it;
     document.querySelectorAll(".p-card").forEach(function(c){ c.classList.remove("active"); });
     document.querySelectorAll(".a-item").forEach(function(c){ c.classList.remove("active"); });
     if (it){
-      var cards = document.querySelectorAll(".p-card");
-      for (var i = 0; i < cards.length; i++){
-        if (cards[i].querySelector(".num") && cards[i].querySelector(".num").textContent.indexOf("#" + it.n) >= 0){ cards[i].classList.add("active"); }
-      }
-      document.querySelectorAll(".a-item").forEach(function(c){
-        var nm = c.querySelector(".n");
-        if (nm && nm.textContent.indexOf("#" + it.n) >= 0){ c.classList.add("active"); }
+      document.querySelectorAll(".p-card").forEach(function(c){
+        if (c.dataset && c.dataset.n === String(it.n) && (kind === "archive" || c.dataset.kind === kind)){ c.classList.add("active"); }
       });
+      if (kind === "archive"){
+        document.querySelectorAll(".a-item").forEach(function(c){
+          var nm = c.querySelector(".n");
+          if (nm && nm.textContent.indexOf("#" + it.n) >= 0){ c.classList.add("active"); }
+        });
+      }
     }
     var d = $("pendingDetail");
-    if (!it){ d.innerHTML = "<div class='placeholder'>← 从左侧选取一份待裁决文件</div>"; $("piyueForm").hidden = true; return; }
-    var html = "<h1><span class='n'>" + (archived ? "已批阅 #" : "待决 #") + it.n + "</span> " + esc(it.title) + "</h1>";
-    if (archived){ html += "<div class='fld'><b>档案状态</b><span>已批阅归档（只读 —— 如需变更请新建待决议题）</span></div>"; }
+    if (!it){ d.innerHTML = "<div class='placeholder'>← 从左侧选择 工作内容 或 决策裁决 查看</div>"; $("piyueForm").hidden = true; return; }
+    var pre = kind === "work" ? "工作 #" : (kind === "archive" ? "已批阅 #" : "待决 #");
+    if (kind === "pending"){
+      var h0 = "<h1><span class='n'>" + pre + it.n + "</span> " + esc(it.title) + "</h1>";
+      (it.lines || []).forEach(function(ln){
+        if (ln.indexOf("- **") === 0 && ln.indexOf("：") > 0){
+          var idx = ln.indexOf("**：", 4);
+          var key = idx > 0 ? ln.slice(4, idx) : ln;
+          var val = idx > 0 ? ln.slice(idx + 3) : "";
+          if (val.indexOf("**") >= 0 || val.indexOf("# ") >= 0 || val.length > 90){
+            h0 += "<div class='fld'><b>" + esc(key) + "</b><div class='fld-md markdown-body'>" + renderMd(val) + "</div></div>";
+          } else {
+            h0 += "<div class='fld'><b>" + esc(key) + "</b><span>" + esc(val) + "</span></div>";
+          }
+        } else if (ln.trim()){
+          h0 += "<p>" + esc(ln) + "</p>";
+        }
+      });
+      d.innerHTML = h0;
+      $("piyueForm").hidden = false;
+      $("opinionInput").value = "";
+      $("piyueStatus").textContent = "";
+      $("piyueStatus").className = "form-status";
+      return;
+    }
+    var sumRel = null;
+    (it.lines || []).forEach(function(ln){
+      var i3 = ln.indexOf("**汇总文件**");
+      if (i3 >= 0){ sumRel = ln.slice(ln.indexOf("：", i3) + 1).trim(); }
+    });
+    var taskNo = null;
+    var mmT = /任务[ ]+(T-[0-9A-Za-z-]+)/.exec(it.title || "");
+    if (mmT) taskNo = mmT[1];
+    var h = "<div class='piyue-head'><h1><span class='n'>" + pre + it.n + "</span> " + esc(it.title) + "</h1><div class='piyue-head-ops'>";
+    if (kind === "archive"){ h += "<span class='arch-badge'>✓ 已阅归档</span>"; }
+    if (kind === "work"){ h += "<button id='btnWorkArchive' class='mini'>归档（已阅）</button><span id='workMsg' class='form-status'></span>"; }
+    h += "</div></div>";
+    // 任务信息（概要字段，始终可见）
+    var extraHtml = "";
     (it.lines || []).forEach(function(ln){
       if (ln.indexOf("- **") === 0 && ln.indexOf("：") > 0){
         var idx = ln.indexOf("**：", 4);
         var key = idx > 0 ? ln.slice(4, idx) : ln;
         var val = idx > 0 ? ln.slice(idx + 3) : "";
-        html += "<div class='fld'><b>" + esc(key) + "</b><span>" + esc(val) + "</span></div>";
-      } else if (ln.trim()){
-        html += "<p>" + esc(ln) + "</p>";
+        if (key === "汇总文件") return;
+        if (val.indexOf("**") >= 0 || val.indexOf("# ") >= 0 || val.length > 90){
+          extraHtml += "<div class='fld'><b>" + esc(key) + "</b><div class='fld-md markdown-body'>" + renderMd(val) + "</div></div>";
+        } else {
+          extraHtml += "<div class='fld'><b>" + esc(key) + "</b><span>" + esc(val) + "</span></div>";
+        }
       }
     });
-    d.innerHTML = html;
-    $("piyueForm").hidden = !!archived;
+    if (extraHtml){ h += "<div class='doc-sec'><div class='doc-sec-head'>任务信息</div>" + extraHtml + "</div>"; }
+    // R1 汇总报告：折叠按钮，点击在其正下方展开（默认收起）
+    h += "<div class='doc-sec'><button type='button' class='sec-btn' id='btnSum'><span class='arr'>▸</span> R1 汇总报告" + (taskNo ? " <em>任务 " + esc(taskNo) + "</em>" : "") + (sumRel ? "" : "（无汇总文件）") + "</button>";
+    h += "<div id='sumBody' class='sec-body markdown-body to-doc' style='display:none'></div></div>";
+    // 执行角色产物：名称列表，点击名称在其正下方展开
+    h += "<div class='doc-sec'><div class='doc-sec-head'>执行角色产物</div>";
+    h += "<div id='prodList' class='prod-list'>" + (taskNo ? "<div class='placeholder'>加载产物清单…</div>" : "<div class='placeholder'>暂无产物文件</div>") + "</div></div>";
+    d.innerHTML = h;
+    $("piyueForm").hidden = true;
     $("opinionInput").value = "";
     $("piyueStatus").textContent = "";
     $("piyueStatus").className = "form-status";
+    if (kind === "work"){
+      document.querySelectorAll(".p-card.compact").forEach(function(c){
+        var w = c.querySelector(".wst");
+        if (w && c.dataset && c.dataset.n === String(it.n)){ w.textContent = "✓ 已阅"; w.classList.add("seen"); }
+      });
+    }
+    // 通用：载入 md 到容器
+    function loadInto(box, rel, label){
+      box.innerHTML = "<div class='placeholder'>加载 " + esc(label || "") + "…</div>";
+      api("/api/md?rel=" + encodeURIComponent(rel)).then(function(j){
+        if (j && j.ok){ box.innerHTML = renderMd(j.text || ""); }
+        else { box.innerHTML = "<div class='placeholder'>加载失败：" + esc(j && j.msg || "未知") + "</div>"; }
+      }).catch(function(e){ box.innerHTML = "<div class='placeholder'>加载异常：" + esc(e.message) + "</div>"; });
+    }
+    // R1 汇总折叠
+    var btnSum = $("btnSum");
+    var sumBody = $("sumBody");
+    var sumLoaded = false;
+    if (btnSum && sumRel && sumBody){
+      btnSum.addEventListener("click", function(){
+        if (sumBody.style.display === "none"){
+          sumBody.style.display = "";
+          btnSum.querySelector(".arr").textContent = "▾";
+          if (!sumLoaded){ sumLoaded = true; loadInto(sumBody, sumRel, "R1 汇总"); }
+        } else {
+          sumBody.style.display = "none";
+          btnSum.querySelector(".arr").textContent = "▸";
+        }
+      });
+    } else if (btnSum){ btnSum.disabled = true; }
+    // 归档按钮
+    var ba = $("btnWorkArchive");
+    if (ba) ba.addEventListener("click", function(){
+      api("/api/work-archive", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ item: it.n }) }).then(function(j){
+        var m = $("workMsg");
+        if (!j || !j.ok){ if (m){ m.className = "form-status err"; m.textContent = "归档失败：" + esc(j && j.msg || "未知"); } return; }
+        if (m){ m.className = "form-status ok"; m.textContent = "已归档 ✓"; }
+        loadPiyue();
+      }).catch(function(e){ var m = $("workMsg"); if (m){ m.className = "form-status err"; m.textContent = "异常：" + e.message; } });
+    });
+    // 产物列表：每项点击在其正下方展开/收起
+    var pl = $("prodList");
+    if (pl && taskNo){
+      api("/api/task-output?no=" + encodeURIComponent(taskNo)).then(function(j){
+        if (!j || !j.ok){ pl.innerHTML = "<div class='placeholder'>产物清单加载失败</div>"; return; }
+        var files = (j.files || []).filter(function(f){ return /\.md$/.test(f.rel || "") && f.rel.indexOf("-工作汇总") < 0; });
+        var rows = files.map(function(f){
+          var seg = String(f.rel || "").split("/");
+          var role = seg.length > 1 ? seg[1] : "";
+          return { role: role, name: f.name, rel: f.rel };
+        });
+        if (!rows.length){ pl.innerHTML = "<div class='placeholder'>暂无产物文件</div>"; return; }
+        pl.innerHTML = "";
+        var loaded = {};
+        rows.forEach(function(x){
+          var wrap = document.createElement("div");
+          wrap.className = "prod-wrap";
+          var it2 = document.createElement("div");
+          it2.className = "prod-item";
+          it2.innerHTML = "<span class='arr'>▸</span><span class='pi'>" + esc(x.role) + "</span><em>" + esc(x.name) + "</em>";
+          var body = document.createElement("div");
+          body.className = "sec-body markdown-body to-doc";
+          body.style.display = "none";
+          it2.addEventListener("click", function(){
+            if (body.style.display === "none"){
+              body.style.display = "";
+              it2.querySelector(".arr").textContent = "▾";
+              if (!loaded[x.rel]){ loaded[x.rel] = true; loadInto(body, x.rel, x.name); }
+            } else {
+              body.style.display = "none";
+              it2.querySelector(".arr").textContent = "▸";
+            }
+          });
+          wrap.appendChild(it2);
+          wrap.appendChild(body);
+          pl.appendChild(wrap);
+        });
+      }).catch(function(){ pl.innerHTML = "<div class='placeholder'>加载异常</div>"; });
+    }
   }
-
   function submitPiyue(judge){
     var it = state.cur;
     if (!it) return;
@@ -499,7 +643,7 @@
     }).then(function(j){
       if (j && j.ok){
         st.className = "form-status ok";
-        st.textContent = "✅ 已盖章：《决策/批阅台.md》待决 #" + it.n + " → " + judge;
+        st.textContent = "已盖章：《决策/批阅台.md》待决 #" + it.n + " → " + judge;
         setTimeout(function(){ st.textContent = ""; }, 4000);
         loadPiyue();
       } else {
@@ -532,7 +676,7 @@
         lastTop = t2;
         var c = document.createElement("div");
         c.className = "kb-card";
-        var ic = t2 ? "📁" : "📄";
+        var ic = t2 ? "▸" : "▪";
         var mt = "";
         try { mt = new Date((e.mtime || 0) * 1000).toLocaleDateString(); } catch (err) {}
         c.innerHTML = "<div class='kb-card-head'><span class='kb-ico'>" + ic + "</span><b>" + esc(e.name) + "</b><em>" + mt + "</em></div>" +
@@ -684,7 +828,7 @@
     var msgs = d.messages || [];
     var bar = document.createElement("div");
     bar.className = "rp-bar";
-    bar.textContent = "📥 完整 prompt（点击展开/收起）· step " + (d.step != null ? d.step : "?") + " · " + (d.provider || "") + " / " + (d.model || "") + " · " + msgs.length + " 条消息";
+    bar.textContent = "完整 prompt（点击展开/收起）· step " + (d.step != null ? d.step : "?") + " · " + (d.provider || "") + " / " + (d.model || "") + " · " + msgs.length + " 条消息";
     var body = document.createElement("div");
     body.className = "rp-body";
     var sysB = document.createElement("b");
@@ -714,7 +858,7 @@
     el.className = "run-tool";
     var a = document.createElement("span");
     a.className = "rt-ico";
-    a.textContent = "🔧";
+    a.textContent = "▸";
     var b = document.createElement("b");
     b.textContent = String(d.name || "工具");
     el.appendChild(a); el.appendChild(b);
@@ -730,10 +874,74 @@
     el.className = "run-out";
     return el;
   }
+  /* ===== 实时事件：按任务分段（run/start 起一段，直到下一个 run/start） ===== */
+  var _runSec = null;   // 当前接收事件的 .run-sec（活跃段）
+  function runSecNo(ev){
+    var m = /(T-\d+(?:-\w+)?)/.exec(String((ev && ev.task) || "") || "");
+    return m ? m[1] : "";
+  }
+  function toggleRunSec(sec){
+    var open = sec.classList.toggle("open");
+    var a = sec.querySelector(".rs-arrow");
+    if (a) a.textContent = open ? "▾" : "▸";
+  }
+  function newRunSec(ev){
+    var lg = $("runLog"); if (!lg) return null;
+    var no = runSecNo(ev);
+    var label = String((ev && ev.task) || "任务").replace(no, "").replace(/^[\s·｜|:：-]+/, "").slice(0, 42);
+    var sec = document.createElement("div");
+    sec.className = "run-sec open";
+    var head = document.createElement("div");
+    head.className = "run-sec-head";
+    var meta = [];
+    if (ev.provider) meta.push(String(ev.provider));
+    if (ev.model) meta.push(String(ev.model));
+    head.innerHTML = "<span class='rs-arrow'>▾</span><span class='rs-no'>" + esc(no || "事件") + "</span>"
+      + "<span class='rs-label'>" + esc(label || "") + "</span>"
+      + (meta.length ? "<em>" + esc(meta.join(" / ")) + "</em>" : "");
+    var body = document.createElement("div");
+    body.className = "run-sec-body";
+    sec.appendChild(head); sec.appendChild(body);
+    head.addEventListener("click", function(){ toggleRunSec(sec); });
+    /* 新任务段展开，旧任务段自动收起（runLog 聚焦当前任务，点段头可展开历史） */
+    Array.prototype.forEach.call(lg.querySelectorAll(".run-sec.open"), function(s){
+      s.classList.remove("open"); var a = s.querySelector(".rs-arrow"); if (a) a.textContent = "▸";
+    });
+    lg.appendChild(sec);
+    _runSec = sec;
+    return body;
+  }
+  function runSecBody(create){
+    var lg = $("runLog"); if (!lg) return null;
+    if (_runSec && _runSec.isConnected && _runSec.querySelector(".run-sec-body")) return _runSec.querySelector(".run-sec-body");
+    if (!create) return null;
+    /* 无 run/start 前缀的事件（如外部 agent 遥测）归入通用段 */
+    var sec = document.createElement("div");
+    sec.className = "run-sec open";
+    var head = document.createElement("div");
+    head.className = "run-sec-head";
+    head.innerHTML = "<span class='rs-arrow'>▾</span><span class='rs-no'>事件</span><em>未归入任务</em>";
+    var body = document.createElement("div");
+    body.className = "run-sec-body";
+    sec.appendChild(head); sec.appendChild(body);
+    head.addEventListener("click", function(){ toggleRunSec(sec); });
+    lg.appendChild(sec);
+    _runSec = sec;
+    return body;
+  }
+  function dropRunSec(no){
+    if (!no) return;
+    var lg = $("runLog"); if (!lg) return;
+    Array.prototype.forEach.call(lg.querySelectorAll(".run-sec"), function(sec){
+      var h = sec.querySelector(".rs-no");
+      if (h && (h.textContent || "").indexOf(no) === 0) sec.remove();
+    });
+    if (_runSec && !_runSec.isConnected) _runSec = null;
+  }
   function runLastOut(){
-    var lg = $("runLog");
-    if (!lg) return null;
-    var outs = lg.querySelectorAll(".run-out");
+    var b = runSecBody(false);
+    if (!b) return null;
+    var outs = b.querySelectorAll(".run-out");
     return outs.length ? outs[outs.length - 1] : null;
   }
   function runRender(ev){
@@ -743,44 +951,50 @@
     var type = ev.type || "";
     var d = ev.data || {};
     var ag = ev.agent || "";
+    var body;
+    if (type === "run/start"){
+      body = newRunSec(ev);
+      var b = document.createElement("div");
+      b.className = "run-banner";
+      b.textContent = "自动执行链启动" + (ev.task ? "：" + String(ev.task) : "");
+      if (body) body.appendChild(b);
+    } else {
+      body = runSecBody(true);
+    }
+    if (!body) return;
     if (ag){
       var agEl = document.createElement("div");
       agEl.className = "run-agent";
       var aid = String(ag);
       if (aid.indexOf("session-") === 0) aid = aid.slice(8);
       agEl.textContent = "agent: " + aid.slice(0, 14);
-      lg.appendChild(agEl);
+      body.appendChild(agEl);
     }
-    if (type === "run/start"){
-      var b = document.createElement("div");
-      b.className = "run-banner";
-      b.textContent = "🚀 观测启动：" + String(ev.task || "") + " ｜ " + String(ev.provider || "") + " / " + String(ev.model || "");
-      lg.appendChild(b);
-    } else if (type === "turn/start"){
-      lg.appendChild(runStepEl(d.turn, "-", "回合开始"));
+    if (type === "turn/start"){
+      body.appendChild(runStepEl(d.turn, "-", "回合开始"));
     } else if (type === "step/start"){
-      lg.appendChild(runStepEl(d.turn, d.step, ""));
-      lg.appendChild(runOutEl(d.turn, d.step));
+      body.appendChild(runStepEl(d.turn, d.step, ""));
+      body.appendChild(runOutEl(d.turn, d.step));
     } else if (type === "debug/request"){
-      lg.appendChild(runPromptEl(ev));
+      body.appendChild(runPromptEl(ev));
     } else if (type === "assistant/chunk"){
       var ob2 = runLastOut();
       if (d.text != null){
-        if (!ob2){ ob2 = runOutEl("", ""); lg.appendChild(ob2); }
+        if (!ob2){ ob2 = runOutEl("", ""); body.appendChild(ob2); }
         var span = document.createElement("span");
         span.textContent = d.text;
         ob2.appendChild(span);
       } else if (d.reasoning != null){
-        if (!ob2){ ob2 = runOutEl("", ""); lg.appendChild(ob2); }
+        if (!ob2){ ob2 = runOutEl("", ""); body.appendChild(ob2); }
         var rs = document.createElement("span");
         rs.className = "rt-reason";
         rs.textContent = d.reasoning;
         ob2.appendChild(rs);
       }
     } else if (type === "tool/call"){
-      lg.appendChild(runToolEl(ev));
+      body.appendChild(runToolEl(ev));
     } else if (type === "tool/result"){
-      var rc = lg.querySelectorAll(".run-tool");
+      var rc = body.querySelectorAll(".run-tool");
       var box = rc.length ? rc[rc.length - 1] : null;
       if (box){
         var res = document.createElement("em");
@@ -789,32 +1003,32 @@
         box.appendChild(res);
       }
     } else if (type === "step/end"){
-      lg.appendChild(runStepEl(d.turn, d.step, "步骤完成"));
+      body.appendChild(runStepEl(d.turn, d.step, "步骤完成"));
     } else if (type === "turn/end"){
-      lg.appendChild(runStepEl(d.turn, "-", "回合完成：" + String(((d.reason || {}).kind || ""))));
+      body.appendChild(runStepEl(d.turn, "-", "回合完成：" + String(((d.reason || {}).kind || ""))));
     } else if (type === "run/end"){
       var e4 = document.createElement("div");
       e4.className = "run-banner end";
-      e4.textContent = "🏁 观测结束 · 最终输出：" + String((ev.text || "")).slice(0, 600);
-      lg.appendChild(e4);
+      e4.textContent = "执行结束 · " + String((ev.text || "")).slice(0, 600);
+      body.appendChild(e4);
     } else if (type === "run/exited"){
       var e5 = document.createElement("div");
       e5.className = "run-step";
       e5.textContent = "进程退出码：" + (d.code != null ? d.code : "?");
-      lg.appendChild(e5);
+      body.appendChild(e5);
     } else if (type === "agent/inbox/spliced"){
       var e6 = document.createElement("div");
       e6.className = "run-step";
       var txt = (d.message && d.message.content) ? (typeof d.message.content === "string" ? d.message.content.slice(0, 160) : "") : "";
-      e6.textContent = "📥 调度： " + txt.replace(/\s+/g, " ").slice(0, 160);
-      lg.appendChild(e6);
+      e6.textContent = "调度： " + txt.replace(/\s+/g, " ").slice(0, 160);
+      body.appendChild(e6);
     } else {
       var noise = (type === "approval/policy" || type === "sandbox/mode" || type === "session/title" || type === "session/title-llm-request" || type === "request/header" || type === "request/context");
       if (!noise){
         var e7 = document.createElement("div");
         e7.className = "run-step muted";
         e7.textContent = type.replace(/\//g, " · ");
-        lg.appendChild(e7);
+        body.appendChild(e7);
       }
     }
     lg.scrollTop = lg.scrollHeight;
@@ -885,7 +1099,7 @@
     api(path, payload).then(function(jj){
       if (jj && jj.ok){
         var r = jj.result || {};
-        $("roleMsg").textContent = (jj.preview ? "[预览] " : "") + (r.name || r.no || "") + "（" + (r.no || "") + "）已生成/更新：角色卡 + 工作区《" + (r.wsRel || "") + "》 + preset 部署完成。";
+        $("roleMsg").textContent = (jj.preview ? "[预览] " : "") + (r.name || r.no || "") + "（" + (r.no || "") + "）已生成/更新：角色卡 + 工作区《" + (r.wsRel || "") + "》。";
         loadRoles(); cacheRoles(); loadHome();
       }
       else { $("roleMsg").textContent = "失败：" + (jj && jj.msg || "未知"); }
@@ -903,11 +1117,11 @@
     mode = mode || "add"; no = no || "";
     ["mRlName","mRlPosition","mRlType","mRlDuty"].forEach(function(id){ var el = $(id); if (el) el.value = ""; });
     var msg = $("mRoleMsg"); if (msg) msg.textContent = "";
-    var title = $("roleModalTitle"); if (title) title.textContent = (mode === "edit") ? "✎ 编辑角色 " + no : "＋ 新增角色";
+    var title = $("roleModalTitle"); if (title) title.textContent = (mode === "edit") ? "编辑角色 " + no : "＋ 新增角色";
     var hint = $("roleModalHint");
     if (hint) hint.textContent = (mode === "edit")
-      ? "保存后重新生成角色卡《agents/" + no + ".role.md》+ 工作区《名称/》 + preset 部署（等同设置页原编辑功能）"
-      : "自动编号 R10+ · 新增流程：角色卡 + 工作区《名称/》 + preset 部署";
+      ? "保存后重新生成角色卡《agents/" + no + ".role.md》与工作区《名称/》"
+      : "自动编号 R10+ · 新增流程：角色卡 + 工作区《名称/》";
     m.dataset.mode = mode; m.dataset.no = no;
     m.hidden = false;
     if (mode === "edit" && no){
@@ -940,11 +1154,11 @@
       type: ($("mRlType").value || "").trim()
     };
     if (mode === "edit") payload.no = no;
-    if (msg) msg.textContent = mode === "edit" ? "保存中：重新生成角色卡 + preset 部署…" : "保存中：生成角色卡 + preset 部署…";
+    if (msg) msg.textContent = mode === "edit" ? "保存中：重新生成角色卡…" : "保存中：生成角色卡…";
     post(mode === "edit" ? "/api/roles/edit" : "/api/roles/add", payload).then(function(jj){
       if (jj && jj.ok){
         var r = jj.result || {};
-        if (msg) msg.textContent = (mode === "edit" ? "✓ 已更新 " : "✓ 已创建 ") + (r.name || payload.name) + "（" + (r.no || no) + "）：角色卡 + 工作区《" + (r.wsRel || "") + "》 + preset 部署完成";
+        if (msg) msg.textContent = (mode === "edit" ? "✓ 已更新 " : "✓ 已创建 ") + (r.name || payload.name) + "（" + (r.no || no) + "）：角色卡 + 工作区《" + (r.wsRel || "") + "》";
         loadRoles(); cacheRoles(); loadHome();
         if (mode === "edit" && no){ var ebtn = $("btnEditRole"); if (ebtn && ebtn.dataset.no === no) openRole(no); }
         setTimeout(closeRoleModal, 1600);
@@ -969,7 +1183,6 @@
     if (info) info.innerHTML = "<b>" + esc(no) + " · " + esc(name) + "</b>"
       + "<br>确认删除将永久移除："
       + "<br>① 角色卡《agents/" + esc(no) + ".role.md》"
-      + "<br>② preset（源 + ~/.dsh/.agent-presets/opc-" + esc(no.toLowerCase()) + "）"
       + "<br>③ 工作区《工作区/" + esc(name) + "/》"
       + "<br>④ 《知识库/OPC智能体角色架构.md》登记行"
       + "<br><span class='del-warn'>此操作不可恢复，请二次确认。</span>";
@@ -1102,79 +1315,102 @@
     return out.join("");
   }
 
-  /* ================= 设置：目录选择 / 配置保存 / preset 同步 ================= */
+  /* ================= 设置：目录选择 / 配置保存 ================= */
+  /* ================= 设置：项目管理（一个 opc-web 对应多个 OPC 项目） ================= */
   function loadSettings(){
-    var m = $("setMsg");
     api("/api/settings").then(function(j){
-      if (!j || !j.ok){ if (m) m.textContent = "读取设置失败：" + esc(j && j.msg || "未知"); return; }
-      var c = j.config || {};
-      var kb = $("setKbRoot"); if (kb) kb.value = c.root || "";
+      if (!j || !j.ok){ var m = $("setMsg"); if (m) m.textContent = "读取设置失败：" + esc(j && j.msg || "未知"); return; }
       var mi = j.model || {};
       var mp = $("mApiProvider"); if (mp) mp.value = mi.provider || "deepseek";
       var ak = $("mApiKey"); if (ak) ak.value = "";
       var ab = $("mApiBase"); if (ab) ab.value = mi.baseURL || "";
       var am = $("mApiModel"); if (am) am.value = mi.model || "";
       var an = $("mApiNote");
-      if (an) an.innerHTML = "<b>接入方式（同 dsh 模型 API）</b> 提供方 <code>" + esc(mi.provider || "deepseek") + "</code> → 凭据引用 <code>" + esc(mi.apiKeyEnv || "") + "</code><br>密钥状态：" + (mi.configured ? "已配置 <code>" + esc(mi.keyMasked || "") + "</code>" : "<span style='color:var(--red-bright)'>未配置</span>，保存密钥后写入项目根 <code>.env</code>，dsh 会话 / subagent 即可继承") + "<br>baseURL：" + esc(mi.baseURL || "（按提供方默认）") + " · 模型：" + esc(mi.model || "（按提供方默认）") + " · 环境文件 <code>" + esc(mi.envFile || "") + "</code>";
+      if (an) an.innerHTML = "<b>接入方式（同 dsh 模型 API）</b> 提供方 <code>" + esc(mi.provider || "deepseek") + "</code> → 凭据引用 <code>" + esc(mi.apiKeyEnv || "") + "</code><br>密钥状态：" + (mi.configured ? "已配置 ✓" : "未配置 — 密钥只写项目根 .env，不回显");
+      if (j.envOverride && j.activeProject && $("setMsg")) $("setMsg").textContent = "环境变量（OPC_KB_ROOT/OPC_CONFIG/OPC_PORT）优先于配置，请直接手改 opc-config.json";
       loadSchedules();
-
-      var kbSt = $("kbStatus"); if (kbSt) kbSt.innerHTML = "<b>生效根目录：</b>" + esc(j.root || "") + "<br>批阅台" + (j.batchExists === false ? "（未创建，保存后自动生成）" : " ✓") + " · 工作区" + (j.workspaceExists === false ? "（未创建，保存后自动生成）" : " ✓") + " · 知识库" + (j.kbExists === false ? "（未创建，保存后自动生成）" : " ✓");
-      var pi = $("presetInfo"); if (pi) pi.textContent = "项目角色卡 " + (j.rolesCount || 0) + " 张（agents/）｜已部署 preset " + (j.presetsReady || 0) + " 份 → " + (j.presetHome || "");
-      if (j.envOverride && m) m.textContent = "⚠ 环境变量（OPC_KB_ROOT/OPC_CONFIG/OPC_PORT）优先于配置文件，此处修改需重启后生效";
       loadRoles();
-    }).catch(function(e){ if (m) m.textContent = "异常：" + esc(e.message); });
+      loadProjects();
+    }).catch(function(e){ var m = $("setMsg"); if (m) m.textContent = "异常：" + esc(e.message); });
   }
-  function browseDirs(path){
-    var box = $("dirList"); if (!box) return;
-    box.innerHTML = "<div class='placeholder'>浏览中…</div>";
-    api("/api/dirs?path=" + encodeURIComponent(path || "")).then(function(j){
-      if (!j || !j.ok){ box.innerHTML = "<div class='placeholder'>" + esc(j && j.msg || "无法浏览") + "</div>"; return; }
-      state.lastDirPath = j.path || "";
-      var dp = $("dirPath"); if (dp) dp.textContent = "当前：" + esc(j.path);
-      box.innerHTML = "";
-      var list = j.dirs || [];
-      if (!list.length){ box.innerHTML = "<div class='placeholder'>（无子目录——用「🔼 上级」或输入父路径前往）</div>"; }
-      list.forEach(function(d){
-        var el = document.createElement("div");
-        el.className = "dir-item";
-        el.innerHTML = "<span class='dicon'>📁</span><span class='dname'>" + esc(d) + "</span><button class='mini enter'>进入</button><button class='mini pick'>选为根目录</button>";
-        el.querySelector(".enter").addEventListener("click", function(){ browseDirs(j.path + "/" + d); });
-        el.querySelector(".pick").addEventListener("click", function(){
-          var k = $("setKbRoot"); if (k) k.value = j.path + "/" + d;
-          var mm = $("setMsg"); if (mm) mm.textContent = "已填入根目录：" + j.path + "/" + d + "（保存后自动生成 批阅台/工作区/知识库）";
+  function loadProjects(){
+    api("/api/projects").then(function(j){
+      if (!j || !j.ok) return;
+      var box = $("projList");
+      if (!box) return;
+      var list = j.projects || [];
+      var active = (j.active || {}).root || "";
+      var seed = j.seedRoles || 0;
+      if (!list.length){
+        box.innerHTML = "<div class='placeholder'>还没有项目 —— 在右侧填入项目名 + 目录，点「＋ 新建项目」（首个会自动激活，角色阵容从 agents-seed 复制 " + seed + " 张卡）</div>";
+      } else {
+        box.innerHTML = "";
+        list.forEach(function(p){
+          var el = document.createElement("div");
+          el.className = "proj-item" + (p.root === active ? " active" : "");
+          el.innerHTML = "<span class='pj-name'>" + esc(p.name || "") + "</span>"
+            + "<span class='pj-root'>" + esc(p.root || "") + "</span>"
+            + "<em class='pj-st'>" + (p.root === active ? "● 当前" : "") + "</em>"
+            + (p.root !== active
+                ? "<button class='mini pj-use'>切换</button>"
+                : "<button class='mini pj-rm danger' title='只移出登记，不删任何数据'>移除</button>");
+          var use = el.querySelector(".pj-use");
+          if (use) use.addEventListener("click", function(){ projectAction("switch", p.root, ""); });
+          var rm = el.querySelector(".pj-rm");
+          if (rm) rm.addEventListener("click", function(){
+            if (confirm("把项目「" + (p.name || "") + "」移出登记？项目目录与其中的数据不会删除。")) projectAction("remove", p.root, "");
+          });
+          box.appendChild(el);
         });
-        box.appendChild(el);
-      });
-    }).catch(function(e){ box.innerHTML = "<div class='placeholder'>异常：" + esc(e.message) + "</div>"; });
+      }
+      renderProjectSwitcher(list, active);
+    }).catch(function(){});
   }
-  function saveSettings(){
-    var map = { setKbRoot: "root" };
-    var payload = { };
-    for (var id in map){ var el = $(id); var v = (el && el.value.trim()) || ""; if (v) payload[map[id]] = v; }
-    if (!payload.root){ var m2 = $("setMsg"); if (m2) m2.textContent = "请先填写根目录（或点「📁 项目根默认」）"; return; }
-
-    var m = $("setMsg"); if (m) m.textContent = "保存中…";
-    post("/api/settings", payload).then(function(j){
-      if (j && j.ok){
-        var boot = (j.boot || []).map(function(b){ return "· " + b; }).join(" ");
-        if (m) m.textContent = "✓ 已写入 opc-config.json 并生效" + (j.msg ? "｜" + j.msg : "") + (boot ? "｜" + boot : "");
-        loadSettings();
-        loadHome();
-      } else { if (m) m.textContent = "保存失败：" + esc(j && j.msg || "未知"); }
-    }).catch(function(e){ if (m) m.textContent = "异常：" + esc(e.message); });
+  function renderProjectSwitcher(list, active){
+    var sel = $("projSel");
+    if (!sel) return;
+    sel.innerHTML = "";
+    if (!list.length){
+      var o0 = document.createElement("option");
+      o0.textContent = "（未建项目 · 去设置）";
+      sel.appendChild(o0);
+      return;
+    }
+    list.forEach(function(p){
+      var o = document.createElement("option");
+      o.value = p.root || "";
+      o.textContent = p.name || p.root || "";
+      o.selected = p.root === active;
+      sel.appendChild(o);
+    });
   }
-  function syncPresets(){
-    var m = $("setMsg"); if (m) m.textContent = "正在重新生成并部署角色 preset…";
-    post("/api/roles/generate", { }).then(function(j){
-      if (j && j.ok){
-        var r = j.result || {};
-        if (m) m.textContent = "✓ 已生成 preset 资产 " + (r.count || 0) + " 个文件；角色：" + ((r.roles || []).join(", ") || "—") + "（已部署源 + ~/.dsh/.agent-presets/）";
-      } else { if (m) m.textContent = "同步失败：" + esc(j && j.msg || "未知"); }
+  function addProject(){
+    var m = $("projMsg");
+    var name = ($("projName").value || "").trim();
+    var root = ($("projRoot").value || "").trim().replace(/\\/g, "/");   // Windows 反斜杠 → /，否则 JSON 转义崩
+    if (!root){ if (m) m.textContent = "项目目录必填（绝对路径，如 D:/opc/keeptalk）"; return; }
+    if (m) m.textContent = "创建中…";
+    projectAction("add", root, name);
+  }
+  function projectAction(action, root, name){
+    var m = $("projMsg");
+    root = String(root || "").replace(/\\/g, "/");   // 同上：统一正斜杠进 JSON
+    post("/api/projects", { action: action, root: root, name: name }).then(function(j){
+      if (!j || !j.ok){
+        if (m) m.textContent = (action === "switch" ? "切换失败" : action === "add" ? "新建失败" : "移除失败") + "：" + esc(j && j.msg || "未知");
+        return;
+      }
+      if (m) m.textContent = action === "add" ? "✓ 项目已创建并激活" : action === "switch" ? "✓ 已切换到 " + esc((j.project || {}).name || "") : "✓ 已移出登记";
+      ["projName","projRoot"].forEach(function(id){ var el = $(id); if (el) el.value = ""; });
+      loadProjects();
       loadSettings();
+      loadHome();
+      loadQueue();
+      loadBoard();
     }).catch(function(e){ if (m) m.textContent = "异常：" + esc(e.message); });
   }
+
   function bindSettings(){
-    /* 左侧栏切换（角色创建 / 目录设置 / 模型接入） */
     document.querySelectorAll(".snav-item").forEach(function(item){
       item.addEventListener("click", function(){
         var k = item.getAttribute("data-snav");
@@ -1185,21 +1421,69 @@
         if (pane) pane.classList.add("active");
       });
     });
-    var bs = $("btnSaveSettings"); if (bs) bs.addEventListener("click", saveSettings);
-    var bd = $("btnRootDefault"); if (bd) bd.addEventListener("click", function(){
-      var k = $("setKbRoot"), m = $("setMsg");
-      if (k) k.value = ".";
-      if (m) m.textContent = "已填入项目根（.）——点「保存配置」即生成 批阅台/工作区/知识库";
-    });
-    var sp = $("btnSyncPresets"); if (sp) sp.addEventListener("click", syncPresets);
+    var ps = $("projSel");
+    if (ps && !ps.dataset.bound){
+      ps.dataset.bound = "1";
+      ps.addEventListener("change", function(){
+        if (ps.value) projectAction("switch", ps.value, "");
+      });
+    }
+    var pa = $("btnProjAdd"); if (pa) pa.addEventListener("click", addProject);
     var bm = $("btnSaveModelApi"); if (bm) bm.addEventListener("click", saveModelApi);
     var bt = $("btnTestModelApi"); if (bt) bt.addEventListener("click", testModelApi);
     var mpv = $("mApiProvider"); if (mpv) mpv.addEventListener("change", modelProviderChanged);
     var sa = $("btnSchedAdd"); if (sa) sa.addEventListener("click", addSched);
-
+    var bb = $("btnBrowseDir"); if (bb) bb.addEventListener("click", dirOpen);
+    var dcl = $("btnDirClose"); if (dcl) dcl.addEventListener("click", dirClose);
+    var dup = $("btnDirUp"); if (dup) dup.addEventListener("click", function(){ if (DIR.parent) dirLoad(DIR.parent); });
+    var dpk = $("btnDirPick"); if (dpk) dpk.addEventListener("click", dirPick);
+    var dm = $("dirModal");
+    if (dm) dm.addEventListener("click", function(e){ if (e.target === dm) dirClose(); });
+    document.addEventListener("keydown", function(e){ if (e.key === "Escape") dirClose(); });
   }
 
-  /* ================= 设置：定时任务（到点下达队列，由常驻主会话 R1 执行） ================= */
+  /* ================= 目录选择器（设置 → 项目） ================= */
+  var DIR = { path: "", parent: "" };
+  function dirOpen(){
+    DIR = { path: "", parent: "" };
+    var m = $("dirModal");
+    if (m){ m.hidden = false; dirLoad(""); }
+  }
+  function dirLoad(p){
+    api("/api/dirs?path=" + encodeURIComponent(p || "")).then(function(j){
+      var msg = $("dirMsg");
+      if (!j || !j.ok){ if (msg) msg.textContent = (j && j.msg) || "加载失败"; return; }
+      DIR.path = j.path || ""; DIR.parent = j.parent || "";
+      var cur = $("dirCurrent"); if (cur) cur.textContent = DIR.path || "（磁盘根）";
+      var list = $("dirList"); if (!list) return;
+      list.innerHTML = "";
+      var dirs = j.dirs || [];
+      if (!dirs.length){
+        list.innerHTML = "<div class='dir-empty'>（无子目录）</div>";
+      }
+      dirs.forEach(function(d){
+        var el = document.createElement("div");
+        el.className = "dir-item";
+        el.innerHTML = "<span class='dir-ico'>▸</span><span class='dir-name'>" + esc(d) + "</span>";
+        el.addEventListener("click", function(){
+          dirLoad(DIR.path ? DIR.path.replace(/\/+$/, "") + "/" + d : d);
+        });
+        list.appendChild(el);
+      });
+      var up = $("btnDirUp"); if (up) up.disabled = !DIR.parent;
+      if (msg) msg.textContent = "";
+    });
+  }
+  function dirPick(){
+    var v = $("projRoot");
+    if (v && DIR.path) v.value = DIR.path;
+    dirClose();
+  }
+  function dirClose(){
+    var m = $("dirModal");
+    if (m) m.hidden = true;
+  }
+
   function schedDesc(j){
     var d = ["周一","周二","周三","周四","周五","周六","周日"];
     if (j.mode === "interval") return "每 " + (j.intervalMin || "—") + " 分钟一次";
@@ -1223,7 +1507,7 @@
           + "<div class='sched-task'>" + esc(s.task) + "</div>"
           + "<div class='sched-meta'><span>下次 " + esc(s.nextRun || "—") + "</span><span>上次 " + esc(s.lastRun || "从未触发") + "</span></div>"
           + "<div class='sched-ops'><button class='sched-btn-on'>" + (s.enabled ? "⏸ 停用" : "▶ 启用") + "</button>"
-          + "<button class='sched-btn-off'>🗑 删除</button></div>";
+          + "<button class='sched-btn-off'>删除</button></div>";
         var bs = el.querySelectorAll("button");
         bs[0].addEventListener("click", function(){ toggleScheduleJob(s.id, !s.enabled); });
         bs[1].addEventListener("click", function(){ delSched(s.id); });
@@ -1331,7 +1615,24 @@
     });
   });
 
+  /* ================= 主题切换（右上角按钮 · localStorage 记忆） ================= */
+  function applyTheme(t){
+    document.documentElement.setAttribute("data-theme", t === "dark" ? "dark" : "light");
+    var b = document.getElementById("btnTheme");
+    if (b) b.textContent = t === "dark" ? "浅色" : "深色";
+    try { localStorage.setItem("opcTheme", t); } catch(e){}
+  }
+  function toggleTheme(){
+    var cur = document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+    applyTheme(cur === "dark" ? "light" : "dark");
+  }
+
   /* ================= 启动 ================= */
+  var savedTheme = "light";
+  try { savedTheme = localStorage.getItem("opcTheme") || "light"; } catch(e){}
+  applyTheme(savedTheme);
+  var tb = document.getElementById("btnTheme");
+  if (tb) tb.addEventListener("click", toggleTheme);
   setInterval(tick, 30000);
   tick();
   loadHome();

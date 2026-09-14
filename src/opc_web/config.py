@@ -33,9 +33,46 @@ def _load_cfg() -> dict:
 
 _CFG = _load_cfg()
 
-# 根目录：env OPC_KB_ROOT（兼容旧语义，现即总根）> 配置 root（相对 BASE 或绝对）> 默认 BASE
-_root_s = os.environ.get("OPC_KB_ROOT") or _CFG.get("root") or "."
-ROOT = Path(_root_s).resolve() if os.path.isabs(_root_s) else (BASE / _root_s).resolve()
+# ---------- 项目：一个 opc-web 对应多个 OPC 项目 ----------
+# BASE = 程序目录（代码 + opc-config.json + .env + agents-seed/）
+# ROOT = 当前激活项目的根（agents/ + 批阅台/ + 工作区/ + 知识库/），每个项目完全自包含。
+# 项目以 root 路径为唯一键 —— 项目就是一个目录，不再另造 slug/id 这层概念。
+AGENTS_SEED = BASE / "agents-seed"      # 角色卡模板库：新建项目时复制一份进项目自己的 agents/
+
+
+def projects() -> list:
+    """已登记的项目 [{name, root, schedule}]。"""
+    ps = _CFG.get("projects")
+    return ps if isinstance(ps, list) else []
+
+
+def active_project() -> dict:
+    """当前激活项目；active 指不到就退到第一个，都没有则空 dict。"""
+    ps = projects()
+    want = str(_CFG.get("active") or "")
+    for p in ps:
+        if str(p.get("root") or "") == want:
+            return p
+    return ps[0] if ps else {}
+
+
+# 默认数据目录：无激活项目时数据落在程序目录旁（opc-data/），绝不混进代码目录。
+# 建项目后 ROOT = 项目目录，运行数据（批阅台/工作区/知识库/台账）全部随项目走。
+DATA_DIR = BASE.parent / "opc-data"
+
+
+def _resolve_root() -> Path:
+    """优先级：env OPC_KB_ROOT > 激活项目 root > 旧字段 root > 默认数据目录。"""
+    s = (os.environ.get("OPC_KB_ROOT")
+         or str(active_project().get("root") or "")
+         or str(_CFG.get("root") or "")
+         or "")
+    if not s:
+        return DATA_DIR
+    return Path(s).resolve() if os.path.isabs(s) else (BASE / s).resolve()
+
+
+ROOT = _resolve_root()
 
 # 三个自动文件夹（相对根目录）
 KB_ROOT = ROOT / "知识库"          # 知识档案（OPC智能体角色架构.md / 知识库索引.md …）
@@ -48,42 +85,23 @@ PIYUETAI_REL = "批阅台/批阅台.md"
 DB_REL = "批阅台/opc.db"               # 状态台账（任务/子任务/回报）—— 唯一真相，见 store.py
 LOG_REL = "批阅台/决策日志.md"          # R0 决策记录 + 派发单（parsers 读取）
 
-# 已退役的 md 表格（仅供一次性迁移入库与 legacy 归档定位，程序不再读写）
-QUEUE_REL = "批阅台/任务下达队列.md"
-REPORT_REL = "批阅台/回报队列.md"
-DISPATCH_REL = "批阅台/派发单-动态.md"
 SCHED_LOG_REL = "批阅台/调度日志.md"   # R1/控制台运行日志（log_schedule 追加）
 ARCH_REL = "知识库/OPC智能体角色架构.md"
 INDEX_REL = "知识库/知识库索引.md"
 
 TEMPLATES = BASE / "templates"
 STATIC = BASE / "static"
-AGENTS_DIR = BASE / "agents"
+# 角色阵容跟项目走；还没建项目时退回模板库，作战面板不至于空着（此时只读）
+AGENTS_DIR = (ROOT / "agents") if active_project() else AGENTS_SEED
 LOG_FILE = ROOT / SCHED_LOG_REL
 
 HOST = "127.0.0.1"
 PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
 
 
-def piyuetai_file():
-    """批阅台（R0 批阅入口）。"""
-    return ROOT / PIYUETAI_REL
-
-
-def db_file():
-    """状态台账 SQLite（跟随 ROOT，测试可猴补丁 config.ROOT）。"""
-    return ROOT / DB_REL
-
-
-
 def wb_root():
     """角色作业区根（ROOT/工作区/）。"""
     return WORKSPACE_ROOT
-
-
-def kb_root():
-    """知识档案根（ROOT/知识库/）。"""
-    return KB_ROOT
 
 
 # ---------- 配置读写（「设置」视图 /api/settings 使用） ----------
@@ -140,22 +158,64 @@ def save_cfg(kv: dict) -> dict:
 
 def reload() -> dict:
     """重新读取配置并刷新模块常量（保存后立即生效）。"""
-    global _CFG, ROOT, KB_ROOT, BATCH_ROOT, WORKSPACE_ROOT, LOG_FILE, PORT
+    global _CFG, ROOT, KB_ROOT, BATCH_ROOT, WORKSPACE_ROOT, AGENTS_DIR, LOG_FILE, PORT
     _CFG = _load_cfg()
-    _root_s = os.environ.get("OPC_KB_ROOT") or _CFG.get("root") or "."
-    ROOT = Path(_root_s).resolve() if os.path.isabs(_root_s) else (BASE / _root_s).resolve()
+    ROOT = _resolve_root()
     KB_ROOT = ROOT / "知识库"
     BATCH_ROOT = ROOT / "批阅台"
     WORKSPACE_ROOT = ROOT / "工作区"
+    AGENTS_DIR = (ROOT / "agents") if active_project() else AGENTS_SEED
     LOG_FILE = ROOT / SCHED_LOG_REL
     PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
     return settings_info()
 
 
+def add_project(name: str, root: str) -> dict:
+    """登记一个项目（目录初始化交给 bootstrap.init_project）；root 已存在则返回原条目。"""
+    root_s = _norm_root(root)
+    for p in projects():
+        if str(p.get("root") or "") == root_s:
+            return p
+    item = {"name": (name or "").strip() or Path(root_s).name, "root": root_s, "schedule": []}
+    _write_cfg({"projects": projects() + [item], "active": root_s})
+    reload()
+    return item
+
+
+def _norm_root(root: str) -> str:
+    """把调用方给的路径归一化成与 projects[] 里一致的形态（resolve + 原生分隔符）。"""
+    r = str(root or "").strip()
+    if not r:
+        raise ValueError("项目路径不能为空")
+    return str(Path(r).resolve() if os.path.isabs(r) else (BASE / r).resolve())
+
+
+def switch_project(root: str) -> dict:
+    """切换激活项目并刷新全部路径常量（ROOT / 三目录 / AGENTS_DIR / LOG_FILE）。"""
+    root_s = _norm_root(root)
+    if not any(str(p.get("root") or "") == root_s for p in projects()):
+        raise ValueError("项目未登记：" + root_s)
+    _write_cfg({"active": root_s})
+    reload()
+    return active_project()
+
+
+def remove_project(root: str) -> dict:
+    """把项目移出登记 —— 只删配置里的条目，项目目录与其中数据一律不动。"""
+    root_s = _norm_root(root)
+    left = [p for p in projects() if str(p.get("root") or "") != root_s]
+    if len(left) == len(projects()):
+        raise ValueError("项目未登记：" + root_s)
+    patch = {"projects": left}
+    if str(_CFG.get("active") or "") == root_s:
+        patch["active"] = str(left[0].get("root")) if left else None
+    _write_cfg(patch)
+    reload()
+    return {"removed": root_s, "left": len(left)}
+
+
 def settings_info() -> dict:
-    """当前生效配置摘要（根目录与三目录状态/角色与 preset 就绪数）。"""
-    preset_home = Path(os.environ.get("OPC_PRESET_HOME") or (Path.home() / ".dsh" / ".agent-presets"))
-    presets_ready = sum(1 for d in preset_home.glob("opc-r?") if (d / "preset.yml").exists()) if preset_home.is_dir() else 0
+    """当前生效配置摘要（根目录与三目录状态 / 角色数）。"""
     return {
         "ok": True,
         "config": {k: _CFG.get(k) for k in SETTING_KEYS},
@@ -166,34 +226,49 @@ def settings_info() -> dict:
         "batchExists": BATCH_ROOT.exists(),
         "workspaceRoot": str(WORKSPACE_ROOT.resolve()) if WORKSPACE_ROOT.exists() else str(WORKSPACE_ROOT),
         "workspaceExists": WORKSPACE_ROOT.exists(),
-        "presetHome": str(preset_home),
-        "presetsReady": presets_ready,
         "model": model_info(),
+        "projects": projects(),
+        "activeProject": active_project(),
+        "agentsDir": str(AGENTS_DIR),
+        "seedRoles": sum(1 for p in AGENTS_SEED.glob("R*.role.md")),
         "rolesCount": sum(1 for p in AGENTS_DIR.glob("R*.role.md")),
         "envOverride": bool(os.environ.get("OPC_KB_ROOT") or os.environ.get("OPC_CONFIG") or os.environ.get("OPC_PORT")),
     }
 
 
 def list_dirs(base_path: str = "") -> dict:
-    """列出 path 的直接子目录（目录选择器用）；path 空 → 根目录（三个自动文件夹可见）。"""
+    """目录选择器：列出 path 的直接子目录（不含隐藏项），返回 parent 供「上级」导航。
+    path 为空 → Windows 盘符列表 / 其他系统根目录。"""
     try:
-        p = Path(base_path).resolve() if base_path else ROOT
+        if not base_path:
+            if os.name == "nt":
+                drives = []
+                for d in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+                    p = Path(d + ":\\")
+                    if p.exists():
+                        drives.append(p.as_posix())
+                return {"ok": True, "path": "", "parent": "", "dirs": drives}
+            root = Path("/")
+            return {"ok": True, "path": "/", "parent": "",
+                    "dirs": sorted(d.name for d in root.iterdir() if d.is_dir())}
+        p = Path(base_path).resolve()
         if not p.is_dir():
             return {"ok": False, "msg": "目录不存在或不可读：" + str(p)}
         dirs = sorted(d.name for d in p.iterdir() if d.is_dir() and not d.name.startswith("."))
-        return {"ok": True, "path": str(p), "dirs": dirs}
+        parent = "" if p.parent == p else str(p.parent)
+        return {"ok": True, "path": str(p), "parent": parent, "dirs": dirs}
     except Exception as e:
         return {"ok": False, "msg": str(e)}
 
 
 # ---------- 角色名称 ↔ 工作区目录（web 引用/工作区创建用角色名称；R1/R2 仅为编号 Id） ----------
 
-_ROLE_NAME_RE = re.compile("名称" + chr(92) + "s*[：:]([^｜|" + chr(92) + "r" + chr(92) + "n]+)")
+_ROLE_NAME_RE = re.compile(r"名称\s*[：:]([^｜|\r\n]+)")
 
 
 def sanitize_dir(name: str) -> str:
     """把角色名称转换为安全目录片段（去非法字符，保留中文/括号）。"""
-    bad = set(chr(92) + "/:*?<>|\"" + chr(39) + chr(9) + chr(13) + chr(10) + " ")
+    bad = set("\\/:*?<>|\"'\t\r\n ")
     s = "".join(c for c in str(name or "") if c not in bad).strip()
     return s or "未命名"
 
@@ -206,17 +281,6 @@ def role_name(no: str) -> str:
         if m and m.group(1).strip():
             return m.group(1).strip()
     return no
-
-
-def role_ws_dir(no: str) -> str:
-    """角色编号 → 工作区目录名 = 角色名称（不带 -输出 后缀）。"""
-    return sanitize_dir(role_name(no))
-
-
-
-def role_ws_rel(no: str) -> str:
-    """角色编号 → 相对路径「工作区/<角色名称>」。"""
-    return "%s/%s" % (WORKSPACE_REL, role_ws_dir(no))
 
 
 # ---------- 大模型 API（模型接入，参照 dsh 模型 API 接入惯例） ----------
@@ -347,14 +411,25 @@ def model_info() -> dict:
 # 实际执行方 = 常驻主会话 R1（读取队列后拆解派发）。
 
 def load_schedules() -> list:
-    """读取 opc-config.json 的 schedule 段（任务列表）。"""
-    s = _CFG.get("schedule")
+    """当前项目的定时任务（存在 projects[i].schedule —— 不同项目节奏不同）。"""
+    s = active_project().get("schedule")
+    if isinstance(s, list):
+        return s
+    s = _CFG.get("schedule")            # 兼容尚未建项目时的旧顶层字段
     return s if isinstance(s, list) else []
 
 
 def save_schedules(jobs: list) -> None:
-    """把任务列表写回 opc-config.json（不触发 reload，避免重扫目录）。"""
-    _write_cfg({"schedule": jobs or []})
+    """写回当前项目的定时任务（没有项目时退回顶层字段）。"""
+    cur = active_project()
+    if not cur:
+        _write_cfg({"schedule": jobs or []})
+        return
+    ps = [dict(p) for p in projects()]
+    for p in ps:
+        if str(p.get("root") or "") == str(cur.get("root") or ""):
+            p["schedule"] = jobs or []
+    _write_cfg({"projects": ps})
 
 
 def schedule_next(job: dict, now=None) -> object:

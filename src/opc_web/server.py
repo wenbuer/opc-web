@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """HTTP 服务：路由与请求处理（标准库 http.server，零第三方依赖）。"""
 import json
-import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote
 
@@ -11,6 +10,16 @@ from . import bootstrap, config, knowledge, parsers, review, roles, runner, sche
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
+
+    def _body(self):
+        """读取 POST body 并解析 JSON；空 body 返回 {}；解析失败返回 None。"""
+        length = int(self.headers.get("Content-Length", 0))
+        if not length:
+            return {}
+        try:
+            return json.loads(self.rfile.read(length).decode("utf-8"))
+        except Exception:
+            return None
 
     def _json(self, obj, code=200):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -41,10 +50,6 @@ class Handler(BaseHTTPRequestHandler):
             rel = url[len("/static/"):]
             ctype = "text/css; charset=utf-8" if rel.endswith(".css") else "text/javascript; charset=utf-8"
             self._file(config.STATIC / rel, ctype)
-        elif url == "/api/ping":
-            self._json({"ok": True, "service": "OPC 控制台（opc-web）", "port": config.PORT})
-        elif url == "/api/kb":
-            self._json({"ok": True, "tree": knowledge.scan_md_files(config.KB_ROOT)})
         elif url == "/api/kb-entries":
             self._json({"ok": True, "manager": "老板助理（枢纽）R1",
                         "entries": knowledge.kb_entries()})
@@ -58,13 +63,16 @@ class Handler(BaseHTTPRequestHandler):
         elif url == "/api/pending":
             try:
                 data = parsers.parse_piyuetai(knowledge.read_md(config.PIYUETAI_REL))
-                self._json({"ok": True, "pending": data["pending"], "archive": data["archive"]})
+                self._json({"ok": True, "work": data["work"], "pending": data["pending"],
+                            "archive": data["archive"]})
             except Exception as e:
                 self._json({"ok": False, "msg": str(e)}, 500)
         elif url == "/api/summary":
             try:
                 data = parsers.parse_piyuetai(knowledge.read_md(config.PIYUETAI_REL))
-                self._json({"ok": True, "pendingCount": len(data["pending"]),
+                self._json({"ok": True,
+                            "pendingCount": len(data["pending"]),
+                            "workCount": len(data["work"]),
                             "archiveCount": len(data["archive"]), "daily": knowledge.latest_daily()})
             except Exception as e:
                 self._json({"ok": False, "msg": str(e)}, 500)
@@ -78,22 +86,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "events": parsers.parse_timeline()})
             except Exception as e:
                 self._json({"ok": False, "msg": str(e)}, 500)
-        elif url == "/api/tasks":
-            try:
-                self._json({"ok": True, "tasks": parsers.parse_tasks()})
-            except Exception as e:
-                self._json({"ok": False, "msg": str(e)}, 500)
         elif url == "/api/queue":
             try:
                 self._json({"ok": True, "queue": store.tasks()})
             except Exception as e:
                 self._json({"ok": False, "msg": str(e)}, 500)
-        elif url == "/api/r1-output":
-            try:
-                text = config.LOG_FILE.read_text(encoding="utf-8")
-            except Exception:
-                text = ""
-            self._json({"ok": True, "tail": text[-8000:]})
         elif url == "/api/rn-outputs":
             try:
                 qs = parse_qs(self.path.split("?", 1)[1]) if "?" in self.path else {}
@@ -127,6 +124,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "msg": "角色不存在"}, 404)
                 return
             self._json({"ok": True, "no": no, "card": p.read_text(encoding="utf-8")})
+        elif url == "/api/projects":
+            self._json({"ok": True, "projects": config.projects(),
+                        "active": config.active_project(), "seedRoles": config.settings_info()["seedRoles"]})
         elif url == "/api/settings":
             self._json(config.settings_info())
         elif url == "/api/schedule":
@@ -145,13 +145,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         url = self.path.split("?", 1)[0]
         if url == "/api/retry":
-            try:
-                length = int(self.headers.get("Content-Length", 0))
-                body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
-                no = str(body.get("no", "")).strip()
-            except Exception:
+            body = self._body()
+            if body is None:
                 self._json({"ok": False, "msg": "JSON 解析失败"}, 400)
                 return
+            no = str(body.get("no", "")).strip()
             if not no:
                 self._json({"ok": False, "msg": "缺少任务编号 no"}, 400)
                 return
@@ -170,14 +168,12 @@ class Handler(BaseHTTPRequestHandler):
                                else (no + " 状态为「" + hit[0]["status"] + "」，无需重试")})
             return
         if url == "/api/dispatch":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                body = json.loads(self.rfile.read(length).decode("utf-8"))
-                text = str(body.get("task", "")).strip()
-                expect = str(body.get("expect", "R1 判断")).strip()
-            except Exception:
+            body = self._body()
+            if body is None:
                 self._json({"ok": False, "msg": "JSON 解析失败"}, 400)
                 return
+            text = str(body.get("task", "")).strip()
+            expect = str(body.get("expect", "R1 判断")).strip()
             if not text:
                 self._json({"ok": False, "msg": "任务内容不能为空"}, 400)
                 return
@@ -185,24 +181,26 @@ class Handler(BaseHTTPRequestHandler):
             scheduler.scan_once()  # 立即生成 R1 拆解指令，不等 8s 轮询
             self._json({"ok": True, "no": no, "queue": store.tasks(), "state": scheduler.SCHED_STATE})
             return
-        if url == "/api/run-r1":
-            threading.Thread(target=scheduler.run_r1_job, daemon=True).start()
-            self._json({"ok": True, "msg": "R1 调度指令已生成（待常驻主会话 R1 用 subagent 拆解派发）", "state": scheduler.SCHED_STATE})
-            return
-        if url == "/api/run-child":
-            length = int(self.headers.get("Content-Length", 0))
-            try:
-                body = json.loads(self.rfile.read(length).decode("utf-8"))
-                no = str(body.get("no", "")).strip()
-                task = str(body.get("task", "")).strip()
-            except Exception:
+        if url == "/api/task-delete":
+            body = self._body()
+            if body is None:
                 self._json({"ok": False, "msg": "JSON 解析失败"}, 400)
                 return
-            if not no or not task:
-                self._json({"ok": False, "msg": "缺少 no/task"}, 400)
+            no = str(body.get("no", "")).strip()
+            if not no:
+                self._json({"ok": False, "msg": "缺少任务编号 no"}, 400)
                 return
-            threading.Thread(target=scheduler.run_child_job, args=(no, task), daemon=True).start()
-            self._json({"ok": True, "msg": "子任务派发指令已生成（待常驻主会话用 subagent 派发）", "state": scheduler.SCHED_STATE})
+            if not any(t["no"] == no for t in store.tasks()):
+                self._json({"ok": False, "msg": "任务 " + no + " 不在队列中"}, 404)
+                return
+            st = scheduler.SCHED_STATE
+            if st.get("busy") and no in (st.get("tag") or ""):
+                self._json({"ok": False, "msg": no + " 正在执行中，暂不可删除"}, 409)
+                return
+            store.delete_task(no)
+            removed = scheduler.clean_task_files(no)
+            self._json({"ok": True, "no": no, "removedFiles": removed, "queue": store.tasks(),
+                        "msg": "已删除任务 " + no + ((" · 清理工作区文件 " + str(removed) + " 个") if removed else "")})
             return
         if url == "/api/r1-archive":
             try:
@@ -218,8 +216,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if url == "/api/plan-pause":
             try:
-                length = int(self.headers.get("Content-Length", 0))
-                body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                body = self._body() or {}
                 act = str(body.get("action", "toggle"))
                 if act == "toggle":
                     scheduler.SCHED_STATE["paused"] = not scheduler.SCHED_STATE["paused"]
@@ -235,8 +232,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if url == "/api/roles/add":
             try:
-                length = int(self.headers.get("Content-Length", 0))
-                body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                body = self._body() or {}
                 r = roles.add_role(
                     str(body.get("name", "")).strip() or "新角色",
                     str(body.get("duty", "")).strip() or "待补充职责",
@@ -252,8 +248,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if url == "/api/roles/edit":
             try:
-                length = int(self.headers.get("Content-Length", 0))
-                body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                body = self._body() or {}
                 r = roles.edit_role(
                     str(body.get("no", "")).strip(),
                     name=str(body.get("name", "")).strip() or None,
@@ -269,13 +264,38 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "msg": str(e)}, 500)
             return
 
+        if url == "/api/projects":
+            # 一个端点三种动作：add / switch / remove（项目以 root 路径为唯一键）
+            try:
+                body = self._body() or {}
+                act = str(body.get("action") or "").strip()
+                root = str(body.get("root") or "").strip()
+                if act in ("switch", "remove") and scheduler.SCHED_STATE.get("busy"):
+                    # 切换会把 ROOT/台账/角色目录整体换掉，执行链跑一半时切会写串项目
+                    self._json({"ok": False, "msg": "当前有任务正在执行，等执行链跑完再切换项目"}, 409)
+                    return
+                if act == "add":
+                    p = config.add_project(str(body.get("name") or ""), root)
+                    bootstrap.bootstrap()          # 建三目录 + 从 agents-seed 复制角色卡
+                    self._json({"ok": True, "project": p, "boot": bootstrap.BOOT_LOG, **config.settings_info()})
+                elif act == "switch":
+                    p = config.switch_project(root)
+                    bootstrap.bootstrap()
+                    self._json({"ok": True, "project": p, "boot": bootstrap.BOOT_LOG, **config.settings_info()})
+                elif act == "remove":
+                    res = config.remove_project(root)
+                    self._json({"ok": True, "result": res, **config.settings_info()})
+                else:
+                    self._json({"ok": False, "msg": "未知动作：" + act}, 400)
+            except Exception as e:
+                self._json({"ok": False, "msg": str(e)}, 400)
+            return
         if url == "/api/settings":
             # 一个端点服务两种保存：模型接入（body.model）与 根目录/端口（SETTING_KEYS）。
             # 原来写成两个同名分支，第二个永远走不到 —— 保存根目录会落进只处理 model 的
             # 那个分支：根目录从未写盘（界面却显示成功），还顺手把 model 段重置成默认 provider。
             try:
-                length = int(self.headers.get("Content-Length", 0))
-                body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                body = self._body() or {}
                 dry = bool(body.get("dry", False))
                 kv = {k: body.get(k) for k in config.SETTING_KEYS if k in body}
                 if kv.get("port") not in (None, ""):
@@ -308,16 +328,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if url == "/api/model/test":
             try:
-                length = int(self.headers.get("Content-Length", 0))
-                body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                body = self._body() or {}
                 self._json(config.test_model(body, timeout=20))
             except Exception as e:
                 self._json({"ok": False, "msg": "模型连通测试异常: " + str(e)[:200]}, 500)
             return
         if url == "/api/roles/delete":
             try:
-                length = int(self.headers.get("Content-Length", 0))
-                body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                body = self._body() or {}
                 r = roles.remove_role(str(body.get("no", "")).strip())
                 self._json({"ok": True, "result": r})
             except Exception as e:
@@ -325,8 +343,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if url == "/api/schedule":
             try:
-                length = int(self.headers.get("Content-Length", 0))
-                body = json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
+                body = self._body() or {}
                 action = str(body.get("action") or "add")
                 jobs = config.load_schedules()
                 if action == "add":
@@ -364,21 +381,24 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as e:
                 self._json({"ok": False, "msg": str(e)}, 500)
             return
-        if url == "/api/roles/generate":
+        if url == "/api/work-archive":
             try:
-                r = roles.generate_all(force=True)
-                self._json({"ok": True, "result": r})
+                body = self._body() or {}
+                item = int(str(body.get("item", "0")).strip() or 0)
+                if item <= 0:
+                    raise ValueError("缺少工作条目编号")
+                title = review.archive_work(item)
+                self._json({"ok": True, "item": item, "title": title,
+                            "msg": "工作 #%d「%s」已归档（标记已阅）" % (item, (title or "")[:40])})
             except Exception as e:
-                self._json({"ok": False, "msg": str(e)}, 500)
+                self._json({"ok": False, "msg": str(e)}, 400)
             return
         if url != "/api/piyue":
             self._json({"ok": False, "msg": "未知接口"}, 404)
             return
-        length = int(self.headers.get("Content-Length", 0))
-        try:
-            body = json.loads(self.rfile.read(length).decode("utf-8"))
-        except Exception as e:
-            self._json({"ok": False, "msg": f"JSON 解析失败：{e}"}, 400)
+        body = self._body()
+        if body is None:
+            self._json({"ok": False, "msg": "JSON 解析失败"}, 400)
             return
         try:
             item = str(body.get("item", "")).strip()
