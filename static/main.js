@@ -645,7 +645,24 @@
     var box = $("taskOut");
     box.innerHTML = "<div class='placeholder'>加载子任务 " + esc(x.no) + " …</div>";
     api("/api/sub-output?no=" + encodeURIComponent(x.no)).then(function(j){
-      if (!j || !j.ok){ box.innerHTML = "<div class='placeholder'>子任务产出读取失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
+      if (!j || !j.ok){
+        // 还没跑过的子任务根本没有产出文件 —— 那是正常状态，不是「读取失败」。
+        // 把它报成错误，用户会以为出了故障。
+        var st0 = String(x.st || "待派");
+        if (st0 === "待派" || st0 === "已派" || st0 === "执行中"){
+          var nm0 = roleName(x.role) || x.role || "";
+          box.innerHTML = "<div class='to-head'><span class='sub-no'>" + esc(x.no) + "</span><b>"
+            + esc(nm0) + "</b><em>" + esc(st0) + "</em></div>"
+            + (x.sub ? "<div class='sub-line'>子任务：" + esc(x.sub) + "</div>" : "")
+            + (x.expect ? "<div class='sub-line sub-expect'>期望产出：" + esc(x.expect) + "</div>" : "")
+            + "<div class='placeholder'>" + esc(st0 === "执行中"
+                ? "正在执行 —— 这一段还没落盘，跑完这里会显示产出"
+                : "尚未产出 —— 状态「" + st0 + "」，等它执行完这里会显示产出") + "</div>";
+          return;
+        }
+        box.innerHTML = "<div class='placeholder'>子任务产出读取失败：" + esc(j && j.msg || "未知") + "</div>";
+        return;
+      }
       var m = j.meta || {};
       var nm = m.roleName || roleName(m.role) || x.role || "";
       var hh = "<div class='to-head'><a href='javascript:void(0)' id='subBack'>← 返回任务 " + esc(x.taskNo) + " 聚合</a>"
@@ -703,10 +720,9 @@
     var stj = $("dqState");
     if (!v){ if (stj) stj.textContent = "请先填写任务内容"; return; }
     var ex = ($("dqExpect") && $("dqExpect").value.trim()) || "R1 判断";
-    var pr = parseInt(($("dqPriority") && $("dqPriority").value) || "1", 10);
-    if (isNaN(pr)) pr = 1;
+    // 优先级不在这里选 —— 它在「子任务看板 · 待派」那张列表上（拆分之后才谈得上优先级）
     if (stj){ stj.className = "dq-state busy"; stj.textContent = "下达中…"; }
-    post("/api/dispatch", { task: v, expect: ex, priority: pr }).then(function(j){
+    post("/api/dispatch", { task: v, expect: ex }).then(function(j){
       if (!j || !j.ok){ if (stj){ stj.className = "dq-state"; stj.textContent = "下达失败：" + (j && j.msg || "未知"); } return; }
       $("dqInput").value = "";
       if (stj){ stj.className = "dq-state busy"; stj.innerHTML = "已下达 <b>" + esc(j.no) + "</b> —— 全自动流水线：R1 拆解 → subagent 派发各角色 → 回报落库"; }
@@ -1290,7 +1306,13 @@
     head.className = "br-head";
     head.innerHTML = "<span>子任务</span><em>共 " + total + " 个</em>";
     wrap.appendChild(head);
+    // 未开始的（待派/已派）**排在最前**：它们是要动手的那批。
+    // 原来只按 lastStarted 倒序，而待派子任务从来没启动过（lastStarted 为空）→ 全排到最后，
+    // 再被 slice(0,30) 截掉 —— 结果「要动的那批」恰恰在全局列表里看不见，芯片自然也看不见。
     var arr = list.slice().sort(function(a, b){
+      var pa = (a.st === "待派" || a.st === "已派") ? 0 : 1;
+      var pb = (b.st === "待派" || b.st === "已派") ? 0 : 1;
+      if (pa !== pb) return pa - pb;
       return String(b.lastStarted || "").localeCompare(String(a.lastStarted || ""));
     }).slice(0, 30);
     arr.forEach(function(x){

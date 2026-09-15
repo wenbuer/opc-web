@@ -332,15 +332,14 @@ class Handler(BaseHTTPRequestHandler):
         no = str(body.get("no", "")).strip()
         if not no:
             raise ApiError(400, "缺少任务编号 no")
-        sub_no = str(body.get("sub") or "").strip()
-        if sub_no:
-            # 子任务优先级：用户是在「子任务看板 · 待派」上排序的，这是主入口
-            if not any(s["no"] == sub_no for s in store.subtasks()):
-                raise ApiError(404, "子任务 " + sub_no + " 不存在")
+        # no 是任务号还是子任务号，**由后端认**：调用方（看板上的优先级芯片）手里就一个编号，
+        # 不该逼它先判断这是哪一层 —— 之前要求额外传 sub 字段，前端漏传，点了只回一句
+        # 「任务 T-032-S1 不在队列中」，看着就像按钮坏了。
+        if store.get_subtask(no):
             p = max(0, min(2, int(body.get("priority") or 0)))
-            store.set_subtask_priority(sub_no, p)
-            return {"ok": True, "no": sub_no, "queue": self._queue_rows(),
-                    "msg": sub_no + " 优先级已设为" + {0: "低", 1: "普通", 2: "高"}.get(p, str(p))}
+            store.set_subtask_priority(no, p)
+            return {"ok": True, "no": no, "queue": self._queue_rows(),
+                    "msg": no + " 优先级已设为" + {0: "低", 1: "普通", 2: "高"}.get(p, str(p))}
         t = store.get_task(no)
         if not t:
             raise ApiError(404, "任务 " + no + " 不在队列中")

@@ -205,6 +205,16 @@ def replace_subtasks(task_no: str, rows: list, default_priority: int = 1) -> lis
         return out
 
 
+def get_subtask(no: str) -> dict:
+    """单个子任务（不存在返回 {}）。用于「这个编号是任务还是子任务」的判定。"""
+    with _db() as c:
+        r = c.execute("SELECT no, task_no, role, status, priority FROM subtask WHERE no = ?", (no,)).fetchone()
+        if r is None:
+            return {}
+        return {"no": r["no"], "taskNo": r["task_no"], "role": r["role"],
+                "st": r["status"], "priority": int(r["priority"] or 0)}
+
+
 def set_subtask_priority(no: str, priority: int) -> bool:
     """设子任务优先级（0 低 / 1 普通 / 2 高）。执行顺序与任务挑选都看它。"""
     with _db() as c:
