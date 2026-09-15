@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <!--
-  OPC 任务闭环 · 流程图（小红书式卡片海报）
-  改法：直接改下面的文字与配色，再重新出图——
+  OPC 任务闭环 · 环形流程图（八步一圈，说明全部画在节点内）
+  改法：改文字与配色后重新出图——
     msedge --headless=new --disable-gpu --hide-scrollbars --virtual-time-budget=6000 \
-           --window-size=1160,1324 --screenshot=opc-task-loop-01.png opc-task-loop-01.html
-  高度 1324 是内容实测高度（改文案后重新量一次：body.scrollHeight）。
+           --window-size=1280,<高度> --screenshot=opc-task-loop-01.png opc-task-loop-01.html
+  <高度> = body.scrollHeight（必须与测量时同一窗口宽度，否则换行变了、高度也变）。
 -->
 <html lang="zh-CN">
 <head>
@@ -12,58 +12,73 @@
 <title>OPC 任务闭环</title>
 <style>
   :root{
-    --ink:#1b2430; --dim:#5f6b7a; --faint:#8a95a6; --line:#e6ebf2;
-    --task:#2f7fd4; --role:#7c5cf0; --explain:#10b981;
-    --task-bg:#eef5fd; --role-bg:#f2eefe; --explain-bg:#eafaf3;
+    --ink:#141b26; --dim:#5f6b7a; --faint:#93a0b1; --line:#e6ebf2;
+    --r0:#e8505b; --r0bg:#fdeff1; --r0bd:#f7d3d8;
+    --r1:#2f7fd4; --r1bg:#eef5fd; --r1bd:#d3e4f8;
+    --rx:#7c5cf0; --rxbg:#f3eefe; --rxbd:#e0d7fb;
+    --ok:#10b981;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   body{
     font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",system-ui,sans-serif;
-    background:linear-gradient(160deg,#fdf6f4 0%,#f4f7fd 46%,#eef6f4 100%);
-    color:var(--ink);display:flex;justify-content:center;padding:44px 0;
+    background:linear-gradient(158deg,#fdf6f4 0%,#f4f7fd 48%,#eef7f4 100%);
+    color:var(--ink);display:flex;justify-content:center;padding:36px 0;
     -webkit-font-smoothing:antialiased;
   }
-  .poster{width:1080px;background:#fff;border-radius:32px;padding:56px 64px 48px;
-    box-shadow:0 24px 60px rgba(27,36,48,.10),0 2px 6px rgba(27,36,48,.04)}
+  .poster{width:1176px;background:#fff;border-radius:32px;padding:42px 48px 36px;
+    box-shadow:0 24px 60px rgba(20,27,38,.10),0 2px 6px rgba(20,27,38,.04)}
 
-  /* ── 头部 ── */
-  .tag{display:inline-block;font-size:14px;letter-spacing:2px;color:var(--task);
-    background:var(--task-bg);border-radius:999px;padding:6px 16px;font-weight:600}
-  h1{font-size:52px;letter-spacing:-1px;margin:18px 0 10px;line-height:1.15}
-  h1 em{font-style:normal;color:var(--task)}
-  .sub{font-size:17px;color:var(--dim);line-height:1.7}
-  .rule{height:1px;background:var(--line);margin:34px 0}
+  .tag{display:inline-block;font-size:13px;letter-spacing:2px;color:var(--r1);
+    background:var(--r1bg);border-radius:999px;padding:5px 15px;font-weight:600}
+  h1{font-size:40px;letter-spacing:-.5px;margin:14px 0 8px;line-height:1.2}
+  h1 em{font-style:normal;color:var(--r1)}
+  .sub{font-size:15px;color:var(--dim);line-height:1.7}
 
-  /* ── 闭环图 ── */
-  .loop{display:flex;justify-content:center}
-  svg{display:block}
+  /* ── 图区：固定 1080 × 622，箭头与节点都绝对定位 ── */
+  .chart{position:relative;width:1080px;height:622px;margin:26px auto 0}
+  svg.arrows{position:absolute;left:0;top:0;width:1080px;height:622px}
+  svg.arrows path{fill:none;stroke:#a9b6c7;stroke-width:2.4;stroke-dasharray:7 7}
+  svg.arrows marker path{fill:#a9b6c7;stroke:none}
 
-  /* ── 三张卡 ── */
-  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:36px}
-  .card{border:1px solid var(--line);border-radius:22px;padding:24px 22px 22px;position:relative}
-  .card.task{background:var(--task-bg);border-color:#d8e6f7}
-  .card.role{background:var(--role-bg);border-color:#e3dbfb}
-  .card.explain{background:var(--explain-bg);border-color:#cdeee0}
-  .no{width:30px;height:30px;border-radius:10px;display:flex;align-items:center;justify-content:center;
-    font-size:15px;font-weight:700;color:#fff;margin-bottom:14px}
-  .task .no{background:var(--task)}
-  .role .no{background:var(--role)}
-  .explain .no{background:var(--explain)}
-  .card h2{font-size:22px;margin-bottom:6px}
-  .card .who{font-size:13px;color:var(--faint);font-weight:600;letter-spacing:.5px;margin-bottom:14px}
-  .card ul{list-style:none}
-  .card li{font-size:14.5px;line-height:1.75;color:var(--dim);padding-left:15px;position:relative;margin-bottom:7px}
-  .card li::before{content:"";position:absolute;left:0;top:9px;width:5px;height:5px;border-radius:50%}
-  .task li::before{background:var(--task)}
-  .role li::before{background:var(--role)}
-  .explain li::before{background:var(--explain)}
-  .card li b{color:var(--ink);font-weight:600}
+  .node{position:absolute;width:246px;height:220px;border-radius:20px;padding:16px 17px 14px;
+    border:1.5px solid var(--line);background:#fff;display:flex;flex-direction:column}
+  .node .hd{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+  .node .no{width:26px;height:26px;border-radius:9px;flex:none;color:#fff;font-size:14px;font-weight:700;
+    display:flex;align-items:center;justify-content:center}
+  .node h2{font-size:18.5px;letter-spacing:-.2px}
+  .node .who{margin-left:auto;font-size:10.5px;font-weight:700;letter-spacing:.5px;color:var(--faint)}
+  .node p{font-size:13px;line-height:1.65;color:var(--dim);margin-bottom:4px}
+  .node p b{color:var(--ink);font-weight:600}
+  .node .br{margin-top:auto;padding-top:9px;border-top:1px dashed var(--line);
+    font-size:12px;line-height:1.5;color:var(--faint)}
+  .node .br b{color:var(--dim);font-weight:600}
 
-  /* ── 页脚 ── */
-  .foot{margin-top:34px;padding-top:22px;border-top:1px solid var(--line);
-    display:flex;align-items:center;gap:14px}
-  .foot .dot{width:8px;height:8px;border-radius:50%;background:var(--explain);flex:none}
-  .foot p{font-size:15px;color:var(--dim)}
+  .n-r0{background:var(--r0bg);border-color:var(--r0bd)} .n-r0 .no{background:var(--r0)}
+  .n-r1{background:var(--r1bg);border-color:var(--r1bd)} .n-r1 .no{background:var(--r1)}
+  .n-rx{background:var(--rxbg);border-color:var(--rxbd)} .n-rx .no{background:var(--rx)}
+
+  /* ── 环心：子任务四态 ── */
+  .core{position:absolute;left:180px;top:246px;width:720px;height:130px;
+    border:1.5px solid var(--line);border-radius:20px;background:#fbfcfe;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:11px}
+  .core .loop{position:absolute;left:50%;top:-11px;transform:translateX(-50%);
+    background:#fbfcfe;border:1.5px solid var(--line);border-radius:999px;
+    font-size:11.5px;font-weight:700;letter-spacing:3px;color:var(--faint);padding:2px 13px}
+  .core .cap{font-size:12px;letter-spacing:3px;color:var(--faint);font-weight:700}
+  .states{display:flex;align-items:center;gap:7px}
+  .st{font-size:13px;font-weight:700;padding:5px 14px;border-radius:999px;border:1.5px solid}
+  .st.wait{color:#6b7686;border-color:#dbdee4;background:#f7f8fa}
+  .st.run{color:var(--rx);border-color:var(--rxbd);background:var(--rxbg)}
+  .st.done{color:var(--ok);border-color:#c9ecdd;background:#eafaf3}
+  .st.block{color:var(--r0);border-color:var(--r0bd);background:var(--r0bg)}
+  .arw{color:#c3ccd8;font-size:14px;font-weight:700}
+  .core .note{font-size:12.5px;color:var(--dim)}
+  .core .note b{color:var(--ink)}
+
+  .foot{margin-top:24px;padding-top:16px;border-top:1px solid var(--line);
+    display:flex;align-items:center;gap:12px}
+  .foot .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
+  .foot p{font-size:14px;color:var(--dim)}
   .foot b{color:var(--ink)}
 </style>
 </head>
@@ -72,90 +87,97 @@
 
   <span class="tag">OPC · 运行闭环</span>
   <h1>任务 → 角色 → 解释，<em>转回任务</em></h1>
-  <p class="sub">人只说「要什么」，剩下的交给一条能自己收口的链路。</p>
-  <div class="rule"></div>
+  <p class="sub">人只说「要什么」，剩下的交给一条能自己收口的链路。八步一圈，每一步都留痕。</p>
 
-  <div class="loop">
-    <svg width="900" height="470" viewBox="0 0 900 470" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <div class="chart">
+    <svg class="arrows" viewBox="0 0 1080 622">
       <defs>
-        <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="#9aa7b8"/>
+        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path d="M0,0 L10,5 L0,10 z"/>
         </marker>
       </defs>
-
-      <!-- 任务 → 角色（右侧下行） -->
-      <path d="M596,132 C700,172 764,238 764,326" stroke="#9aa7b8" stroke-width="2.4"
-            stroke-dasharray="7 7" marker-end="url(#ar)"/>
-      <text x="742" y="212" font-size="16" font-weight="600" fill="#5f6b7a" text-anchor="middle">拆解 · 派发</text>
-
-      <!-- 角色 → 解释（底部左行） -->
-      <path d="M690,382 L250,382" stroke="#9aa7b8" stroke-width="2.4"
-            stroke-dasharray="7 7" marker-end="url(#ar)"/>
-      <text x="451" y="410" font-size="16" font-weight="600" fill="#5f6b7a" text-anchor="middle">回报 · 汇总</text>
-
-      <!-- 解释 → 任务（左侧上行） -->
-      <path d="M136,308 C136,238 200,172 310,136" stroke="#9aa7b8" stroke-width="2.4"
-            stroke-dasharray="7 7" marker-end="url(#ar)"/>
-      <text x="158" y="212" font-size="16" font-weight="600" fill="#5f6b7a" text-anchor="middle">批阅 · 拍板</text>
-
-      <!-- 节点：任务 -->
-      <rect x="330" y="46" width="240" height="92" rx="24" fill="#eef5fd" stroke="#2f7fd4" stroke-width="2.5"/>
-      <text x="450" y="88" font-size="27" font-weight="700" fill="#1b2430" text-anchor="middle">任务</text>
-      <text x="450" y="116" font-size="15" fill="#5f6b7a" text-anchor="middle">R0 说要什么</text>
-
-      <!-- 节点：角色 -->
-      <rect x="660" y="336" width="240" height="92" rx="24" fill="#f2eefe" stroke="#7c5cf0" stroke-width="2.5"/>
-      <text x="780" y="378" font-size="27" font-weight="700" fill="#1b2430" text-anchor="middle">角色</text>
-      <text x="780" y="406" font-size="15" fill="#5f6b7a" text-anchor="middle">R2~R7 干活</text>
-
-      <!-- 节点：解释 -->
-      <rect x="0" y="336" width="240" height="92" rx="24" fill="#eafaf3" stroke="#10b981" stroke-width="2.5"/>
-      <text x="120" y="378" font-size="27" font-weight="700" fill="#1b2430" text-anchor="middle">解释</text>
-      <text x="120" y="406" font-size="15" fill="#5f6b7a" text-anchor="middle">R1 讲清楚 + R0 拍板</text>
-
-      <!-- 圆心 -->
-      <circle cx="450" cy="243" r="62" fill="#fff" stroke="#e6ebf2" stroke-width="2"/>
-      <text x="450" y="236" font-size="20" font-weight="700" fill="#1b2430" text-anchor="middle">闭环</text>
-      <text x="450" y="260" font-size="13" fill="#8a95a6" text-anchor="middle">每一轮都留痕</text>
+      <path d="M248,110 L272,110"   marker-end="url(#ar)"/>
+      <path d="M526,110 L550,110"   marker-end="url(#ar)"/>
+      <path d="M804,110 L828,110"   marker-end="url(#ar)"/>
+      <path d="M957,222 L957,398"   marker-end="url(#ar)"/>
+      <path d="M832,512 L808,512"   marker-end="url(#ar)"/>
+      <path d="M554,512 L530,512"   marker-end="url(#ar)"/>
+      <path d="M276,512 L252,512"   marker-end="url(#ar)"/>
+      <path d="M123,400 L123,224"   marker-end="url(#ar)"/>
     </svg>
-  </div>
 
-  <div class="cards">
-    <div class="card task">
-      <div class="no">1</div>
-      <h2>任务</h2>
-      <div class="who">R0（人）· R1 老板助理</div>
-      <ul>
-        <li>R0 用<b>一句话</b>下达「要什么」</li>
-        <li>R1 拆成 1~3 个<b>能独立交付</b>的子任务</li>
-        <li>子任务进队列，按<b>优先级</b>决定谁先跑</li>
-      </ul>
+    <div class="node n-r0" style="left:0;top:0">
+      <div class="hd"><span class="no">1</span><h2>下达任务</h2><span class="who">R0 · 人</span></div>
+      <p>一句话说清<b>要什么</b></p>
+      <p>不定做法、不指定人</p>
+      <div class="br"><b>人只提要求</b> —— 怎么拆、派给谁，看下一步</div>
     </div>
-    <div class="card role">
-      <div class="no">2</div>
-      <h2>角色</h2>
-      <div class="who">R2~R7 各司其职</div>
-      <ul>
-        <li>每个子任务派给一个角色，带<b>角色卡 + 装配技能</b></li>
-        <li>角色在项目内自己用工具干活，产出落到工作区</li>
-        <li>有<b>护栏</b>：轮数 / 工具数 / token 超限即停</li>
-      </ul>
+
+    <div class="node n-r1" style="left:278px;top:0">
+      <div class="hd"><span class="no">2</span><h2>拆解派发</h2><span class="who">R1 · 中枢</span></div>
+      <p>拆成 1~3 个<b>能独立交付</b>的子任务</p>
+      <p>每项点名角色 + 写明期望产出</p>
+      <div class="br">拆不出合法角色 → 置<b>阻塞</b>，等人指派</div>
     </div>
-    <div class="card explain">
-      <div class="no">3</div>
-      <h2>解释</h2>
-      <div class="who">R1 汇总 · R0 批阅</div>
-      <ul>
-        <li>R1 把回报<b>解释</b>成你能一眼看懂的东西</li>
-        <li>要拍板的整理成<b>决策建议</b>，讲清背景与取舍</li>
-        <li>你的批注即新指令，归档后<b>沉淀进知识库</b></li>
-      </ul>
+
+    <div class="node n-r1" style="left:556px;top:0">
+      <div class="hd"><span class="no">3</span><h2>排队 · 派发</h2><span class="who">R1 · 中枢</span></div>
+      <p>拆出 ≥2 项＝长跑，<b>峰时排到谷时</b></p>
+      <p>谷时单价减半；单点小事照跑</p>
+      <div class="br">不想等 → 点「<b>立即执行</b>」插队</div>
+    </div>
+
+    <div class="node n-rx" style="left:834px;top:0">
+      <div class="hd"><span class="no">4</span><h2>角色执行</h2><span class="who">R2~R7</span></div>
+      <p>带<b>角色卡 + 装配技能</b>自己干活</p>
+      <p>过程实时可见：心跳 / 工具 / 文本</p>
+      <div class="br">护栏 <b>300 轮 · 320 工具 · 3000 万 token</b></div>
+    </div>
+
+    <div class="node n-r0" style="left:0;top:402px">
+      <div class="hd"><span class="no">8</span><h2>批阅 · 沉淀</h2><span class="who">R0 · 人</span></div>
+      <p><b>批准 / 驳回 / 修改</b> + 写批注</p>
+      <p>批注即新指令；产出进知识库</p>
+      <div class="br">回到 ① —— <b>结论就是下一轮的输入</b></div>
+    </div>
+
+    <div class="node n-r1" style="left:278px;top:402px">
+      <div class="hd"><span class="no">7</span><h2>呈报批阅</h2><span class="who">R1 · 中枢</span></div>
+      <p>汇总成「<b>工作内容</b>」——每个任务都有</p>
+      <p>确需拍板的另加「待决 N」+ 建议</p>
+      <div class="br">流程性事项不占待决位</div>
+    </div>
+
+    <div class="node n-r1" style="left:556px;top:402px">
+      <div class="hd"><span class="no">6</span><h2>归档入库</h2><span class="who">R1 · 中枢</span></div>
+      <p>回报入台账，正文进《<b>已归档/</b>》</p>
+      <p>子任务状态由这一步落定</p>
+      <div class="br">没产出 → 置<b>阻塞</b>，可重试</div>
+    </div>
+
+    <div class="node n-rx" style="left:834px;top:402px">
+      <div class="hd"><span class="no">5</span><h2>回报落盘</h2><span class="who">R2~R7</span></div>
+      <p>产出写《工作区/角色/…-report.md》</p>
+      <p>meta 记引擎 / 会话 / <b>用量</b>，可回溯</p>
+      <div class="br">格式不合格不落盘</div>
+    </div>
+
+    <div class="core">
+      <span class="loop">闭 环</span>
+      <div class="cap">子 任 务 四 态</div>
+      <div class="states">
+        <span class="st wait">待派</span><span class="arw">→</span>
+        <span class="st run">已派 · 执行中</span><span class="arw">→</span>
+        <span class="st done">完成</span><span class="arw">↘</span>
+        <span class="st block">阻塞 · 可重试</span>
+      </div>
+      <div class="note">一圈跑完 = 一条<b>任务</b>变成一批<b>回报</b>，再变成 R0 一眼看懂的<b>解释</b></div>
     </div>
   </div>
 
   <div class="foot">
     <span class="dot"></span>
-    <p>上一轮的<b>结论</b>，就是下一轮的<b>输入</b> —— 所以它会自己越用越准。</p>
+    <p>每一步都留痕，所以它<b>越用越准</b> —— 产出沉淀进知识库，下一轮的拆解从那里开始。</p>
   </div>
 
 </div>
