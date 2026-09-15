@@ -343,6 +343,12 @@ def execute(task_no, task_text, direct=None):
         forced = bool(store.get_task(task_no).get("force"))
         if (not direct and not forced and total >= config.PEAK_DEFER_MIN_SUBS
                 and config.peak_defer() and config.is_peak_now()):
+            # 排队意味着**什么都没在跑**，所以上一轮被打断留下的「执行中」要归位。
+            # 不归位的话，看板上会同时出现「任务：排队」和「子任务：执行中」——自相矛盾，
+            # 而且那个子任务再也等不到人来收口（重启杀掉链线程时它就停在那儿了）。
+            for _s in store.subtasks(task_no):
+                if str(_s.get("st") or "") == "执行中":
+                    store.set_subtask(_s["no"], "待派")
             until = config.next_offpeak_str()
             store.set_task(task_no, "排队",
                            "峰时排队：已拆解 %d 项，%s 后自动开跑（谷时价减半）" % (total, until))

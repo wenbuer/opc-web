@@ -24,6 +24,20 @@ description: opc-web 控制台的本地运维：起服务、重启时机、截�
 - **只有改了 `src/opc_web/*.py` 才重启**
 - **重启前先查有没有在跑的任务**：`runner.exec_state()` 非空就别重启——会打断正在执行的任务。T-021 曾因此重跑一遍，多烧 271 万 token
 - **但 exec_state 非空 ≠ 真有任务在跑**：dsh 的会话监听线程比 `finished` 晚一步退出，它最后一次心跳会在完成后把条目重建出来（`startedAt` 是完成时刻、`elapsed` 却是真实运行时长，两者对不上就是这个指纹）。判据换成「服务有没有活着的 headless 子进程」（`Get-CimInstance Win32_Process` 里 parent 是服务器 pid 的 node）—— 幽灵条目只挡归档，重启正好清掉它。T-028-S2 因此卡在「执行中」不回
+- **把「查」和「重启」写进同一条命令，让它自己拦**。分开两步就会出事：我先打印了状态、看见 `busy=true, tag=执行 1/3`，然后那条命令照样往下走、把正在跑的子任务杀了 —— 一个上午连犯两次。用下面这段，闸不过就 `exit 1`，重启根本不会执行：
+
+```powershell
+$s = (Invoke-WebRequest 'http://127.0.0.1:8901/api/scheduler' -TimeoutSec 10 -UseBasicParsing).Content | ConvertFrom-Json
+$srv = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -like '*run.py*' })
+$kids = 0
+foreach ($p in $srv) { $kids += @(Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq $p.ProcessId -and $_.Name -eq 'node.exe' }).Count }
+if ($s.state.busy -or $kids -gt 0) { "拒绝重启：busy=" + $s.state.busy + " headless=" + $kids + " tag=" + $s.state.tag; exit 1 }
+foreach ($p in $srv) { taskkill /PID $p.ProcessId /F 2>&1 | Out-Null }
+Start-Sleep -Seconds 2
+python opc-web/scripts/scratch_serve.py
+```
+
+  （`busy` 是任务级；`headless>0` 是子任务级 —— **两个都要看**。队列里「排队」的任务不算在跑，不会被拦。）
 
 ## 动手前先探活
 
