@@ -2405,6 +2405,9 @@
       var pr = j.prices || {}, prw = j.pricesRaw || {};
       var pi = $("mPriceIn");  if (pi) pi.value = (prw.priceIn == null ? "" : prw.priceIn);
       var po = $("mPriceOut"); if (po) po.value = (prw.priceOut == null ? "" : prw.priceOut);
+      // 运行开关：峰时排队是「缺省开」—— 只有显式写成 false 才关（与 config.peak_defer() 同口径）
+      var pd = $("peakDeferOn");
+      if (pd) pd.checked = !(j.config && j.config.peakDefer === false);
       var pc = $("mPriceCache");
       if (pc){
         pc.value = (prw.priceCache == null ? "" : prw.priceCache);
@@ -2556,6 +2559,16 @@
     });
     var on = $("dockOn");
     if (on) on.addEventListener("change", function(){ applyDock(on.checked, true); });
+    var pk = $("peakDeferOn");
+    if (pk) pk.addEventListener("change", function(){
+      var m = $("peakMsg"); if (m) m.textContent = "保存中…";
+      post("/api/settings", { peakDefer: pk.checked }).then(function(j){
+        if (!m) return;
+        m.textContent = (j && j.ok)
+          ? (pk.checked ? "✓ 已开启 —— 峰时长任务排到谷时开跑" : "✓ 已关闭 —— 峰时也立即执行")
+          : ("保存失败：" + esc(j && j.msg || "未知"));
+      }).catch(function(e){ if (m) m.textContent = "保存异常：" + esc(e.message); });
+    });
     dockApplyPos();                                 // 恢复上次拖到的位置
     makeDockDraggable();
     // 第一次露面时招呼一下（气泡 3 秒后自动收回），之后不再打扰

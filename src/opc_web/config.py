@@ -244,7 +244,7 @@ def save_prices(kv: dict) -> dict:
 # ---------- 配置读写（「设置」视图 /api/settings 使用） ----------
 
 # engine 的取值合法性由 server 校验（必须是已注册的引擎名），此处只负责存盘。
-SETTING_KEYS = ("root", "port", "engine", "engineFallback", "assistantDock")   # 设置页可写；其余键只允许手改 opc-config.json
+SETTING_KEYS = ("root", "port", "engine", "engineFallback", "assistantDock", "peakDefer")   # 设置页可写；其余键只允许手改 opc-config.json
 
 
 # 按用途路由：同一个控制台里，不同用途可以走不同引擎（opc-config.json 的 engineFor 段）。
