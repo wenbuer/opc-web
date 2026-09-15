@@ -335,11 +335,26 @@ class Handler(BaseHTTPRequestHandler):
         # no 是任务号还是子任务号，**由后端认**：调用方（看板上的优先级芯片）手里就一个编号，
         # 不该逼它先判断这是哪一层 —— 之前要求额外传 sub 字段，前端漏传，点了只回一句
         # 「任务 T-032-S1 不在队列中」，看着就像按钮坏了。
-        if store.get_subtask(no):
-            p = max(0, min(2, int(body.get("priority") or 0)))
-            store.set_subtask_priority(no, p)
+        sub = store.get_subtask(no)
+        if sub:
+            msg = []
+            if "priority" in body:
+                p = max(0, min(2, int(body.get("priority") or 0)))
+                store.set_subtask_priority(no, p)
+                msg.append(no + " 优先级已设为" + {0: "低", 1: "普通", 2: "高"}.get(p, str(p)))
+            if body.get("force"):
+                # 子任务**没法脱离任务单独跑**（执行链是按任务跑的，一次一个任务）。
+                # 所以子任务上的「立即执行」= 让它的任务立刻开跑，并把它排到该任务的最前。
+                store.set_subtask_priority(no, 2)
+                pt = str(sub.get("taskNo") or "")
+                store.set_task_force(pt, True)
+                store.set_task_priority(pt, 2)
+                if (store.get_task(pt) or {}).get("status") == "排队":
+                    store.set_task(pt, "待派", "用户「立即执行」：跳过峰时排队")
+                scheduler.scan_once()      # 忙时自然排队，等当前任务结束就轮到它
+                msg.append("%s 立即执行：跳过峰时排队并排到队首（整个任务 %s 一起开跑）" % (no, pt))
             return {"ok": True, "no": no, "queue": self._queue_rows(),
-                    "msg": no + " 优先级已设为" + {0: "低", 1: "普通", 2: "高"}.get(p, str(p))}
+                    "msg": "；".join(msg) or "无改动"}
         t = store.get_task(no)
         if not t:
             raise ApiError(404, "任务 " + no + " 不在队列中")

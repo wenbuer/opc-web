@@ -1324,7 +1324,7 @@
         + "<span class='br-no'>" + esc(x.no) + "</span>"
         + "<span class='br-st " + (boardColOf(x.st) === "完成" ? "ok"
             : (boardColOf(x.st) === "阻塞" ? "bad" : "run")) + "'>" + esc(x.st || "待派") + "</span>"
-        + subPrioChip(x)
+        + subPrioChip(x) + subNowBtn(x)
         + "<span class='br-sub'>" + esc(x.sub) + "</span>"
         + (partial ? "<span class='bc-tag partial'>部分</span>" : "")
         + "<span class='br-role'>" + esc(x.role) + " " + esc(roleName(x.role)) + "</span>";
@@ -1352,8 +1352,28 @@
     return "<span class='dprio p" + p + "' data-prio='" + esc(x.no) + "' title='优先级：" + t
       + "（点击切换 高 → 低 → 普）'>" + t + "</span>";
   }
+  /* 子任务上的「立即执行」：子任务不能脱离任务单独跑（执行链按任务走、一次一个任务），
+     所以它的意思是「让这个任务现在就开跑，并把这一个排到最前」。 */
+  function subNowBtn(x){
+    if (String(x.st || "") !== "待派") return "";
+    return "<button class='dnow' data-now='" + esc(x.no)
+      + "' title='立即执行：跳过峰时排队、排到队首（整个任务一起开跑）'>▶ 立即执行</button>";
+  }
   function bindSubPrio(box){
     if (!box) return;
+    box.querySelectorAll(".dnow[data-now]").forEach(function(el){
+      el.addEventListener("click", function(ev){
+        ev.stopPropagation();
+        var no = el.getAttribute("data-now");
+        el.disabled = true;
+        post("/api/task-order", { no: no, force: true }).then(function(j){
+          var st = $("dqState");
+          if (st && j && j.msg){ st.className = j.ok ? "dq-state ok" : "dq-state"; st.textContent = j.msg; }
+          if (!j || !j.ok){ el.disabled = false; alert((j && j.msg) || "失败"); return; }
+          loadBoard(); loadQueue(); liveStart();
+        }).catch(function(){ el.disabled = false; });
+      });
+    });
     box.querySelectorAll(".dprio[data-prio]").forEach(function(el){
       el.addEventListener("click", function(ev){
         ev.stopPropagation();
@@ -1374,7 +1394,7 @@
     var partial = String(x.st || "").indexOf("部分") >= 0;
     var tries = x.tries || 0;
     el.innerHTML = "<div class='bc-top'><span class='bc-no'>" + esc(x.no) + "</span>"
-      + subPrioChip(x)
+      + subPrioChip(x) + subNowBtn(x)
       + (partial ? "<span class='bc-tag partial'>部分</span>" : "")
       + (tries > 1 ? "<span class='bc-tag retry'>第 " + tries + " 次</span>" : "")
       + "</div><div class='bc-sub'>" + esc(x.sub) + "</div>"
