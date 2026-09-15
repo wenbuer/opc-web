@@ -71,17 +71,21 @@ main{flex:1;overflow:hidden}
 
 /* ============ 批阅台 ============ */
 .piyue-layout{display:flex;height:100%}
-/* 三段各自滚动，整个 shelf 不再统一滚 —— 否则「已批阅归档」这个长列表会把上面两段一起
-   拖走，想翻归档得先滚过整个工作内容列表。前两段给上限（超出各自滚），归档段吃掉剩余高度。
-   注意：前两段也必须给上限，不然它们一长就把归档段顶出可视区，归档的滚动条等于没有。 */
+/* 三段按 30 / 30 / 40 **固定**分配高度：整条 shelf 不滚，每段自己滚。
+   段高写死（flex-basis）而不是「按内容长」—— 要的就是先把前两段拉长；
+   内容少的时候也占住那份高度，三段的位置才不会随数据量跳来跳去。
+   30+30+40 恰好是 shelf 内容盒的 100%，所以不需要 gap，段间留白由标题行的上边距给。 */
 .shelf{
   width:360px;min-width:360px;border-right:1px solid var(--line);
   padding:18px 16px;background:linear-gradient(180deg,rgba(236,241,248,.6),rgba(228,235,244,.4));
   display:flex;flex-direction:column;overflow:hidden;
 }
-#workList{flex:0 1 auto;max-height:26%;overflow-y:auto}
-#pendingList{flex:0 1 auto;max-height:34%;overflow-y:auto}
-#archiveList{flex:1 1 auto;min-height:88px;overflow-y:auto}
+.shelf-sec{display:flex;flex-direction:column;min-height:0}
+.sec-work{flex:0 0 30%}
+.sec-pend{flex:0 0 30%}
+.sec-arch{flex:0 0 40%}
+/* 列表吃掉所在段剩下的高度，超出自己滚 */
+#workList,#pendingList,#archiveList{flex:1 1 auto;min-height:0;overflow-y:auto}
 .shelf-head{
   display:flex;justify-content:space-between;align-items:baseline;
   font-size:12px;letter-spacing:2px;color:var(--gold);margin:4px 0 10px;
@@ -89,12 +93,14 @@ main{flex:1;overflow:hidden}
   flex:none;      /* 标题行不参与压缩：压缩会让它被下面可滚动区挤没 */
 }
 .shelf-head em{font-style:normal;color:var(--dim);font-family:var(--mono);font-size:11px}
-.shelf-head.dim{color:var(--faint);margin-top:22px;border-color:var(--line)}
+.shelf-head.dim{color:var(--faint);border-color:var(--line)}
+/* 段与段之间的留白：放在后一段的标题行上，这样它算进那一段自己的 30/40%，
+   不会把三段的比例挤歪（用 gap 就会） */
+.shelf-sec+.shelf-sec .shelf-head{margin-top:14px}
 .card-list{display:flex;flex-direction:column;gap:9px}
 /* 工作内容卡片：例行进展（与决策卡片同形、左缘灰色调以示“查看级”） */
 .p-card.work{border-left-color:var(--line2)}
 .p-card.work:hover{border-left-color:var(--gold)}
-.card-list+.shelf-head{margin-top:22px}
 
 /* 待裁决文件卡片 */
 .p-card{
