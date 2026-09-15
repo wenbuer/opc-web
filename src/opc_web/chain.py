@@ -291,6 +291,7 @@ def execute(task_no, task_text, direct=None):
                      "provider": "opc-web", "model": "chain"})
         runner.emit({"type": "step/start", "data": {"turn": 1, "step": 1}})
         head = head_named(task_text)
+        ready = []          # 已拆好、还挂在「待派」的子任务行（二次进入链路时沿用它们）
         if direct:
             role = str(direct.get("role") or "").strip()
             subs = [{"role": role, "sub": str(direct.get("sub") or task_text),
@@ -299,14 +300,22 @@ def execute(task_no, task_text, direct=None):
                 "text": "直派 %s %s：%s（跳过 R1 拆解）" % (role, config.role_name(role), subs[0]["sub"])}})
             set_state(tag="直派 %s" % role)
         else:
-            # 每次都重新拆解 —— **不复用上一次的拆解结果**。
-            # 试过复用（省一次模型调用），但拆解本身很便宜（单发、无工具、一万多 token），
-            # 换来的是「看到的待派列表未必是要执行的那份」，不值。要的是实时的那一份。
-            # 用户在看板上排好的优先级不会因此丢：编号是位置性的，replace_subtasks 按编号继承。
-            runner.emit({"type": "assistant/chunk", "data": {"text": "R1 拆解 %s：%s" % (task_no, task_text)}})
-            set_state(tag="R1 拆解中…")
-            # 指定 R1（含「请 R1 / 让 R1 …」）= R1 牵头派发：同样走模型拆解选业务角色
-            subs = decompose(task_no, task_text)
+            # 已经有「待派」子任务 = 拆过了，直接沿用，**不再拆一遍**。
+            #
+            # 拆解在**任务下达的那一刻**就实时做完了（峰时排队也是「先拆、再排队」，子任务行
+            # 当时就落在看板上）。所以二次进入链路的场景 —— 排队放行、点「立即执行」、阻塞重试
+            # ——都不该重拆：用户点完「立即执行」看到的第一件事不该是「R1 拆解中…」，那是白等
+            # 一次模型调用，而且重拆会把看板上排好的那份列表换成另一份。
+            ready = [s for s in store.subtasks(task_no) if str(s.get("st") or "") == "待派"]
+            if ready:
+                subs = [{"role": s["role"], "sub": s["sub"], "expect": s["expect"]} for s in ready]
+                runner.emit({"type": "assistant/chunk", "data": {
+                    "text": "沿用已拆好的 %d 个子任务（不重复拆解）" % len(subs)}})
+            else:
+                runner.emit({"type": "assistant/chunk", "data": {"text": "R1 拆解 %s：%s" % (task_no, task_text)}})
+                set_state(tag="R1 拆解中…")
+                # 指定 R1（含「请 R1 / 让 R1 …」）= R1 牵头派发：同样走模型拆解选业务角色
+                subs = decompose(task_no, task_text)
         if not subs and not direct:
             # 拆解失败：区分「指定 R1」「点名了不可执行编号」「完全未点名」给出针对性提示
             if asks_r1(task_text):
@@ -328,14 +337,32 @@ def execute(task_no, task_text, direct=None):
         # 先落子任务（优先级从任务带下来），**再做峰时判定** —— 排队中的任务也必须在
         # 「子任务看板 · 待派」里看得见、调得动优先级。反过来的话，队列一堆积，
         # 最需要用户排序的那批恰恰是隐身的那批（先前排队时一条子任务行都不建）。
-        task_prio = int(store.get_task(task_no).get("priority") or 1)
-        sub_nos = store.replace_subtasks(task_no, subs, default_priority=task_prio)
+        # 落库前最后一道检查：任务可能在**拆解期间**被删掉了。删任务清的是删除那一刻的子任务行，
+        # 而这里之后再 INSERT 就是孤儿行 —— 任务没了、子任务还挂在看板「待派」上（T-033 自检
+        # 就是这么漏下一条的）。写库和删库之间必须有这道闸，不能只靠循环里那次 _alive。
+        if not _alive(task_no):
+            runner.emit({"type": "assistant/chunk", "data": {
+                "text": "任务 %s 已被删除 → 丢弃本次拆解结果，不写入子任务" % task_no}})
+            return
+        if ready:
+            # 沿用现有行：编号、优先级、执行记录（tries / execution）全都原样留着。
+            # 走 replace_subtasks 会先 DELETE 再 INSERT，把 tries 与优先级继承的复杂度都带回来。
+            sub_nos = [s["no"] for s in ready]
+        else:
+            task_prio = int(store.get_task(task_no).get("priority") or 1)
+            sub_nos = store.replace_subtasks(task_no, subs, default_priority=task_prio)
         # 峰时延后长任务：谷时价是峰时的一半（官方口径），而「会不会跑很久」拆解之后才知道。
         # 判据用子任务数 —— 一个子任务正常也要 36~136 轮，≥2 就是接力活；单点小事照跑。
         # 放这里而不是 scan_once：那里还没拆解，只能一律拦，连 30 秒的小活也一起等了。
         forced = bool(store.get_task(task_no).get("force"))
         if (not direct and not forced and total >= config.PEAK_DEFER_MIN_SUBS
                 and config.peak_defer() and config.is_peak_now()):
+            # 排队意味着**什么都没在跑**，所以上一轮被打断留下的「执行中」要归位。
+            # 不归位的话，看板上会同时出现「任务：排队」和「子任务：执行中」——自相矛盾，
+            # 而且那个子任务再也等不到人来收口（重启杀掉链线程时它就停在那儿了）。
+            for _s in store.subtasks(task_no):
+                if str(_s.get("st") or "") == "执行中":
+                    store.set_subtask(_s["no"], "待派")
             until = config.next_offpeak_str()
             store.set_task(task_no, "排队",
                            "峰时排队：已拆解 %d 项，%s 后自动开跑（谷时价减半）" % (total, until))
