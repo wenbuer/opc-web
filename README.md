@@ -195,8 +195,6 @@ python run.py                 # 命令行启动（推荐）
 
 > 环境变量 `OPC_ENGINE` / `OPC_ENGINE_FALLBACK` 优先于配置文件，界面会提示这一点。
 
-设计说明与两套实现的差异对照见 [docs/引擎解耦设计.md](docs/引擎解耦设计.md)。
-
 ---
 
 ## 配置与数据
@@ -244,7 +242,6 @@ templates/          页面
 static/             样式与脚本
 agents-seed/        新建项目时的角色卡种子
 skills/             项目内技能（随代码走，不进全局技能目录）
-docs/               设计文档（引擎解耦决策记录）
 images/             README 配图
 ```
 
