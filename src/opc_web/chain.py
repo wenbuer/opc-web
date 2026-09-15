@@ -299,18 +299,14 @@ def execute(task_no, task_text, direct=None):
                 "text": "直派 %s %s：%s（跳过 R1 拆解）" % (role, config.role_name(role), subs[0]["sub"])}})
             set_state(tag="直派 %s" % role)
         else:
-            # 已经有待派子任务（峰时排队放行后重跑、或阻塞后重试）= 拆过了，直接用现成的：
-            # 省一次模型调用，也不会把用户在看板上调好的优先级冲到别的条目上。
-            ready = [s for s in store.subtasks(task_no) if str(s.get("st") or "") == "待派"]
-            if ready:
-                subs = [{"role": s["role"], "sub": s["sub"], "expect": s["expect"]} for s in ready]
-                runner.emit({"type": "assistant/chunk", "data": {
-                    "text": "沿用已拆好的 %d 个子任务（不重复拆解）" % len(subs)}})
-            else:
-                runner.emit({"type": "assistant/chunk", "data": {"text": "R1 拆解 %s：%s" % (task_no, task_text)}})
-                set_state(tag="R1 拆解中…")
-                # 指定 R1（含「请 R1 / 让 R1 …」）= R1 牵头派发：同样走模型拆解选业务角色
-                subs = decompose(task_no, task_text)
+            # 每次都重新拆解 —— **不复用上一次的拆解结果**。
+            # 试过复用（省一次模型调用），但拆解本身很便宜（单发、无工具、一万多 token），
+            # 换来的是「看到的待派列表未必是要执行的那份」，不值。要的是实时的那一份。
+            # 用户在看板上排好的优先级不会因此丢：编号是位置性的，replace_subtasks 按编号继承。
+            runner.emit({"type": "assistant/chunk", "data": {"text": "R1 拆解 %s：%s" % (task_no, task_text)}})
+            set_state(tag="R1 拆解中…")
+            # 指定 R1（含「请 R1 / 让 R1 …」）= R1 牵头派发：同样走模型拆解选业务角色
+            subs = decompose(task_no, task_text)
         if not subs and not direct:
             # 拆解失败：区分「指定 R1」「点名了不可执行编号」「完全未点名」给出针对性提示
             if asks_r1(task_text):
