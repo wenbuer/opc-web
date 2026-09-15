@@ -76,17 +76,18 @@ def bootstrap():
     for cat in config.KB_CATEGORIES:
         (config.KB_ROOT / cat).mkdir(parents=True, exist_ok=True)
     from . import templates as _tpl
-    # 员工手册默认入知识库：优先用随包分发的 _seed/员工手册.md（打包场景，内容可随包替换），
-    # 否则回退内置权威文本 handbook_text()。
-    _seed_hb = config.ASSET / "_seed" / "员工手册.md"
-    hb = (_seed_hb.read_text(encoding="utf-8") if _seed_hb.is_file() else _tpl.handbook_text())
+    # 员工手册：唯一来源是 agents-seed/员工手册.md（随仓库与产物走），这里写进项目知识库。
+    # 不再有 _seed/ 覆盖层 —— 那份文件本来就是从代码导出的，等于同一内容留三份。
+    hb = _tpl.handbook_text()
     seeds = {
         config.LOG_REL: "## 决策日志" + h,
         # 批阅台：空骨架 = 工作内容（例行进展）/ 决策裁决（需 R0 拍板）/ 已批阅归档 三区
         config.PIYUETAI_REL: "## 工作内容" + h + h + "## 决策裁决" + h + h + "## 已批阅归档" + h,
-        # 员工手册：全员唯一行为准则（OPC智能体角色架构.md / 知识库索引.md 已移除：不作为知识档案入库）
-        config.HANDBOOK_REL: hb,
     }
+    if hb.strip():
+        seeds[config.HANDBOOK_REL] = hb     # 全员唯一行为准则
+    else:
+        BOOT_LOG.append("⚠ 读不到 agents-seed/员工手册.md —— 本次未写入知识库员工手册")
     # OPC 规范文书模板（回报产出 / 决策建议 / 每日简报）：随项目落知识库，与 scheduler 注入同源（doc_template）
     for kind in ("回报产出", "决策建议", "每日简报"):
         seeds["知识库/OPC 规范/模板-%s.md" % kind] = _tpl.doc_template(kind)
