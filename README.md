@@ -15,16 +15,16 @@
 
 <table>
 <tr>
-<td width="25%"><img src="images/opc-command-center-01.png" alt="作战面板"><br><sub>作战面板 · 组织架构与角色状态</sub></td>
-<td width="25%"><img src="images/opc-command-center-02.png" alt="工作台"><br><sub>工作台 · 下达任务与看板</sub></td>
-<td width="25%"><img src="images/opc-command-center-03.png" alt="批阅台"><br><sub>批阅台 · 裁决角色回报</sub></td>
-<td width="25%"><img src="images/opc-command-center-04.png" alt="项目文件"><br><sub>项目文件 · 工作区产物</sub></td>
+<td width="25%"><img src="images/opc-command-center-01.png" alt="作战面板"><br><sub>作战面板 · 概览 / 组织架构 / 项目时间线</sub></td>
+<td width="25%"><img src="images/opc-command-center-02.png" alt="批阅台"><br><sub>批阅台 · 决策建议与 R0 裁决</sub></td>
+<td width="25%"><img src="images/opc-command-center-03.png" alt="工作台"><br><sub>工作台 · 下达任务、四列看板与实时事件</sub></td>
+<td width="25%"><img src="images/opc-command-center-04.png" alt="运行日志全屏"><br><sub>运行日志 · 自动执行链完整轨迹</sub></td>
 </tr>
 <tr>
-<td width="25%"><img src="images/opc-command-center-05.png" alt="项目文件（网页）"><br><sub>项目文件 · 文件预览</sub></td>
-<td width="25%"><img src="images/opc-command-center-06.png" alt="知识库（深色）"><br><sub>知识库 · 深色主题</sub></td>
+<td width="25%"><img src="images/opc-command-center-05.png" alt="项目文件"><br><sub>项目文件 · 工程产出区与 HTML 预览</sub></td>
+<td width="25%"><img src="images/opc-command-center-06.png" alt="知识库"><br><sub>知识库 · 按主题分类的档案卡片</sub></td>
 <td width="25%"><img src="images/opc-command-center-07.png" alt="每日简报"><br><sub>每日简报 · 当天摘要</sub></td>
-<td width="25%"><img src="images/opc-command-center-08.png" alt="设置 Token 统计"><br><sub>设置 · Token 与成本</sub></td>
+<td width="25%"><img src="images/opc-command-center-08.png" alt="设置 Token 统计"><br><sub>设置 · Token 用量与三档单价</sub></td>
 </tr>
 </table>
 
