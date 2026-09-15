@@ -2408,7 +2408,10 @@
       var an = $("mApiNote");
       if (an) an.innerHTML = "<b>接入方式（同 dsh 模型 API）</b> 提供方 <code>" + esc(mi.provider || "deepseek") + "</code> → 凭据引用 <code>" + esc(mi.apiKeyEnv || "") + "</code><br>密钥状态：" + (mi.configured ? "已配置 ✓" : "未配置 — 密钥只写项目根 .env，不回显")
         + "<br><b>单价</b> 元 / 百万 token，当前生效：新输入 " + pr.in + " · 缓存命中 " + pr.cache + " · 输出 " + pr.out
-        + "。首页「项目成本」按这三档算 —— meta 里的 tokensIn 是「新输入 + 缓存读取」的合计，缓存单列计费才不会把成本算高。";
+        + "。首页「项目成本」按这三档算 —— meta 里的 tokensIn 是「新输入 + 缓存读取」的合计，缓存单列计费才不会把成本算高。"
+        + "<br><b>峰谷计价</b> 现在是 <b class='" + (j.peakNow ? "peak-on" : "peak-off") + "'>"
+        + (j.peakNow ? "峰时" : "谷时") + "</b> —— 峰时＝工作日北京时间 09:00-12:00 / 14:00-18:00，"
+        + "谷时三档单价一律减半。长跑任务（跑测试 / 大批量重构 / 长 agent 任务）挪到谷时，账单直接减半。";
       if (j.envOverride && j.activeProject && $("setMsg")) $("setMsg").textContent = "环境变量（OPC_KB_ROOT/OPC_CONFIG/OPC_PORT）优先于配置，请直接手改 opc-config.json";
       loadSchedules();
       loadRoles();

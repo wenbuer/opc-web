@@ -350,10 +350,16 @@ def execute(task_no, task_text, direct=None):
                 return
             raw = (text or "").strip()
             text = _meaningful_reply(text)   # 产出校验：过短/乱码 → 不予采信（T-006 事故教训）
+            killed = str(runner.run_info(sub_no).get("killed") or "")
+            if killed and not text:
+                # 被中止的运行**不许**走「无输出→核盘→按完成处理」：产出文件确实变长了，
+                # 但活是被腰斩的，判成完成才是真事故（R1 会把半成品当交付件呈报给 R0）。
+                runner.emit({"type": "assistant/chunk", "sub": sub_no, "data": {
+                    "text": "⛔ %s 运行被中止（%s）→ 按阻塞收口，不做核盘按完成" % (sub_no, killed)}})
             if not text:
                 # 无文本输出先核盘：落盘了就不该判阻塞（T-007-S1 已完成 25 个文件写入，
                 # 只因 headless 期末没打印文本被判阻塞）。核盘成立即按完成处理。
-                ev = _landed_evidence(body_p, size0, t_exec)
+                ev = [] if killed else _landed_evidence(body_p, size0, t_exec)
                 if ev:
                     text = ("【headless 未返回最终文本；核盘确认本轮产出已落盘，按完成处理】\n"
                             + "\n".join("- " + x for x in ev))
@@ -378,8 +384,9 @@ def execute(task_no, task_text, direct=None):
                 runner.emit({"type": "assistant/chunk", "sub": sub_no,
                              "data": {"text": "✔ %s（%s）执行完成，产出回报已写入：%s（归档时改名 output）" % (sub_no, s["role"], spec["output"])}})
             else:
-                reason = (("headless 回报无效：原始输出 %d 字符，过短或含乱码（疑似瞬时故障），不予采信" % len(raw))
-                          if raw else "headless 无输出")
+                reason = (("运行被中止：" + killed) if killed else
+                          (("headless 回报无效：原始输出 %d 字符，过短或含乱码（疑似瞬时故障），不予采信" % len(raw))
+                           if raw else "headless 无输出"))
                 try:
                     with open(body_p, "a", encoding="utf-8") as fh:
                         fh.write("\n\n## 执行结果\n\n【%s，置阻塞】\n" % reason)

@@ -537,10 +537,21 @@ def work_summary(task_no: str) -> str:
         return None
 
 
-def _headless_text(prompt: str, timeout: float = 600) -> str:
-    """尝试用 dsh headless 让 R1 做文本类收尾（汇总/抽取）；失败返回空串。"""
+def _headless_text(prompt: str, timeout: float = 600, label: str = "") -> str:
+    """尝试用 dsh headless 让 R1 做文本类收尾（汇总/抽取）；失败返回空串。
+
+    用量记一行进调度日志。这些调用走 act=""，**不进任务账本**（meta.json 不写），
+    原先它们花了多少完全看不见 —— dsh 每次调用光自带系统提示/工具/技能就一万多 token，
+    6 次提炼加起来是不是值得管，得先有数。不建新账本：实测占比约 1%，
+    为 1% 建一条记账链不划算；写进已有的日志里，要查时查得到就够了。"""
     try:
-        text, _ = runner.run_headless_task(prompt, timeout, purpose="prompt")
+        text, usage = runner.run_headless_task(prompt, timeout, purpose="prompt")
+        if usage:
+            agent.log_schedule("R1 提炼用量", "用途=%s 输入=%d（缓存 %d）输出=%d 超时上限=%ds"
+                               % (label or "未标注",
+                                  int(usage.get("inputTokens") or 0) + int(usage.get("cacheReadTokens") or 0),
+                                  int(usage.get("cacheReadTokens") or 0),
+                                  int(usage.get("outputTokens") or 0), int(timeout)))
         return (text or "").strip()
     except Exception:
         return ""
@@ -557,7 +568,7 @@ def _r1_identity() -> str:
     return "你是%s R1。" % (config.role_name("R1") or "老板助理")
 
 
-def _headless_json(prompt: str, timeout: float = 600, parser=None):
+def _headless_json(prompt: str, timeout: float = 600, parser=None, label: str = ""):
     """「问 R1 要 JSON」的唯一出口：身份 + 契约 + 调用 + 解析，四件事绑在一处。
 
     原先 4 处各写一遍（知识沉淀 / 派发判断 / 待决三分类 / 时间轴）：「你是…」的身份、
@@ -565,7 +576,7 @@ def _headless_json(prompt: str, timeout: float = 600, parser=None):
     timeout 也一并收进来 —— 它属于「等一个 JSON 答案」这个量级，不该由各调用点自己拍。
 
     prompt 传**正文**（不含身份抬头、不含输出契约），两样由这里统一补。"""
-    text = _headless_text(_r1_identity() + " " + prompt + chr(10) + _JSON_ONLY, timeout)
+    text = _headless_text(_r1_identity() + " " + prompt + chr(10) + _JSON_ONLY, timeout, label)
     if not text:
         return None
     d = (parser or _parse_kb_digest)(text)
@@ -698,7 +709,7 @@ def build_daily_report(task_no: str = None, datestr: str = None) -> dict:
            templates.doc_template("每日简报"),
            old_text.strip() or "（当天尚无简报）", digest))
     prompt = _r1_identity() + " " + prompt
-    text = _as_document(_headless_text(prompt, 600))   # 先剥包装，再拿干净文本去校验「任务不丢」
+    text = _as_document(_headless_text(prompt, 600, label="每日简报"))   # 先剥包装，再校验「任务不丢」
     if text and has_old:
         text = _merge_daily(old_text, text, task_no or "")   # 校验失败返回 "" → 走降级合并
     # 落盘前的最后一道闸：格式不合格就不落盘（见 _doc_ok）。这一段是这一类的通解 ——
@@ -811,7 +822,7 @@ def kb_digest(task_no: str) -> dict:
         "规则：action=none 无可沉淀知识；action=create 有知识且该分类无相关档案；"
         "action=merge 该分类已有相关档案（merge_target 填已有文件名，body 给合并后的完整正文）。\n\n"
         "任务 %s 回报：\n%s" % (skim, task_no, digest))
-    d = _headless_json(prompt, 600)
+    d = _headless_json(prompt, 600, label="知识沉淀")
     if not d:
         return {"ok": True, "created": False, "msg": "模型未返回或返回不可解析（JSON 契约未满足），未沉淀"}
     action = str(d.get("action") or "").strip()
@@ -907,7 +918,7 @@ def _r1_respond(item: str, judge: str, opinion: str) -> dict:
         "生成 task 文本时必须把方案的具体边界写进去（不得只写「实现方案A」这类简称）。\n"
         "输出 JSON：{\"dispatch\": true|false, \"task\": \"<若要派发的任务文本，不派发则留空>\"}"
         % (item, judge, opinion, decision_context("待决 #%s" % item) or "（条目未附决策建议）"))
-    d = _headless_json(prompt, 300)
+    d = _headless_json(prompt, 300, label="派发判断")
     if not isinstance(d, dict):
         return None
     return {"dispatch": bool(d.get("dispatch")), "task": str(d.get("task") or "")}
@@ -936,7 +947,7 @@ def _r1_triage(reps, task_text: str) -> dict:
         "没有则 need=false、advice 留空。\n"
         '输出 JSON：{"need": true|false, "advice": "..."}'
         % (str(task_text or "")[:200], _digest_reps(reps, limit=1800), pending or "（空）"))
-    d = _headless_json(prompt, 600)
+    d = _headless_json(prompt, 600, label="待决三分类")
     if not isinstance(d, dict):
         return {"need": bool(pending), "advice": ""}
     return {"need": bool(d.get("need")), "advice": str(d.get("advice") or "")}
@@ -1507,7 +1518,7 @@ def build_timeline() -> dict:
               "- detail：两三句，讲这个阶段解决了什么、留下什么标志性产出（可含多个交付物）\n"
               "按 date 升序；没有符合的就输出 []。不要把每日简报、流水账、例行任务当成事件。"
               "\n\n项目数据：\n%s" % data)
-    events = _headless_json(prompt, 300, parser=_parse_timeline_json)
+    events = _headless_json(prompt, 300, parser=_parse_timeline_json, label="时间轴")
     if events is None:
         return {"ok": False, "msg": "模型未返回或返回内容无法解析为事件列表（请确认 dsh 与模型 API 可用）"}
     rel = _write_timeline(events)
