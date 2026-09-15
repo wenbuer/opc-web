@@ -51,6 +51,15 @@ def scan_once():
     try:
         if SCHED_STATE.get("paused") or SCHED_STATE.get("busy"):
             return
+        # 谷时到点：把峰时排队的任务放回「待派」，同一轮里就会被下面捡起来开跑。
+        # 不会来回抖：排队只在峰时发生，而这里只在**非峰时**放行 —— 放行的这一刻链再判一次
+        # is_peak_now() 必为假，不会再排回去。
+        if not config.is_peak_now():
+            for t in store.tasks():
+                if str(t.get("status") or "") == "排队":
+                    store.set_task(t["no"], "待派", "谷时到点，自动开跑")
+                    runner.emit({"type": "assistant/chunk", "data": {
+                        "text": "▶ %s 谷时到点，解除峰时排队，开始执行" % t["no"]}})
         for t in store.tasks():
             if t["status"] == "待派":
                 from . import chain

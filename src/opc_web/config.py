@@ -196,6 +196,29 @@ def is_peak_now(now=None) -> bool:
     return any(a <= t.hour < b for a, b in _PEAK_UTC)
 
 
+# 「长任务」的判据 = 拆解出的子任务数。只有拆解之后才知道这活是不是长跑
+# （实测：一个子任务正常也要 36~136 轮，两个以上必然是接力活）；单点小事峰时照跑，不耽误人。
+PEAK_DEFER_MIN_SUBS = 2
+
+
+def peak_defer() -> bool:
+    """峰时是否自动延后长任务。默认开；opc-config.json 写 "peakDefer": false 可关。"""
+    v = _CFG.get("peakDefer")
+    return True if v is None else bool(v)
+
+
+def next_offpeak_str(now=None) -> str:
+    """下一个谷时起点（本地时间 HH:MM），用于告诉用户「预计几点开跑」。
+
+    峰时=工作日 UTC 01-04 / 06-10，各段的终点就是下一个谷时起点；周末全天谷时（调用方不会问）。"""
+    t = now or datetime.datetime.now(datetime.timezone.utc)
+    for a, b in _PEAK_UTC:
+        if a <= t.hour < b:
+            nxt = t.replace(hour=b, minute=0, second=0, microsecond=0)
+            return nxt.astimezone().strftime("%H:%M")
+    return t.astimezone().strftime("%H:%M")
+
+
 def save_prices(kv: dict) -> dict:
     """设置页写三档单价。空值 = 删除该键（回落到默认 / 按输入价）；非法值当场报错。"""
     patch = {}
@@ -262,7 +285,12 @@ def engine_fallback(main: str = "") -> str:
 _TUNABLES = {
     "pollSeconds": 8,           # 调度守护轮询间隔（秒）
     "decomposeTimeout": 480,    # 拆解任务时 headless 的无输出超时（秒）
-    "maxSubtasks": 2,           # 单个任务最多拆成几个并行子任务
+    # 3（原 2）：子任务是**上下文的重置点** —— 每个子任务从一段干净的上下文开始
+    # （冷启动实测才 12.9k token）。把两件大事压进一个子任务的代价是量过的：
+    # T-028-S2 一个子任务干了「搜集内容 + 移除接口重接数据」两件事，跑了 407 轮、
+    # 上下文涨到 388k、烧掉 103M token，占全项目 59%。拆开不会更贵，
+    # 拆解 prompt 本来就要求「单点小事拆 1 个」。
+    "maxSubtasks": 3,
     "fallbackMaxElapsed": 60,   # 主引擎「秒退无产出」的判定秒数：超过就当任务本身没做完，不回退重跑
 }
 

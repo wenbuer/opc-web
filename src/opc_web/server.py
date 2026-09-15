@@ -278,7 +278,12 @@ class Handler(BaseHTTPRequestHandler):
         elif url == "/api/sub-output":
             self._ok(self._get_sub_output)
         elif url == "/api/scheduler":
-            self._json({"ok": True, "state": scheduler.SCHED_STATE})
+            # peak/offpeakAt 给界面做「峰时长任务排队」提示用：不提示的话，用户下达完
+            # 看到什么都没发生，只会以为坏了。
+            peak = config.is_peak_now()
+            self._json({"ok": True, "state": scheduler.SCHED_STATE, "peak": peak,
+                        "peakDefer": config.peak_defer(),
+                        "offpeakAt": config.next_offpeak_str() if peak else ""})
         elif url == "/api/roles":
             self._json({"ok": True, "roles": [{"no": no, "name": name} for no, name in roles.role_files()]})
         elif url == "/api/roles/card":

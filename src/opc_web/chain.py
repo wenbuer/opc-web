@@ -127,8 +127,10 @@ def decompose(task_no, task_text):
                  "请忽略任务里的 R1 字样，直接按职责从下列业务角色选人："
                  % (config.role_name("R1") or "老板助理"))
     prompt = (lead + role_list +
-              "。按职能合理拆分：能由一个角色一次完成（如单点调研/资料检索）就拆 1 个，"
-              "只有确实需要多个职能接力/分工、单角色覆盖不了时才拆多个（会按顺序逐个执行，请拆成可独立交付的子任务）—— 宁少勿多，总数不超过 %d 个。"
+              "。拆分口径：按「能不能独立交付」拆 —— 一个子任务只干一件事、产出一份能单独验收的东西。"
+              "凡是一件以上的事（例如「先搜集内容，再移除接口并接入新数据」）就拆成 2~3 个，"
+              "不要压进同一个子任务 —— 每个子任务是一段独立上下文，塞在一起会让后面每一步都背着前面的全部记录。"
+              "单点小事（一次检索、单个文件的改动）拆 1 个即可。总数不超过 %d 个。"
               "只输出派发单表格行，每行格式：| %s | 子任务描述 | R编号 | 期望产出 | 待派 |；"
               "示例：| %s | 设计产品落地页 | R6 | 界面设计稿 | 待派 |。"
               "不要输出任何解释、提问或多余文字。任务：%s%s"
@@ -316,6 +318,21 @@ def execute(task_no, task_text, direct=None):
             set_state(lastOk=False, tag="拆解失败 %s" % task_no)
             return
         total = len(subs)
+        # 峰时延后长任务：谷时价是峰时的一半（官方口径），而「会不会跑很久」拆解之后才知道。
+        # 判据用子任务数 —— 一个子任务正常也要 36~136 轮，≥2 就是接力活；单点小事照跑。
+        # 放这里而不是 scan_once：那里还没拆解，只能一律拦，连 30 秒的小活也一起等了。
+        if (not direct and total >= config.PEAK_DEFER_MIN_SUBS
+                and config.peak_defer() and config.is_peak_now()):
+            until = config.next_offpeak_str()
+            store.set_task(task_no, "排队",
+                           "峰时排队：已拆解 %d 项，%s 后自动开跑（谷时价减半）" % (total, until))
+            runner.emit({"type": "assistant/chunk", "data": {
+                "text": "⏸ %s 拆出 %d 个子任务（长跑），当前峰时 → 排队到 %s 谷时再开跑"
+                        % (task_no, total, until)}})
+            runner.emit({"type": "run/end",
+                         "text": "任务 %s 峰时排队中：%s 后自动开跑" % (task_no, until)})
+            set_state(lastOk=True, tag="%s 峰时排队至 %s" % (task_no, until))
+            return
         names = ", ".join("%s→%s" % (s["role"], s["sub"][:18]) for s in subs)
         runner.emit({"type": "assistant/chunk", "data": {"text": "✔ 拆解完成 %d 项：%s" % (total, names)}})
         runner.emit({"type": "step/end", "data": {"turn": 1, "step": 1}})

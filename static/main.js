@@ -667,6 +667,11 @@
       var s = j.state || {};
       var txt = s.busy ? "调度中：" + (s.tag || "") + "（后台执行中）"
         : "调度空闲" + (s.lastOk === true ? " ✓ 上轮完成" : s.lastOk === false ? " ✗ 上轮失败" : "");
+      // 峰时提示：谷时价是峰时的一半，长任务（拆出 ≥2 个子任务）会自动排队到谷时开跑。
+      // 不提示的话，用户下达完看到「什么都没发生」会以为坏了。
+      if (!s.busy && !s.paused && j.peak && j.peakDefer){
+        txt += "　· 当前峰时，长任务自动排到 " + (j.offpeakAt || "谷时") + " 开跑（谷时价减半）";
+      }
       if (st){ st.className = "dq-state" + (s.busy ? " busy" : "") + (s.paused ? " paused" : ""); st.textContent = (s.paused ? "⏸ " : "") + txt; }
       var bt = $("btnToggleSched");
       if (bt){ bt.innerHTML = s.paused ? "▶ 恢复" : "⏸ 暂停"; bt.title = s.paused ? "恢复自动执行链" : "暂停自动执行链"; }
