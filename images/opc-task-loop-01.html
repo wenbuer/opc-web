@@ -3,7 +3,9 @@
   OPC 任务闭环 · 紧凑深色版（无标题页眉、说明全在节点内）
   出图：msedge --headless=new --disable-gpu --hide-scrollbars --virtual-time-budget=6000 \
         --window-size=1180,<高度> --screenshot=opc-task-loop-01.png opc-task-loop-01.html
-  <高度> = body.scrollHeight，且必须与测量时同一窗口宽度（换行变了高度就变）。
+  高度 682 = 海报底边(620) + 页面留白(34) + 余量；量法必须用像素扫描核对，
+  别只看 body.scrollHeight —— 它会漏掉 box-shadow 压暗的那几十行，量出来偏小就会截掉底部。
+  核对：对渲染结果从最后一行往上扫，第一处非背景像素行即内容底边。
 -->
 <html lang="zh-CN">
 <head>
@@ -107,7 +109,7 @@
     </div>
 
     <div class="node n-rx" style="left:810px;top:0">
-      <div class="hd"><span class="no">4</span><h2>角色执行</h2><span class="who">R2~R7</span></div>
+      <div class="hd"><span class="no">4</span><h2>角色执行</h2><span class="who">RX</span></div>
       <p>带<b>角色卡 + 装配技能</b>自己干活</p>
       <p>过程实时可见：心跳 / 工具 / 文本</p>
       <div class="br">护栏 <b>300 轮 · 320 工具 · 3000 万 token</b></div>
@@ -135,7 +137,7 @@
     </div>
 
     <div class="node n-rx" style="left:810px;top:340px">
-      <div class="hd"><span class="no">5</span><h2>回报落盘</h2><span class="who">R2~R7</span></div>
+      <div class="hd"><span class="no">5</span><h2>回报落盘</h2><span class="who">RX</span></div>
       <p>产出写《工作区/角色/…-report.md》</p>
       <p>meta 记引擎 / 会话 / <b>用量</b>，可回溯</p>
       <div class="br">格式不合格不落盘</div>
