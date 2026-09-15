@@ -60,7 +60,11 @@
   /* ===== 首页右侧：项目进度（/api/home-stats 的 progress 段） ===== */
   function loadHomeStats(){
     api("/api/home-stats").then(function(j){
-      if (!j || !j.ok) return;
+      if (!j || !j.ok){
+        var pb = $("progBody");
+        if (pb) pb.innerHTML = "<div class='placeholder'>读取失败：" + esc((j && j.msg) || "服务未响应") + "</div>";
+        return;
+      }
       renderProg(j.progress || {});
       renderTokens(j.tokens || {});
     }).catch(function(){});
@@ -2393,7 +2397,12 @@
   var ENG_CAPS = [["tools", "工具"], ["streaming", "实时进度"], ["usage", "用量"], ["skills", "技能"], ["sandbox", "沙箱"]];
   function loadEngines(){
     api("/api/engines").then(function(j){
-      if (!j || !j.ok) return;
+      if (!j) return;
+      // 这里**不能**拿 j.ok 当渲染闸门：它表示「**当前**引擎可用」，而首次运行必然为 false
+      // —— 打包版没有 .env（API Key 要在设置里填）、也没有 opc-config.json（默认引擎是 api），
+      // 于是 ok=false，以前直接 return，占位文案就永远停在「加载中…」，看着像坏了。
+      // 引擎清单本身拿得到就照实渲染；用不用得上由每张卡的「可用 / 不可用」说，
+      // 当前引擎为什么不可用写在下面那句结论里。
       var sel = $("engSel");
       if (sel){
         sel.innerHTML = "";
@@ -2444,15 +2453,25 @@
         t += "<br><b>按用途路由</b> 同一文件的 <code>engineFor</code> 段可给 <code>prompt</code>（拆解/汇总）与 <code>execute</code>（角色任务）分别指定引擎，留空即用主引擎。";
         t += "<br><b>Token 与费用</b> 两个引擎都<b>逐轮累加</b>记账（provider 按每轮重发的完整上下文计费，命中缓存的按低价计）。"
           + "DSH 的数字天然更大：它每轮都带着自己那套系统提示、工具与技能（一万到数万 token），但其中约九成命中缓存；"
-          + "直连 API 每轮上下文小，但历史全量重发。<b>所以要比总额、不要比单轮</b>，具体到「③ Token 统计」看 —— "
+          + "直连 API 每轮上下文小，但历史全量重发。<b>所以要比总额、不要比单轮</b>，具体到「⑤ Token 统计」看 —— "
           + "两个引擎的柱高是同一把尺子量的。";
         if (j.envOverride) t += "<br><b>注意</b> 环境变量 <code>OPC_ENGINE=" + esc(j.envOverride) + "</code> 优先于配置文件，改文件不会生效。";
         var errs = j.errors || {};
         var ek = Object.keys(errs);
         if (ek.length) t += "<br><b>加载失败的引擎</b>：" + ek.map(function(k){ return esc(k) + "（" + esc(errs[k]) + "）"; }).join("；");
+        if (!j.ok){
+          var cur = null;
+          (j.engines || []).forEach(function(e){ if (e.current) cur = e; });
+          t = "<b>当前引擎 " + esc(j.current) + " 不可用</b>：" + esc((cur && cur.note) || "自检未通过")
+            + "。到「③ 模型接入」把凭据填好，或把 <code>" + esc(j.configPath || "opc-config.json")
+            + "</code> 的 <code>engine</code> 改成下面可用的那个。<br>" + t;
+        }
         note.innerHTML = t;
       }
-    }).catch(function(){});
+    }).catch(function(){
+      var box = $("engList");
+      if (box) box.innerHTML = "<div class='placeholder'>引擎清单读取失败：服务未响应</div>";
+    });
   }
   function saveEngine(){
     var sel = $("engSel"), m = $("engMsg");
@@ -2505,7 +2524,11 @@
   }
   function loadProjects(){
     api("/api/projects").then(function(j){
-      if (!j || !j.ok) return;
+      if (!j || !j.ok){
+        var pb = $("projList");
+        if (pb) pb.innerHTML = "<div class='placeholder'>读取失败：" + esc((j && j.msg) || "服务未响应") + "</div>";
+        return;
+      }
       var box = $("projList");
       if (!box) return;
       var list = j.projects || [];
@@ -2626,7 +2649,7 @@
       fab.addEventListener("click", function(){ toggleR1Panel(); });
     }
     if (ava) ava.innerHTML = R1_SVG;
-    // 右上角 × 只收起面板；悬浮球一直留在原处（要彻底关掉去「设置 → ⑦ R1 助理」取消勾选）
+    // 右上角 × 只收起面板；悬浮球一直留在原处（要彻底关掉去「设置 → ⑦ 运行开关」取消勾选）
     var x = $("r1Close"); if (x) x.addEventListener("click", function(){ showR1Panel(false); });
     var s = $("r1Send"); if (s) s.addEventListener("click", askR1);
     var q = $("r1Q");

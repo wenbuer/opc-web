@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260915i">
+<link rel="stylesheet" href="/static/main.css?v=20260915k">
 </head>
 <body>
 <div class="shell">
@@ -103,12 +103,18 @@
     <section id="view-piyue" class="view">
       <div class="piyue-layout">
         <aside class="shelf">
-          <div class="shelf-head">工作内容 <em id="workCount"></em></div>
-          <div id="workList" class="card-list"></div>
-          <div class="shelf-head">决策裁决 <em id="pendingCount"></em></div>
-          <div id="pendingList" class="card-list"></div>
-          <div class="shelf-head dim">已批阅归档</div>
-          <div id="archiveList" class="arch-list"></div>
+          <section class="shelf-sec sec-work">
+            <div class="shelf-head">工作内容 <em id="workCount"></em></div>
+            <div id="workList" class="card-list"></div>
+          </section>
+          <section class="shelf-sec sec-pend">
+            <div class="shelf-head">决策裁决 <em id="pendingCount"></em></div>
+            <div id="pendingList" class="card-list"></div>
+          </section>
+          <section class="shelf-sec sec-arch">
+            <div class="shelf-head dim">已批阅归档</div>
+            <div id="archiveList" class="arch-list"></div>
+          </section>
         </aside>
         <div class="piyue-main">
           <div id="pendingDetail" class="dossier">
@@ -478,6 +484,6 @@
   </div>
   <button id="r1Fab" class="r1-fab" data-tip="问我项目的事 · 临时会话" title="R1 助理（临时会话，可拖动）"></button>
 </div>
-<script src="/static/main.js?v=20260915i"></script>
+<script src="/static/main.js?v=20260915k"></script>
 </body>
 </html>
