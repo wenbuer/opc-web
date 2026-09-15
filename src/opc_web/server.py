@@ -342,17 +342,9 @@ class Handler(BaseHTTPRequestHandler):
                 p = max(0, min(2, int(body.get("priority") or 0)))
                 store.set_subtask_priority(no, p)
                 msg.append(no + " 优先级已设为" + {0: "低", 1: "普通", 2: "高"}.get(p, str(p)))
-            if body.get("force"):
-                # 子任务**没法脱离任务单独跑**（执行链是按任务跑的，一次一个任务）。
-                # 所以子任务上的「立即执行」= 让它的任务立刻开跑，并把它排到该任务的最前。
-                store.set_subtask_priority(no, 2)
-                pt = str(sub.get("taskNo") or "")
-                store.set_task_force(pt, True)
-                store.set_task_priority(pt, 2)
-                if (store.get_task(pt) or {}).get("status") == "排队":
-                    store.set_task(pt, "待派", "用户「立即执行」：跳过峰时排队")
-                scheduler.scan_once()      # 忙时自然排队，等当前任务结束就轮到它
-                msg.append("%s 立即执行：跳过峰时排队并排到队首（整个任务 %s 一起开跑）" % (no, pt))
+            # 这里**没有** force：子任务没法脱离任务单独跑（执行链按任务走、一次一个任务），
+            # 允许在子任务上「立即执行」就等于给一个悄悄跑父任务的口子 —— 界面上不放，
+            # 接口上也不留。要立刻跑，去任务行上点。
             return {"ok": True, "no": no, "queue": self._queue_rows(),
                     "msg": "；".join(msg) or "无改动"}
         t = store.get_task(no)
