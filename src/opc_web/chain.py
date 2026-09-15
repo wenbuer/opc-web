@@ -328,6 +328,13 @@ def execute(task_no, task_text, direct=None):
         # 先落子任务（优先级从任务带下来），**再做峰时判定** —— 排队中的任务也必须在
         # 「子任务看板 · 待派」里看得见、调得动优先级。反过来的话，队列一堆积，
         # 最需要用户排序的那批恰恰是隐身的那批（先前排队时一条子任务行都不建）。
+        # 落库前最后一道检查：任务可能在**拆解期间**被删掉了。删任务清的是删除那一刻的子任务行，
+        # 而这里之后再 INSERT 就是孤儿行 —— 任务没了、子任务还挂在看板「待派」上（T-033 自检
+        # 就是这么漏下一条的）。写库和删库之间必须有这道闸，不能只靠循环里那次 _alive。
+        if not _alive(task_no):
+            runner.emit({"type": "assistant/chunk", "data": {
+                "text": "任务 %s 已被删除 → 丢弃本次拆解结果，不写入子任务" % task_no}})
+            return
         task_prio = int(store.get_task(task_no).get("priority") or 1)
         sub_nos = store.replace_subtasks(task_no, subs, default_priority=task_prio)
         # 峰时延后长任务：谷时价是峰时的一半（官方口径），而「会不会跑很久」拆解之后才知道。
