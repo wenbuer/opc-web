@@ -64,8 +64,21 @@ def scan_once():
         if not pending:
             return
         # 峰时会堆积，所以按优先级挑下一个：高 → 普通 → 低；同级按下达先后（号小的先跑）。
-        # 取号里的数字比字符串靠谱 —— "T-999" 与 "T-1000" 按字符串比是反的。
-        pending.sort(key=lambda t: (-int(t.get("priority") or 0), int(str(t["no"])[2:] or 0)))
+        # 优先级以**子任务**为准 —— 用户是在「子任务看板 · 待派」那张列表上排序的，
+        # 所以一个任务的紧急度 = 它待派子任务里的最高优先级；还没拆解的任务回退到任务自己的值。
+        top = {}
+        for s in store.subtasks():
+            if str(s.get("st") or "") != "待派":
+                continue
+            k = s["taskNo"]
+            top[k] = max(top.get(k, 0), int(s.get("priority") or 0))
+        def _rank(t):
+            p = top.get(t["no"])
+            if p is None:
+                p = int(t.get("priority") or 0)
+            # 取号里的数字比字符串靠谱 —— "T-999" 与 "T-1000" 按字符串比是反的
+            return (-p, int(str(t["no"])[2:] or 0))
+        pending.sort(key=_rank)
         t = pending[0]
         from . import chain
         threading.Thread(target=chain.execute, args=(t["no"], t["task"]), daemon=True).start()

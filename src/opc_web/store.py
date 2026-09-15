@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS subtask(
   sub     TEXT NOT NULL,
   role    TEXT NOT NULL,
   expect  TEXT NOT NULL DEFAULT '',
-  status  TEXT NOT NULL DEFAULT '待派'
+  status  TEXT NOT NULL DEFAULT '待派',
+  priority INTEGER NOT NULL DEFAULT 1   -- 0 低 / 1 普通 / 2 高：同一任务内按它定先后
 );
 CREATE TABLE IF NOT EXISTS report(
   sub_no  TEXT PRIMARY KEY,
@@ -72,6 +73,7 @@ def _now() -> str:
 _MISSING_COLUMNS = (
     ("task", "priority", "INTEGER NOT NULL DEFAULT 1"),
     ("task", "force", "INTEGER NOT NULL DEFAULT 0"),
+    ("subtask", "priority", "INTEGER NOT NULL DEFAULT 1"),
 )
 
 
@@ -179,19 +181,35 @@ def delete_task(no: str) -> list:
 
 
 # ---------- 子任务（派发单） ----------
-def replace_subtasks(task_no: str, rows: list) -> list:
+def replace_subtasks(task_no: str, rows: list, default_priority: int = 1) -> list:
     """整体替换某任务的子任务 → 返回子任务编号列表 [T-001-S1, ...]。
 
-    幂等由主键保证：重复拆解直接覆盖，不再需要「删掉旧 ### 节」那种字符串手术。"""
+    幂等由主键保证：重复拆解直接覆盖，不再需要「删掉旧 ### 节」那种字符串手术。
+
+    **优先级要留住**：编号是位置性的（T-001-S1/S2…），重拆一次编号不变，
+    所以在看板上调好的优先级按编号继承下来。不留的话，峰时排队放行时重跑一次拆解，
+    用户刚调好的顺序就全被打回「普通」了。"""
     with _db() as c:
+        keep = {r["no"]: int(r["priority"] or 0)
+                for r in c.execute("SELECT no, priority FROM subtask WHERE task_no = ?", (task_no,))}
         c.execute("DELETE FROM subtask WHERE task_no = ?", (task_no,))
         out = []
         for i, r in enumerate(rows, 1):
             no = "%s-S%d" % (task_no, i)
-            c.execute("INSERT INTO subtask(no, task_no, sub, role, expect, status) VALUES(?, ?, ?, ?, ?, ?)",
-                      (no, task_no, r["sub"], r["role"], r.get("expect", ""), r.get("status", "待派")))
+            prio = int(r.get("priority") or keep.get(no, default_priority))
+            c.execute("INSERT INTO subtask(no, task_no, sub, role, expect, status, priority) "
+                      "VALUES(?, ?, ?, ?, ?, ?, ?)",
+                      (no, task_no, r["sub"], r["role"], r.get("expect", ""),
+                       r.get("status", "待派"), max(0, min(2, prio))))
             out.append(no)
         return out
+
+
+def set_subtask_priority(no: str, priority: int) -> bool:
+    """设子任务优先级（0 低 / 1 普通 / 2 高）。执行顺序与任务挑选都看它。"""
+    with _db() as c:
+        return c.execute("UPDATE subtask SET priority = ? WHERE no = ?",
+                         (max(0, min(2, int(priority))), no)).rowcount > 0
 
 
 def subtasks(task_no: str = "") -> list:
@@ -210,6 +228,7 @@ def subtasks(task_no: str = "") -> list:
     with _db() as c:
         return [{"no": r["no"], "taskNo": r["task_no"], "sub": r["sub"], "role": r["role"],
                  "expect": r["expect"], "st": r["status"],
+                 "priority": int(r["priority"] or 0),
                  "tries": r["tries"], "lastResult": r["last_result"], "lastStarted": r["last_started"]}
                 for r in c.execute(q + " ORDER BY s.no", args)]
 

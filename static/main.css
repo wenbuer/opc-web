@@ -753,9 +753,11 @@ table.mdt{border-collapse:collapse;width:100%;min-width:100%;font-size:10.5px;co
 .dq-row .dretry,.dq-row .ddel{font-size:9.5px;padding:3px 7px;border-radius:6px;cursor:pointer;border:1px solid;font-weight:600;letter-spacing:.3px;transition:all .15s ease;background:transparent;white-space:nowrap}
 /* 峰时堆积：队列里的优先级芯片与「立即执行」。堆了就得回答「谁先跑」和「我现在就要」。 */
 .dq-prio{flex:none;padding:6px 8px;font-size:11.5px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--txt);cursor:pointer}
-.dq-row .dprio{font-size:9.5px;padding:2px 6px;border-radius:6px;cursor:pointer;border:1px solid var(--line);color:var(--faint);user-select:none}
-.dq-row .dprio.p2{color:var(--red-bright);border-color:rgba(239,68,68,.45)}
-.dq-row .dprio.p0{opacity:.7}
+/* 优先级芯片：子任务看板（待派列 / 全局列表）上的主入口，点一下循环切换 */
+.dprio{font-size:9.5px;padding:2px 6px;border-radius:6px;cursor:pointer;border:1px solid var(--line);color:var(--faint);user-select:none;flex:none}
+.dprio.p2{color:var(--red-bright);border-color:rgba(239,68,68,.45);font-weight:700}
+.dprio.p0{opacity:.7}
+.bd-card .dprio,.br-row .dprio{margin-left:5px}
 .dq-row .dnow{font-size:9.5px;padding:2px 7px;border-radius:6px;cursor:pointer;font-weight:600;background:transparent;color:var(--gold);border:1px solid rgba(2,132,199,.5)}
 .dq-row .dnow:hover{background:var(--gold);color:#fff}
 .dq-row .dnow:disabled{opacity:.6;cursor:default}

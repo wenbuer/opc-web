@@ -332,6 +332,15 @@ class Handler(BaseHTTPRequestHandler):
         no = str(body.get("no", "")).strip()
         if not no:
             raise ApiError(400, "缺少任务编号 no")
+        sub_no = str(body.get("sub") or "").strip()
+        if sub_no:
+            # 子任务优先级：用户是在「子任务看板 · 待派」上排序的，这是主入口
+            if not any(s["no"] == sub_no for s in store.subtasks()):
+                raise ApiError(404, "子任务 " + sub_no + " 不存在")
+            p = max(0, min(2, int(body.get("priority") or 0)))
+            store.set_subtask_priority(sub_no, p)
+            return {"ok": True, "no": sub_no, "queue": self._queue_rows(),
+                    "msg": sub_no + " 优先级已设为" + {0: "低", 1: "普通", 2: "高"}.get(p, str(p))}
         t = store.get_task(no)
         if not t:
             raise ApiError(404, "任务 " + no + " 不在队列中")

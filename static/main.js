@@ -472,11 +472,8 @@
     // 优先级：峰时会把长任务堆在队列里，堆了就得回答「谁先跑」。单字芯片，点一下循环。
     // 只有还没开跑的任务才需要它 —— 跑完/在跑/阻塞的调优先级没有意义。
     if (st === "排队" || st === "待派"){
-      var p = parseInt(t.priority || 1, 10);
-      if (isNaN(p)) p = 1;
-      var pTxt = p >= 2 ? "高" : (p <= 0 ? "低" : "普");
-      ops += "<span class='dprio p" + p + "' title='优先级：" + pTxt + "（点击切换 高 → 低 → 普）'>" + pTxt + "</span>";
       // 「立即执行」= 豁免峰时排队 + 提到队首。峰时下达后不想等到 12:00 / 18:00 就用它。
+      // 优先级不在这里 —— 它是**子任务看板 · 待派**上的事（那边才是真正的工作队列）。
       ops += "<button class='dnow' title='立即执行：跳过峰时排队并提到最高优先级'>▶ 立即执行</button>";
     }
     if (st === "阻塞") ops += "<button class='dretry' title='重试：重置为待派并重新触发执行链'>↻ 重试</button>";
@@ -484,18 +481,6 @@
     return ops ? "<span class='dops'>" + ops + "</span>" : "";
   }
   function bindTaskOps(row, t){
-    var bp = row.querySelector(".dprio");
-    if (bp) bp.addEventListener("click", function(ev){
-      ev.stopPropagation();
-      var cur = parseInt(t.priority || 1, 10);
-      if (isNaN(cur)) cur = 1;
-      var nxt = cur >= 2 ? 0 : (cur <= 0 ? 1 : 2);      // 高 → 低 → 普 → 高
-      post("/api/task-order", { no: t.no, priority: nxt }).then(function(j){
-        var st = $("dqState");
-        if (st && j && j.ok) st.textContent = t.no + "：" + (j.msg || "优先级已更新");
-        loadQueue();
-      }).catch(function(){});
-    });
     var btN = row.querySelector(".dnow");
     if (btN) btN.addEventListener("click", function(ev){
       ev.stopPropagation();
@@ -1292,6 +1277,7 @@
       col.appendChild(list);
       box.appendChild(col);
     });
+    bindSubPrio(box);
   }
   /* 全部静止时的形态：按完成时间倒序，一行一个子任务。
      看板看「正在流动」，列表看「最近发生了什么」—— 两种状态不该用同一种图。 */
@@ -1316,6 +1302,7 @@
         + "<span class='br-no'>" + esc(x.no) + "</span>"
         + "<span class='br-st " + (boardColOf(x.st) === "完成" ? "ok"
             : (boardColOf(x.st) === "阻塞" ? "bad" : "run")) + "'>" + esc(x.st || "待派") + "</span>"
+        + subPrioChip(x)
         + "<span class='br-sub'>" + esc(x.sub) + "</span>"
         + (partial ? "<span class='bc-tag partial'>部分</span>" : "")
         + "<span class='br-role'>" + esc(x.role) + " " + esc(roleName(x.role)) + "</span>";
@@ -1330,6 +1317,34 @@
       wrap.appendChild(m);
     }
     box.appendChild(wrap);
+    bindSubPrio(box);
+  }
+  /* 子任务优先级芯片：高 / 普 / 低，点一下循环。只在「待派」上出现 ——
+     调度按它决定谁先跑，而峰时会把长任务堆在队列里，堆了就必须能排序。
+     入口放在子任务看板的待派列表上：那张列表才是真正的工作队列。 */
+  function subPrioChip(x){
+    if (String(x.st || "") !== "待派") return "";
+    var p = parseInt(x.priority || 1, 10);
+    if (isNaN(p)) p = 1;
+    var t = p >= 2 ? "高" : (p <= 0 ? "低" : "普");
+    return "<span class='dprio p" + p + "' data-prio='" + esc(x.no) + "' title='优先级：" + t
+      + "（点击切换 高 → 低 → 普）'>" + t + "</span>";
+  }
+  function bindSubPrio(box){
+    if (!box) return;
+    box.querySelectorAll(".dprio[data-prio]").forEach(function(el){
+      el.addEventListener("click", function(ev){
+        ev.stopPropagation();
+        var no = el.getAttribute("data-prio");
+        var cur = el.classList.contains("p2") ? 2 : (el.classList.contains("p0") ? 0 : 1);
+        var nxt = cur >= 2 ? 0 : (cur <= 0 ? 1 : 2);
+        post("/api/task-order", { no: no, priority: nxt }).then(function(j){
+          var st = $("dqState");
+          if (st && j && j.msg) st.textContent = j.msg;
+          loadBoard(); loadQueue();
+        }).catch(function(){});
+      });
+    });
   }
   function boardCard(x){
     var el = document.createElement("div");
@@ -1337,6 +1352,7 @@
     var partial = String(x.st || "").indexOf("部分") >= 0;
     var tries = x.tries || 0;
     el.innerHTML = "<div class='bc-top'><span class='bc-no'>" + esc(x.no) + "</span>"
+      + subPrioChip(x)
       + (partial ? "<span class='bc-tag partial'>部分</span>" : "")
       + (tries > 1 ? "<span class='bc-tag retry'>第 " + tries + " 次</span>" : "")
       + "</div><div class='bc-sub'>" + esc(x.sub) + "</div>"
