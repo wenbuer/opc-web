@@ -127,8 +127,10 @@ def decompose(task_no, task_text):
                  "请忽略任务里的 R1 字样，直接按职责从下列业务角色选人："
                  % (config.role_name("R1") or "老板助理"))
     prompt = (lead + role_list +
-              "。按职能合理拆分：能由一个角色一次完成（如单点调研/资料检索）就拆 1 个，"
-              "只有确实需要多个职能接力/分工、单角色覆盖不了时才拆多个（会按顺序逐个执行，请拆成可独立交付的子任务）—— 宁少勿多，总数不超过 %d 个。"
+              "。拆分口径：按「能不能独立交付」拆 —— 一个子任务只干一件事、产出一份能单独验收的东西。"
+              "凡是一件以上的事（例如「先搜集内容，再移除接口并接入新数据」）就拆成 2~3 个，"
+              "不要压进同一个子任务 —— 每个子任务是一段独立上下文，塞在一起会让后面每一步都背着前面的全部记录。"
+              "单点小事（一次检索、单个文件的改动）拆 1 个即可。总数不超过 %d 个。"
               "只输出派发单表格行，每行格式：| %s | 子任务描述 | R编号 | 期望产出 | 待派 |；"
               "示例：| %s | 设计产品落地页 | R6 | 界面设计稿 | 待派 |。"
               "不要输出任何解释、提问或多余文字。任务：%s%s"
@@ -297,6 +299,10 @@ def execute(task_no, task_text, direct=None):
                 "text": "直派 %s %s：%s（跳过 R1 拆解）" % (role, config.role_name(role), subs[0]["sub"])}})
             set_state(tag="直派 %s" % role)
         else:
+            # 每次都重新拆解 —— **不复用上一次的拆解结果**。
+            # 试过复用（省一次模型调用），但拆解本身很便宜（单发、无工具、一万多 token），
+            # 换来的是「看到的待派列表未必是要执行的那份」，不值。要的是实时的那一份。
+            # 用户在看板上排好的优先级不会因此丢：编号是位置性的，replace_subtasks 按编号继承。
             runner.emit({"type": "assistant/chunk", "data": {"text": "R1 拆解 %s：%s" % (task_no, task_text)}})
             set_state(tag="R1 拆解中…")
             # 指定 R1（含「请 R1 / 让 R1 …」）= R1 牵头派发：同样走模型拆解选业务角色
@@ -319,9 +325,35 @@ def execute(task_no, task_text, direct=None):
         names = ", ".join("%s→%s" % (s["role"], s["sub"][:18]) for s in subs)
         runner.emit({"type": "assistant/chunk", "data": {"text": "✔ 拆解完成 %d 项：%s" % (total, names)}})
         runner.emit({"type": "step/end", "data": {"turn": 1, "step": 1}})
-        sub_nos = store.replace_subtasks(task_no, subs)     # 幂等：重复执行直接覆盖
+        # 先落子任务（优先级从任务带下来），**再做峰时判定** —— 排队中的任务也必须在
+        # 「子任务看板 · 待派」里看得见、调得动优先级。反过来的话，队列一堆积，
+        # 最需要用户排序的那批恰恰是隐身的那批（先前排队时一条子任务行都不建）。
+        task_prio = int(store.get_task(task_no).get("priority") or 1)
+        sub_nos = store.replace_subtasks(task_no, subs, default_priority=task_prio)
+        # 峰时延后长任务：谷时价是峰时的一半（官方口径），而「会不会跑很久」拆解之后才知道。
+        # 判据用子任务数 —— 一个子任务正常也要 36~136 轮，≥2 就是接力活；单点小事照跑。
+        # 放这里而不是 scan_once：那里还没拆解，只能一律拦，连 30 秒的小活也一起等了。
+        forced = bool(store.get_task(task_no).get("force"))
+        if (not direct and not forced and total >= config.PEAK_DEFER_MIN_SUBS
+                and config.peak_defer() and config.is_peak_now()):
+            until = config.next_offpeak_str()
+            store.set_task(task_no, "排队",
+                           "峰时排队：已拆解 %d 项，%s 后自动开跑（谷时价减半）" % (total, until))
+            runner.emit({"type": "assistant/chunk", "data": {
+                "text": "⏸ %s 拆出 %d 个子任务（长跑），当前峰时 → 排队到 %s 谷时再开跑"
+                        "（子任务已在看板「待派」里，可先调优先级）" % (task_no, total, until)}})
+            runner.emit({"type": "run/end",
+                         "text": "任务 %s 峰时排队中：%s 后自动开跑" % (task_no, until)})
+            set_state(lastOk=True, tag="%s 峰时排队至 %s" % (task_no, until))
+            return
+        if forced:
+            # 豁免是一次性的：真开跑了就清掉，免得这条标记长期生效、以后峰时再也不排队
+            store.set_task_force(task_no, False)
+        # 同一任务内按优先级排先后；同级的保持拆解原序（sorted 是稳定排序）
+        prio = {s["no"]: int(s["priority"] or 0) for s in store.subtasks(task_no)}
+        pairs = sorted(zip(sub_nos, subs), key=lambda p: -prio.get(p[0], 0))
         ok_cnt, fail = 0, []
-        for i, (sub_no, s) in enumerate(zip(sub_nos, subs)):
+        for i, (sub_no, s) in enumerate(pairs):
             if not _alive(task_no):          # 任务已被删除/终止 → 提前退出，不再执行剩余子任务
                 return
             set_state(tag="执行 %d/%d：%s %s" % (i + 1, total, s["role"], s["sub"]))

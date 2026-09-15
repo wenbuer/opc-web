@@ -469,11 +469,29 @@
   function taskOps(t){
     var st = t.status || "";
     var ops = "";
+    // 优先级：峰时会把长任务堆在队列里，堆了就得回答「谁先跑」。单字芯片，点一下循环。
+    // 只有还没开跑的任务才需要它 —— 跑完/在跑/阻塞的调优先级没有意义。
+    if (st === "排队" || st === "待派"){
+      // 「立即执行」= 豁免峰时排队 + 提到队首。峰时下达后不想等到 12:00 / 18:00 就用它。
+      // 优先级不在这里 —— 它是**子任务看板 · 待派**上的事（那边才是真正的工作队列）。
+      ops += "<button class='dnow' title='立即执行：跳过峰时排队并提到最高优先级'>▶ 立即执行</button>";
+    }
     if (st === "阻塞") ops += "<button class='dretry' title='重试：重置为待派并重新触发执行链'>↻ 重试</button>";
     if (st !== "执行中") ops += "<button class='ddel' title='删除任务（含子任务 / 回报 / 工作区产物）'>删除</button>";
     return ops ? "<span class='dops'>" + ops + "</span>" : "";
   }
   function bindTaskOps(row, t){
+    var btN = row.querySelector(".dnow");
+    if (btN) btN.addEventListener("click", function(ev){
+      ev.stopPropagation();
+      btN.disabled = true; btN.textContent = "执行中…";
+      post("/api/task-order", { no: t.no, force: true }).then(function(j){
+        if (!j || !j.ok){ btN.disabled = false; btN.textContent = "▶ 立即执行"; alert((j && j.msg) || "失败"); return; }
+        var st = $("dqState");
+        if (st && j.msg){ st.className = "dq-state ok"; st.textContent = t.no + "：" + j.msg; }
+        loadQueue(); loadBoard(); liveStart();
+      }).catch(function(){ btN.disabled = false; btN.textContent = "▶ 立即执行"; });
+    });
     var btR = row.querySelector(".dretry");
     if (btR) btR.addEventListener("click", function(ev){
       ev.stopPropagation();
@@ -627,7 +645,24 @@
     var box = $("taskOut");
     box.innerHTML = "<div class='placeholder'>加载子任务 " + esc(x.no) + " …</div>";
     api("/api/sub-output?no=" + encodeURIComponent(x.no)).then(function(j){
-      if (!j || !j.ok){ box.innerHTML = "<div class='placeholder'>子任务产出读取失败：" + esc(j && j.msg || "未知") + "</div>"; return; }
+      if (!j || !j.ok){
+        // 还没跑过的子任务根本没有产出文件 —— 那是正常状态，不是「读取失败」。
+        // 把它报成错误，用户会以为出了故障。
+        var st0 = String(x.st || "待派");
+        if (st0 === "待派" || st0 === "已派" || st0 === "执行中"){
+          var nm0 = roleName(x.role) || x.role || "";
+          box.innerHTML = "<div class='to-head'><span class='sub-no'>" + esc(x.no) + "</span><b>"
+            + esc(nm0) + "</b><em>" + esc(st0) + "</em></div>"
+            + (x.sub ? "<div class='sub-line'>子任务：" + esc(x.sub) + "</div>" : "")
+            + (x.expect ? "<div class='sub-line sub-expect'>期望产出：" + esc(x.expect) + "</div>" : "")
+            + "<div class='placeholder'>" + esc(st0 === "执行中"
+                ? "正在执行 —— 这一段还没落盘，跑完这里会显示产出"
+                : "尚未产出 —— 状态「" + st0 + "」，等它执行完这里会显示产出") + "</div>";
+          return;
+        }
+        box.innerHTML = "<div class='placeholder'>子任务产出读取失败：" + esc(j && j.msg || "未知") + "</div>";
+        return;
+      }
       var m = j.meta || {};
       var nm = m.roleName || roleName(m.role) || x.role || "";
       var hh = "<div class='to-head'><a href='javascript:void(0)' id='subBack'>← 返回任务 " + esc(x.taskNo) + " 聚合</a>"
@@ -667,6 +702,11 @@
       var s = j.state || {};
       var txt = s.busy ? "调度中：" + (s.tag || "") + "（后台执行中）"
         : "调度空闲" + (s.lastOk === true ? " ✓ 上轮完成" : s.lastOk === false ? " ✗ 上轮失败" : "");
+      // 峰时提示：谷时价是峰时的一半，长任务（拆出 ≥2 个子任务）会自动排队到谷时开跑。
+      // 不提示的话，用户下达完看到「什么都没发生」会以为坏了。
+      if (!s.busy && !s.paused && j.peak && j.peakDefer){
+        txt += "　· 当前峰时，长任务自动排到 " + (j.offpeakAt || "谷时") + " 开跑（谷时价减半）";
+      }
       if (st){ st.className = "dq-state" + (s.busy ? " busy" : "") + (s.paused ? " paused" : ""); st.textContent = (s.paused ? "⏸ " : "") + txt; }
       var bt = $("btnToggleSched");
       if (bt){ bt.innerHTML = s.paused ? "▶ 恢复" : "⏸ 暂停"; bt.title = s.paused ? "恢复自动执行链" : "暂停自动执行链"; }
@@ -680,6 +720,7 @@
     var stj = $("dqState");
     if (!v){ if (stj) stj.textContent = "请先填写任务内容"; return; }
     var ex = ($("dqExpect") && $("dqExpect").value.trim()) || "R1 判断";
+    // 优先级不在这里选 —— 它在「子任务看板 · 待派」那张列表上（拆分之后才谈得上优先级）
     if (stj){ stj.className = "dq-state busy"; stj.textContent = "下达中…"; }
     post("/api/dispatch", { task: v, expect: ex }).then(function(j){
       if (!j || !j.ok){ if (stj){ stj.className = "dq-state"; stj.textContent = "下达失败：" + (j && j.msg || "未知"); } return; }
@@ -1252,6 +1293,7 @@
       col.appendChild(list);
       box.appendChild(col);
     });
+    bindSubPrio(box);
   }
   /* 全部静止时的形态：按完成时间倒序，一行一个子任务。
      看板看「正在流动」，列表看「最近发生了什么」—— 两种状态不该用同一种图。 */
@@ -1264,7 +1306,13 @@
     head.className = "br-head";
     head.innerHTML = "<span>子任务</span><em>共 " + total + " 个</em>";
     wrap.appendChild(head);
+    // 未开始的（待派/已派）**排在最前**：它们是要动手的那批。
+    // 原来只按 lastStarted 倒序，而待派子任务从来没启动过（lastStarted 为空）→ 全排到最后，
+    // 再被 slice(0,30) 截掉 —— 结果「要动的那批」恰恰在全局列表里看不见，芯片自然也看不见。
     var arr = list.slice().sort(function(a, b){
+      var pa = (a.st === "待派" || a.st === "已派") ? 0 : 1;
+      var pb = (b.st === "待派" || b.st === "已派") ? 0 : 1;
+      if (pa !== pb) return pa - pb;
       return String(b.lastStarted || "").localeCompare(String(a.lastStarted || ""));
     }).slice(0, 30);
     arr.forEach(function(x){
@@ -1276,6 +1324,7 @@
         + "<span class='br-no'>" + esc(x.no) + "</span>"
         + "<span class='br-st " + (boardColOf(x.st) === "完成" ? "ok"
             : (boardColOf(x.st) === "阻塞" ? "bad" : "run")) + "'>" + esc(x.st || "待派") + "</span>"
+        + subPrioChip(x)
         + "<span class='br-sub'>" + esc(x.sub) + "</span>"
         + (partial ? "<span class='bc-tag partial'>部分</span>" : "")
         + "<span class='br-role'>" + esc(x.role) + " " + esc(roleName(x.role)) + "</span>";
@@ -1290,6 +1339,37 @@
       wrap.appendChild(m);
     }
     box.appendChild(wrap);
+    bindSubPrio(box);
+  }
+  /* 子任务优先级芯片：高 / 普 / 低，点一下循环。只在「待派」上出现 ——
+     调度按它决定谁先跑，而峰时会把长任务堆在队列里，堆了就必须能排序。
+     入口放在子任务看板的待派列表上：那张列表才是真正的工作队列。 */
+  function subPrioChip(x){
+    if (String(x.st || "") !== "待派") return "";
+    var p = parseInt(x.priority || 1, 10);
+    if (isNaN(p)) p = 1;
+    var t = p >= 2 ? "高" : (p <= 0 ? "低" : "普");
+    return "<span class='dprio p" + p + "' data-prio='" + esc(x.no) + "' title='优先级：" + t
+      + "（点击切换 高 → 低 → 普）'>" + t + "</span>";
+  }
+  /* 子任务上**不出现**「立即执行」：子任务没法脱离任务单独跑（执行链按任务走、
+     一次一个任务），把它摆在子任务上就得替它编一个「其实是让父任务跑」的含义 ——
+     界面上放一个名不副实的按钮，不如不放。要立刻跑就去任务行上点。 */
+  function bindSubPrio(box){
+    if (!box) return;
+    box.querySelectorAll(".dprio[data-prio]").forEach(function(el){
+      el.addEventListener("click", function(ev){
+        ev.stopPropagation();
+        var no = el.getAttribute("data-prio");
+        var cur = el.classList.contains("p2") ? 2 : (el.classList.contains("p0") ? 0 : 1);
+        var nxt = cur >= 2 ? 0 : (cur <= 0 ? 1 : 2);
+        post("/api/task-order", { no: no, priority: nxt }).then(function(j){
+          var st = $("dqState");
+          if (st && j && j.msg) st.textContent = j.msg;
+          loadBoard(); loadQueue();
+        }).catch(function(){});
+      });
+    });
   }
   function boardCard(x){
     var el = document.createElement("div");
@@ -1297,6 +1377,7 @@
     var partial = String(x.st || "").indexOf("部分") >= 0;
     var tries = x.tries || 0;
     el.innerHTML = "<div class='bc-top'><span class='bc-no'>" + esc(x.no) + "</span>"
+      + subPrioChip(x)
       + (partial ? "<span class='bc-tag partial'>部分</span>" : "")
       + (tries > 1 ? "<span class='bc-tag retry'>第 " + tries + " 次</span>" : "")
       + "</div><div class='bc-sub'>" + esc(x.sub) + "</div>"
@@ -2400,6 +2481,9 @@
       var pr = j.prices || {}, prw = j.pricesRaw || {};
       var pi = $("mPriceIn");  if (pi) pi.value = (prw.priceIn == null ? "" : prw.priceIn);
       var po = $("mPriceOut"); if (po) po.value = (prw.priceOut == null ? "" : prw.priceOut);
+      // 运行开关：峰时排队是「缺省开」—— 只有显式写成 false 才关（与 config.peak_defer() 同口径）
+      var pd = $("peakDeferOn");
+      if (pd) pd.checked = !(j.config && j.config.peakDefer === false);
       var pc = $("mPriceCache");
       if (pc){
         pc.value = (prw.priceCache == null ? "" : prw.priceCache);
@@ -2551,6 +2635,16 @@
     });
     var on = $("dockOn");
     if (on) on.addEventListener("change", function(){ applyDock(on.checked, true); });
+    var pk = $("peakDeferOn");
+    if (pk) pk.addEventListener("change", function(){
+      var m = $("peakMsg"); if (m) m.textContent = "保存中…";
+      post("/api/settings", { peakDefer: pk.checked }).then(function(j){
+        if (!m) return;
+        m.textContent = (j && j.ok)
+          ? (pk.checked ? "✓ 已开启 —— 峰时长任务排到谷时开跑" : "✓ 已关闭 —— 峰时也立即执行")
+          : ("保存失败：" + esc(j && j.msg || "未知"));
+      }).catch(function(e){ if (m) m.textContent = "保存异常：" + esc(e.message); });
+    });
     dockApplyPos();                                 // 恢复上次拖到的位置
     makeDockDraggable();
     // 第一次露面时招呼一下（气泡 3 秒后自动收回），之后不再打扰

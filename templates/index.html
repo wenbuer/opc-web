@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260915a">
+<link rel="stylesheet" href="/static/main.css?v=20260915i">
 </head>
 <body>
 <div class="shell">
@@ -212,7 +212,7 @@
           <button class="snav-item" data-snav="schedule">④ 定时任务</button>
           <button class="snav-item" data-snav="tokens">⑤ Token 统计</button>
     <button class="snav-item" data-snav="skill">⑥ Skill 导入</button>
-          <button class="snav-item" data-snav="assistant">⑦ R1 助理</button>
+          <button class="snav-item" data-snav="assistant">⑦ 运行开关</button>
         </aside>
         <div class="settings-main">
           <div class="snav-pane active" data-pane="dir">
@@ -354,14 +354,22 @@
             <div class="set-note"><b>口径</b> 每个子任务执行时把用量写进 <code>T-xxx-Sn.meta.json</code>（tokensIn = 输入 + 缓存读取，tokensOut = 输出），并记下执行它的引擎与会话标识，统计对不上时能回溯。<br><b>临时会话</b>（⑦ R1 助理）的用量记在《批阅台/临时会话.jsonl》，不进任何子任务、不并入任务合计，在图上单列一组柱。</div>
           </div>
         <div class="snav-pane" data-pane="assistant">
-          <div class="set-head">R1 助理悬浮窗</div>
+          <div class="set-head">运行开关</div>
           <div class="dock-row">
             <label class="dock-switch">
               <input type="checkbox" id="dockOn">
-              <span>开启悬浮窗（右下角常驻）</span>
+              <span>R1 助理悬浮窗（右下角常驻）</span>
             </label>
             <span class="set-msg" id="dockMsg"></span>
           </div>
+          <div class="dock-row">
+            <label class="dock-switch">
+              <input type="checkbox" id="peakDeferOn">
+              <span>峰时长任务自动排队（谷时三档单价一律减半）</span>
+            </label>
+            <span class="set-msg" id="peakMsg"></span>
+          </div>
+          <div class="set-note"><b>峰时排队</b> 官方峰时 = <b>工作日北京时间 09:00-12:00 / 14:00-18:00</b>，谷时单价减半。开启后，<b>拆出 2 个以上子任务</b>的任务（＝会跑很久的那种）在峰时不下发，自动排到下一个谷时起点开跑；单点小事照跑，不耽误人。队列行的状态会显示「排队」并写明开跑时间。<br>判定放在拆解之后 —— 只有拿到子任务数才知道这活是不是长跑。</div>
           <div class="set-note"><b>临时会话</b> 悬浮窗里的问答<b>不进任务流程</b> —— 不建任务、不派角色、不写回报，也不会出现在任务队列里。<br>R1 会带着项目现状作答（任务概况 / 档案数 / 最新简报）；要细节就在问题里点名，它会自己去读文件。<br><b>用量</b> 记在《批阅台/临时会话.jsonl》，在「③ Token 统计」里单列一组柱。</div>
         </div>
         </div>
@@ -470,6 +478,6 @@
   </div>
   <button id="r1Fab" class="r1-fab" data-tip="问我项目的事 · 临时会话" title="R1 助理（临时会话，可拖动）"></button>
 </div>
-<script src="/static/main.js?v=20260915a"></script>
+<script src="/static/main.js?v=20260915i"></script>
 </body>
 </html>
