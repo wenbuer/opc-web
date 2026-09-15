@@ -321,6 +321,41 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": False, "msg": "未知接口"}, 404)
 
     # ---------- 写端点 ----------
+    def _post_task_order(self):
+        """调整任务在队列里的位置：优先级，以及「立即执行」（豁免峰时排队）。
+
+        峰时会让长任务堆积，堆积就必须回答两个问题：谁先跑（priority）、我现在就要
+        （force）。force 是一次性的 —— 执行链真开跑时会清掉它，否则这条豁免会长期生效。"""
+        body = self._body()
+        if body is None:
+            raise ApiError(400, "JSON 解析失败")
+        no = str(body.get("no", "")).strip()
+        if not no:
+            raise ApiError(400, "缺少任务编号 no")
+        t = store.get_task(no)
+        if not t:
+            raise ApiError(404, "任务 " + no + " 不在队列中")
+        msg = []
+        if "priority" in body:
+            p = max(0, min(2, int(body.get("priority") or 0)))
+            store.set_task_priority(no, p)
+            msg.append("优先级已设为" + {0: "低", 1: "普通", 2: "高"}.get(p, str(p)))
+        if "force" in body:
+            if body.get("force"):
+                store.set_task_force(no, True)
+                store.set_task_priority(no, 2)      # 「立即执行」= 同时提到队首，否则不算立即
+                if t.get("status") == "排队":
+                    store.set_task(no, "待派", "用户「立即执行」：跳过峰时排队")
+                scheduler.scan_once()                # 忙时自然排队，等当前任务结束就轮到它
+                msg.append("已豁免峰时排队并提到最高优先级")
+            else:
+                # 允许撤销：豁免是一次性标记，但用户可能改主意（想让它重新按峰时排队）
+                store.set_task_force(no, False)
+                msg.append("已取消峰时豁免")
+        if not msg:
+            msg.append("无改动")
+        return {"ok": True, "no": no, "queue": self._queue_rows(), "msg": "；".join(msg)}
+
     def _post_retry(self):
         body = self._body()
         if body is None:
@@ -356,9 +391,10 @@ class Handler(BaseHTTPRequestHandler):
             raise ApiError(400, "JSON 解析失败")
         text = str(body.get("task", "")).strip()
         expect = str(body.get("expect", "R1 判断")).strip()
+        prio = max(0, min(2, int(body.get("priority") or 1)))
         if not text:
             raise ApiError(400, "任务内容不能为空")
-        no = store.add_task(text, expect)
+        no = store.add_task(text, expect, prio)
         scheduler.scan_once()  # 立即生成 R1 拆解指令，不等 8s 轮询
         return {"ok": True, "no": no, "queue": self._queue_rows(), "state": scheduler.SCHED_STATE}
 
@@ -656,6 +692,8 @@ class Handler(BaseHTTPRequestHandler):
             self._ok(self._post_role_task)
         elif url == "/api/task-delete":
             self._ok(self._post_task_delete)
+        elif url == "/api/task-order":
+            self._ok(self._post_task_order, err=400)
         elif url == "/api/plan-execute":
             self._ok(lambda: {"ok": True, "result": scheduler.plan_execute()})
         elif url == "/api/plan-pause":

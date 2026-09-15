@@ -321,7 +321,8 @@ def execute(task_no, task_text, direct=None):
         # 峰时延后长任务：谷时价是峰时的一半（官方口径），而「会不会跑很久」拆解之后才知道。
         # 判据用子任务数 —— 一个子任务正常也要 36~136 轮，≥2 就是接力活；单点小事照跑。
         # 放这里而不是 scan_once：那里还没拆解，只能一律拦，连 30 秒的小活也一起等了。
-        if (not direct and total >= config.PEAK_DEFER_MIN_SUBS
+        forced = bool(store.get_task(task_no).get("force"))
+        if (not direct and not forced and total >= config.PEAK_DEFER_MIN_SUBS
                 and config.peak_defer() and config.is_peak_now()):
             until = config.next_offpeak_str()
             store.set_task(task_no, "排队",
@@ -333,6 +334,9 @@ def execute(task_no, task_text, direct=None):
                          "text": "任务 %s 峰时排队中：%s 后自动开跑" % (task_no, until)})
             set_state(lastOk=True, tag="%s 峰时排队至 %s" % (task_no, until))
             return
+        if forced:
+            # 豁免是一次性的：真开跑了就清掉，免得这条标记长期生效、以后峰时再也不排队
+            store.set_task_force(task_no, False)
         names = ", ".join("%s→%s" % (s["role"], s["sub"][:18]) for s in subs)
         runner.emit({"type": "assistant/chunk", "data": {"text": "✔ 拆解完成 %d 项：%s" % (total, names)}})
         runner.emit({"type": "step/end", "data": {"turn": 1, "step": 1}})

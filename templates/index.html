@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OPC 指挥中心 · 作战面板</title>
-<link rel="stylesheet" href="/static/main.css?v=20260915c">
+<link rel="stylesheet" href="/static/main.css?v=20260915d">
 </head>
 <body>
 <div class="shell">
@@ -149,6 +149,11 @@
         <div class="panel-head">任务工作台</div>
         <div class="launch-row">
           <input id="dqInput" placeholder="下达任务，比如：R6 以产品设计师身份做一版界面设计" />
+          <select id="dqPriority" class="dq-prio" title="优先级：峰时任务会堆积，调度按它决定谁先跑">
+            <option value="1">普通</option>
+            <option value="2">高</option>
+            <option value="0">低</option>
+          </select>
           <button id="btnOneClick" class="btn-gold">▶ 下达</button>
           <button id="btnToggleSched" class="btn-gold" title="暂停 / 恢复自动执行链">⏸ 暂停</button>
         </div>
@@ -478,6 +483,6 @@
   </div>
   <button id="r1Fab" class="r1-fab" data-tip="问我项目的事 · 临时会话" title="R1 助理（临时会话，可拖动）"></button>
 </div>
-<script src="/static/main.js?v=20260915c"></script>
+<script src="/static/main.js?v=20260915d"></script>
 </body>
 </html>

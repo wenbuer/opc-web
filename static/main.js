@@ -469,11 +469,44 @@
   function taskOps(t){
     var st = t.status || "";
     var ops = "";
+    // 优先级：峰时会把长任务堆在队列里，堆了就得回答「谁先跑」。单字芯片，点一下循环。
+    // 只有还没开跑的任务才需要它 —— 跑完/在跑/阻塞的调优先级没有意义。
+    if (st === "排队" || st === "待派"){
+      var p = parseInt(t.priority || 1, 10);
+      if (isNaN(p)) p = 1;
+      var pTxt = p >= 2 ? "高" : (p <= 0 ? "低" : "普");
+      ops += "<span class='dprio p" + p + "' title='优先级：" + pTxt + "（点击切换 高 → 低 → 普）'>" + pTxt + "</span>";
+      // 「立即执行」= 豁免峰时排队 + 提到队首。峰时下达后不想等到 12:00 / 18:00 就用它。
+      ops += "<button class='dnow' title='立即执行：跳过峰时排队并提到最高优先级'>▶ 立即执行</button>";
+    }
     if (st === "阻塞") ops += "<button class='dretry' title='重试：重置为待派并重新触发执行链'>↻ 重试</button>";
     if (st !== "执行中") ops += "<button class='ddel' title='删除任务（含子任务 / 回报 / 工作区产物）'>删除</button>";
     return ops ? "<span class='dops'>" + ops + "</span>" : "";
   }
   function bindTaskOps(row, t){
+    var bp = row.querySelector(".dprio");
+    if (bp) bp.addEventListener("click", function(ev){
+      ev.stopPropagation();
+      var cur = parseInt(t.priority || 1, 10);
+      if (isNaN(cur)) cur = 1;
+      var nxt = cur >= 2 ? 0 : (cur <= 0 ? 1 : 2);      // 高 → 低 → 普 → 高
+      post("/api/task-order", { no: t.no, priority: nxt }).then(function(j){
+        var st = $("dqState");
+        if (st && j && j.ok) st.textContent = t.no + "：" + (j.msg || "优先级已更新");
+        loadQueue();
+      }).catch(function(){});
+    });
+    var btN = row.querySelector(".dnow");
+    if (btN) btN.addEventListener("click", function(ev){
+      ev.stopPropagation();
+      btN.disabled = true; btN.textContent = "执行中…";
+      post("/api/task-order", { no: t.no, force: true }).then(function(j){
+        if (!j || !j.ok){ btN.disabled = false; btN.textContent = "▶ 立即执行"; alert((j && j.msg) || "失败"); return; }
+        var st = $("dqState");
+        if (st && j.msg){ st.className = "dq-state ok"; st.textContent = t.no + "：" + j.msg; }
+        loadQueue(); loadBoard(); liveStart();
+      }).catch(function(){ btN.disabled = false; btN.textContent = "▶ 立即执行"; });
+    });
     var btR = row.querySelector(".dretry");
     if (btR) btR.addEventListener("click", function(ev){
       ev.stopPropagation();
@@ -685,8 +718,10 @@
     var stj = $("dqState");
     if (!v){ if (stj) stj.textContent = "请先填写任务内容"; return; }
     var ex = ($("dqExpect") && $("dqExpect").value.trim()) || "R1 判断";
+    var pr = parseInt(($("dqPriority") && $("dqPriority").value) || "1", 10);
+    if (isNaN(pr)) pr = 1;
     if (stj){ stj.className = "dq-state busy"; stj.textContent = "下达中…"; }
-    post("/api/dispatch", { task: v, expect: ex }).then(function(j){
+    post("/api/dispatch", { task: v, expect: ex, priority: pr }).then(function(j){
       if (!j || !j.ok){ if (stj){ stj.className = "dq-state"; stj.textContent = "下达失败：" + (j && j.msg || "未知"); } return; }
       $("dqInput").value = "";
       if (stj){ stj.className = "dq-state busy"; stj.innerHTML = "已下达 <b>" + esc(j.no) + "</b> —— 全自动流水线：R1 拆解 → subagent 派发各角色 → 回报落库"; }

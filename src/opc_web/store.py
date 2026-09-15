@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS task(
   task    TEXT NOT NULL,
   expect  TEXT NOT NULL DEFAULT '',
   status  TEXT NOT NULL DEFAULT '待派',
-  report  TEXT NOT NULL DEFAULT '—'
+  report  TEXT NOT NULL DEFAULT '—',
+  priority INTEGER NOT NULL DEFAULT 1,   -- 0 低 / 1 普通 / 2 高：峰时堆积时按它决定谁先跑
+  force    INTEGER NOT NULL DEFAULT 0    -- 1 = 本次豁免峰时排队（用户点了「立即执行」）
 );
 CREATE TABLE IF NOT EXISTS subtask(
   no      TEXT PRIMARY KEY,
@@ -64,6 +66,22 @@ def _now() -> str:
     return datetime.datetime.now().isoformat(timespec="seconds")
 
 
+# 加列迁移：SCHEMA 描述的是**新库**的形状，已存在的库不会因为 CREATE TABLE IF NOT EXISTS
+# 就多出列。每次开库顺手补一次（PRAGMA 查一下表结构，微秒级、永远正确）——
+# 与上面「每次跑一遍 CREATE TABLE」同一个懒法：不做版本号、不做迁移脚本。
+_MISSING_COLUMNS = (
+    ("task", "priority", "INTEGER NOT NULL DEFAULT 1"),
+    ("task", "force", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+
+def _add_missing_columns(c) -> None:
+    for table, col, decl in _MISSING_COLUMNS:
+        have = {r[1] for r in c.execute("PRAGMA table_info(%s)" % table)}
+        if col not in have:
+            c.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, col, decl))
+
+
 @contextmanager
 def _db():
     """一次操作一个连接：SQLite 自带文件锁，不需要连接池。
@@ -75,6 +93,7 @@ def _db():
     c = sqlite3.connect(p, timeout=15)
     c.row_factory = sqlite3.Row
     c.executescript(SCHEMA)
+    _add_missing_columns(c)
     try:
         yield c
         c.commit()
@@ -83,7 +102,7 @@ def _db():
 
 
 # ---------- 任务 ----------
-def add_task(text: str, expect: str = "R1 判断") -> str:
+def add_task(text: str, expect: str = "R1 判断", priority: int = 1) -> str:
     """下达任务 → 返回任务编号 T-00N。
 
     号**只增不减**：取「台账最大号」与「历史序号」的较大者 +1，并把新号写进序号表。
@@ -98,8 +117,8 @@ def add_task(text: str, expect: str = "R1 判断") -> str:
         c.execute("INSERT INTO seq(name, value) VALUES('task', ?) "
                   "ON CONFLICT(name) DO UPDATE SET value = excluded.value", (n,))
         no = "T-%03d" % n
-        c.execute("INSERT INTO task(no, date, task, expect) VALUES(?, ?, ?, ?)",
-                  (no, datetime.date.today().isoformat(), text, expect))
+        c.execute("INSERT INTO task(no, date, task, expect, priority) VALUES(?, ?, ?, ?, ?)",
+                  (no, datetime.date.today().isoformat(), text, expect, int(priority)))
         return no
 
 
@@ -107,8 +126,34 @@ def tasks() -> list:
     """全部任务（键名沿用前端契约：no/time/task/expect/status/report）。"""
     with _db() as c:
         return [{"no": r["no"], "time": r["date"], "task": r["task"], "expect": r["expect"],
-                 "status": r["status"], "report": r["report"]}
+                 "status": r["status"], "report": r["report"],
+                 "priority": int(r["priority"] or 0), "force": int(r["force"] or 0)}
                 for r in c.execute("SELECT * FROM task ORDER BY no")]
+
+
+def get_task(no: str) -> dict:
+    """单个任务（不存在返回 {}）。键名与 tasks() 一致。"""
+    with _db() as c:
+        r = c.execute("SELECT * FROM task WHERE no = ?", (no,)).fetchone()
+        if r is None:
+            return {}
+        return {"no": r["no"], "time": r["date"], "task": r["task"], "expect": r["expect"],
+                "status": r["status"], "report": r["report"],
+                "priority": int(r["priority"] or 0), "force": int(r["force"] or 0)}
+
+
+def set_task_priority(no: str, priority: int) -> bool:
+    """设优先级：0 低 / 1 普通 / 2 高。峰时堆积时调度按它挑下一个跑。"""
+    with _db() as c:
+        return c.execute("UPDATE task SET priority = ? WHERE no = ?",
+                         (max(0, min(2, int(priority))), no)).rowcount > 0
+
+
+def set_task_force(no: str, on: bool = True) -> bool:
+    """置/清「豁免峰时排队」。执行链真正开跑时清掉，避免一条旧标记长期生效。"""
+    with _db() as c:
+        return c.execute("UPDATE task SET force = ? WHERE no = ?",
+                         (1 if on else 0, no)).rowcount > 0
 
 
 def set_task(no: str, status: str, report: str = None) -> bool:

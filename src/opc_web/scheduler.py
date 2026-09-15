@@ -60,11 +60,15 @@ def scan_once():
                     store.set_task(t["no"], "待派", "谷时到点，自动开跑")
                     runner.emit({"type": "assistant/chunk", "data": {
                         "text": "▶ %s 谷时到点，解除峰时排队，开始执行" % t["no"]}})
-        for t in store.tasks():
-            if t["status"] == "待派":
-                from . import chain
-                threading.Thread(target=chain.execute, args=(t["no"], t["task"]), daemon=True).start()
-                return
+        pending = [t for t in store.tasks() if t["status"] == "待派"]
+        if not pending:
+            return
+        # 峰时会堆积，所以按优先级挑下一个：高 → 普通 → 低；同级按下达先后（号小的先跑）。
+        # 取号里的数字比字符串靠谱 —— "T-999" 与 "T-1000" 按字符串比是反的。
+        pending.sort(key=lambda t: (-int(t.get("priority") or 0), int(str(t["no"])[2:] or 0)))
+        t = pending[0]
+        from . import chain
+        threading.Thread(target=chain.execute, args=(t["no"], t["task"]), daemon=True).start()
     except Exception:
         pass
 
