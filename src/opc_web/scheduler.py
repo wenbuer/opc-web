@@ -537,13 +537,50 @@ def work_summary(task_no: str) -> str:
         return None
 
 
-def _headless_text(prompt: str, timeout: float = 600) -> str:
-    """尝试用 dsh headless 让 R1 做文本类收尾（汇总/抽取）；失败返回空串。"""
+def _headless_text(prompt: str, timeout: float = 600, label: str = "") -> str:
+    """尝试用 dsh headless 让 R1 做文本类收尾（汇总/抽取）；失败返回空串。
+
+    用量记一行进调度日志。这些调用走 act=""，**不进任务账本**（meta.json 不写），
+    原先它们花了多少完全看不见 —— dsh 每次调用光自带系统提示/工具/技能就一万多 token，
+    6 次提炼加起来是不是值得管，得先有数。不建新账本：实测占比约 1%，
+    为 1% 建一条记账链不划算；写进已有的日志里，要查时查得到就够了。"""
     try:
-        text, _ = runner.run_headless_task(prompt, timeout, purpose="prompt")
+        text, usage = runner.run_headless_task(prompt, timeout, purpose="prompt")
+        if usage:
+            agent.log_schedule("R1 提炼用量", "用途=%s 输入=%d（缓存 %d）输出=%d 超时上限=%ds"
+                               % (label or "未标注",
+                                  int(usage.get("inputTokens") or 0) + int(usage.get("cacheReadTokens") or 0),
+                                  int(usage.get("cacheReadTokens") or 0),
+                                  int(usage.get("outputTokens") or 0), int(timeout)))
         return (text or "").strip()
     except Exception:
         return ""
+
+
+_JSON_ONLY = "只输出 JSON，不要任何多余文字，也不要用代码块包裹。"
+
+
+def _r1_identity() -> str:
+    """R1 的身份抬头。名称**从角色卡取**，不在代码里写死。
+
+    角色卡能在「设置 → 角色」里改，写死的话改了名 prompt 还是旧名，
+    而工作区目录名（config.role_dir）与界面都跟着新名走 —— 两边就对不上了。"""
+    return "你是%s R1。" % (config.role_name("R1") or "老板助理")
+
+
+def _headless_json(prompt: str, timeout: float = 600, parser=None, label: str = ""):
+    """「问 R1 要 JSON」的唯一出口：身份 + 契约 + 调用 + 解析，四件事绑在一处。
+
+    原先 4 处各写一遍（知识沉淀 / 派发判断 / 待决三分类 / 时间轴）：「你是…」的身份、
+    「只输出 JSON」的尾句、解析器、超时散在四个调用点，改一处口径就会漏掉另一处。
+    timeout 也一并收进来 —— 它属于「等一个 JSON 答案」这个量级，不该由各调用点自己拍。
+
+    prompt 传**正文**（不含身份抬头、不含输出契约），两样由这里统一补。"""
+    text = _headless_text(_r1_identity() + " " + prompt + chr(10) + _JSON_ONLY, timeout, label)
+    if not text:
+        return None
+    d = (parser or _parse_kb_digest)(text)
+    return d if isinstance(d, (dict, list)) else None
 
 def _digest_reps(reps, limit: int = 900) -> str:
     """回报正文 → 单行摘要（供模型汇总/抽取，控制长度）。"""
@@ -656,7 +693,7 @@ def build_daily_report(task_no: str = None, datestr: str = None) -> dict:
     digest = _digest_reps(reps, limit=2400)
     has_old = bool(old_text.strip())
     prompt = (
-        "你是老板助理 R1。请按《模板-每日简报》把任务 %s 的回报%s每日简报：\n"
+        "请按《模板-每日简报》把任务 %s 的回报%s每日简报：\n"
         "- %s。输出合并后的完整简报 markdown（# 每日简报 · %s 标题 + 今天干了什么 / "
         "完成任务 / 待 R0 拍板 / 风险与待办 四节）。\n"
         "纪律——简洁优先：「今天干了什么」2~4 句讲清主线；「完成任务」每个任务只占一行（≤40 字）；\n"
@@ -671,7 +708,8 @@ def build_daily_report(task_no: str = None, datestr: str = None) -> dict:
            datestr,
            templates.doc_template("每日简报"),
            old_text.strip() or "（当天尚无简报）", digest))
-    text = _as_document(_headless_text(prompt, 600))   # 先剥包装，再拿干净文本去校验「任务不丢」
+    prompt = _r1_identity() + " " + prompt
+    text = _as_document(_headless_text(prompt, 600, label="每日简报"))   # 先剥包装，再校验「任务不丢」
     if text and has_old:
         text = _merge_daily(old_text, text, task_no or "")   # 校验失败返回 "" → 走降级合并
     # 落盘前的最后一道闸：格式不合格就不落盘（见 _doc_ok）。这一段是这一类的通解 ——
@@ -771,25 +809,22 @@ def kb_digest(task_no: str) -> dict:
     digest = _digest_reps(reps, limit=1200)
     skim = _kb_skim()
     prompt = (
-        "你是老板助理 R1，负责知识库沉淀。请判断本次任务产出里有没有值得沉淀到知识库的知识，并归类。\n"
+        "负责知识库沉淀。请判断本次任务产出里有没有值得沉淀到知识库的知识，并归类。\n"
         "知识库按主题分类，已有档案如下：\n%s\n\n"
         "只沉淀真正有价值、可复用的知识（结论 / 方法 / 数据 / 教训 / 决策）；"
         "流水账、一次性过程记录、只是把回报换个说法，都不要沉淀。\n"
         "归类硬规则：type=lesson 的教训一律归「经验教训」分类，标题用「教训-<一句话结论>」格式；"
         "type=decision 归「决策」，type=method 归「方法」，type=data 归「数据」。\n"
-        "输出 JSON（不要多余文字，body 用简洁 markdown）：\n"
+        "输出 JSON（body 用简洁 markdown）：\n"
         '{"action":"none|create|merge","category":"<分类名，取自上面主题列表>",'
         '"title":"<档案标题(≤40字)>","type":"concept|decision|method|data|lesson|problem",'
         '"body":"<markdown 正文>","merge_target":"<merge 时填已存在文件名，create 留空>"}\n'
         "规则：action=none 无可沉淀知识；action=create 有知识且该分类无相关档案；"
         "action=merge 该分类已有相关档案（merge_target 填已有文件名，body 给合并后的完整正文）。\n\n"
         "任务 %s 回报：\n%s" % (skim, task_no, digest))
-    text = _headless_text(prompt, 600)
-    if not text:
-        return {"ok": True, "created": False, "msg": "模型未返回，未沉淀"}
-    d = _parse_kb_digest(text)
+    d = _headless_json(prompt, 600, label="知识沉淀")
     if not d:
-        return {"ok": True, "created": False, "msg": "沉淀决策解析失败，未入库"}
+        return {"ok": True, "created": False, "msg": "模型未返回或返回不可解析（JSON 契约未满足），未沉淀"}
     action = str(d.get("action") or "").strip()
     if action not in ("create", "merge"):
         return {"ok": True, "created": False, "msg": "R1 判定无可沉淀知识，未入库"}
@@ -874,19 +909,16 @@ def _r1_respond(item: str, judge: str, opinion: str) -> dict:
 
     返回 {"dispatch": bool, "task": str}；判不了返回 None（调用方回退规则）。"""
     prompt = (
-        "你是老板助理 R1。R0 对批阅台待决 #%s 的裁决：%s。批注意见：%s。\n"
+        "R0 对批阅台待决 #%s 的裁决：%s。批注意见：%s。\n"
         "该待决条目的「决策建议」全文如下（R0 批阅意见往往只是简称，方案定义以此为准）：\n%s\n"
         "请判断是否需要**新派发任务给员工执行**：\n"
         "- 批准：通常需派发执行该决策（落地/上线等）；若只是记录性确认、无需新执行，则不派发。\n"
         "- 修改：通常需派发让执行角色按批注修改后重报。\n"
         "- 驳回：一般=否掉该项，无需再派发。\n"
         "生成 task 文本时必须把方案的具体边界写进去（不得只写「实现方案A」这类简称）。\n"
-        "输出 JSON：{\"dispatch\": true|false, \"task\": \"<若要派发的任务文本，不派发则留空>\"}。只输出 JSON。"
+        "输出 JSON：{\"dispatch\": true|false, \"task\": \"<若要派发的任务文本，不派发则留空>\"}"
         % (item, judge, opinion, decision_context("待决 #%s" % item) or "（条目未附决策建议）"))
-    text = _headless_text(prompt, 300)
-    if not text:
-        return None
-    d = _parse_kb_digest(text)
+    d = _headless_json(prompt, 300, label="派发判断")
     if not isinstance(d, dict):
         return None
     return {"dispatch": bool(d.get("dispatch")), "task": str(d.get("task") or "")}
@@ -904,7 +936,7 @@ def _r1_triage(reps, task_text: str) -> dict:
     也不要漏掉真决策点）。"""
     pending = _pending_items(reps)
     prompt = (
-        "你是老板助理 R1。任务：%s\n\n各角色回报：\n%s\n\n"
+        "任务：%s\n\n各角色回报：\n%s\n\n"
         "角色在「## 需要 R0 拍板」小节里写的原文：\n%s\n\n"
         "请判断：**有没有真正需要 R0 拍板的事项**？只有这四类算：方向取舍 / 花钱或对外 / "
         "例外授权 / 验收定稿。\n"
@@ -913,10 +945,9 @@ def _r1_triage(reps, task_text: str) -> dict:
         "「请 R0 拍板」「驳回将重新派发」这类流程空话。\n"
         "若有，按《模板-决策建议》整理成一个决策点：现状背景 → 可选方案 → 你的建议；"
         "没有则 need=false、advice 留空。\n"
-        '输出 JSON：{"need": true|false, "advice": "..."}。只输出 JSON。'
+        '输出 JSON：{"need": true|false, "advice": "..."}'
         % (str(task_text or "")[:200], _digest_reps(reps, limit=1800), pending or "（空）"))
-    text = _headless_text(prompt, 600)
-    d = _parse_kb_digest(text) if text else None
+    d = _headless_json(prompt, 600, label="待决三分类")
     if not isinstance(d, dict):
         return {"need": bool(pending), "advice": ""}
     return {"need": bool(d.get("need")), "advice": str(d.get("advice") or "")}
@@ -1474,7 +1505,7 @@ def build_timeline() -> dict:
     data = _timeline_input()
     if not data.strip():
         return {"ok": False, "msg": "暂无可提炼的项目数据（角色工作区 / 决策日志 / 任务台账均为空）"}
-    prompt = ("你是老板助理 R1，能看见所有角色工作区与项目状态。请把项目数据提炼成 OPC 时间轴——"
+    prompt = ("能看见所有角色工作区与项目状态。请把项目数据提炼成 OPC 时间轴——"
               "**按阶段归并**，不是把做过的事逐条列举。\n"
               "归并规则（重要）：\n"
               "- 同一主线、时间相邻的事合成一条：「设计稿交付」与「设计定稿（驳回后补写）」是一条；"
@@ -1486,13 +1517,10 @@ def build_timeline() -> dict:
               "- title：阶段名，≤16 字，说清「完成了什么阶段」（如「设计定稿与开发启动」）\n"
               "- detail：两三句，讲这个阶段解决了什么、留下什么标志性产出（可含多个交付物）\n"
               "按 date 升序；没有符合的就输出 []。不要把每日简报、流水账、例行任务当成事件。"
-              "只输出 JSON，不要任何多余文字。\n\n项目数据：\n%s" % data)
-    text = _headless_text(prompt, 300)
-    if not text:
-        return {"ok": False, "msg": "模型未返回结果（请确认 dsh 与模型 API 可用）"}
-    events = _parse_timeline_json(text)
+              "\n\n项目数据：\n%s" % data)
+    events = _headless_json(prompt, 300, parser=_parse_timeline_json, label="时间轴")
     if events is None:
-        return {"ok": False, "msg": "模型返回内容无法解析为事件列表，请重试"}
+        return {"ok": False, "msg": "模型未返回或返回内容无法解析为事件列表（请确认 dsh 与模型 API 可用）"}
     rel = _write_timeline(events)
     return {"ok": True, "events": events, "msg": "已生成（" + rel + "）"}
 

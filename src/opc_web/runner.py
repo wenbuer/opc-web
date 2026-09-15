@@ -74,7 +74,7 @@ def _trace_emit(act: str, kind: str, text: str) -> None:
 
 
 def run_info(act: str) -> dict:
-    """最近一次 act 运行的信息：{engine, session, elapsed}。
+    """最近一次 act 运行的信息：{engine, session, elapsed, killed}。
 
     用途：把「这次子任务是谁跑的、落在哪个引擎会话上」记进 meta.json。
     用量或进度对不上时能直接回溯到具体会话 —— T-008-S2 到 T-013-S1 那批就是缺了这一环，
@@ -250,7 +250,9 @@ def _invoke(eng, name: str, task_text: str, timeout: float, act: str, max_steps=
         with _EXEC_LOCK:
             _LAST_RUN[act] = {"engine": name,
                               "session": str(getattr(res, "session", "") or ""),
-                              "elapsed": round(float(getattr(res, "elapsed", 0.0) or 0.0), 1)}
+                              "elapsed": round(float(getattr(res, "elapsed", 0.0) or 0.0), 1),
+                              # 被超时/护栏中止过：执行链据此判阻塞，不走「核盘按完成」
+                              "killed": bool(getattr(res, "killed", False))}
             if len(_LAST_RUN) > 200:            # 只留最近 200 条：够追溯，不涨内存
                 for k in list(_LAST_RUN)[:100]:
                     _LAST_RUN.pop(k, None)

@@ -33,6 +33,24 @@ _ACTIVE_SPAWN = {}       # act -> 运行中 headless 子进程 pid（删除任�
 _LAST_SESSION = {}       # act -> 本次认领到的会话目录（抽 usage 用，比按 mtime 猜准）
 _BEAT = {}               # act -> 最近一次会话事件心跳（单调时钟，存活判定用）
 
+# ---------- 预算护栏：dsh 没有步数开关，只能在**外面**数着拦 ----------
+# 「dsh --profile headless」的全部选项只有 -h（实测），所以 max_steps 在 dsh 路径上无处可传 ——
+# 与其假装支持（旧实现收下参数就扔，调用方以为限了步数），不如从会话事件流里自己数。
+# 事件流本来就为心跳在读，多记三个计数是零额外成本。
+#
+# 阈值来自本项目 11 个子任务的实测分布（轮数 / 工具调用 / 输入 token）：
+#   正常区间 36~136 轮、56~164 次工具、2.6M~17.3M token
+#   失控样本 T-028-S2：407 轮、438 次工具、103M token（占全项目 59%）
+# 取「正常上界的 2 倍」当闸：正常任务碰不到，失控的在烧掉 2/3 之前就被停。
+# ponytail: 阈值先写死在这里；真要多档再挪进 opc-config.json 的调参段。
+GUARD = {
+    "maxTurns": 300,                # 轮数（assistant/message 条数）
+    "maxTools": 320,                # 工具调用次数
+    "maxInputTokens": 30_000_000,   # 累计输入（含缓存）—— 直接按钱拦，最硬的那道
+}
+_TRIP = {}               # act -> 触发原因（心跳线程写，主等待循环读后 kill）
+_KILLED = {}             # act -> 本次被中止的原因（收尾时转成 RunResult.killed 交给上层）
+
 
 def _squeeze(s: str, limit: int = 90) -> str:
     """压成单行短文本：进度行只放一句话，多行长文本（表格等）不进 UI。"""
@@ -278,10 +296,18 @@ def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float,
     sess = None
     seen = 0
     tools = 0
+    turns = 0          # assistant/message 条数 = 轮数（预算护栏用，见 GUARD）
+    in_tok = 0         # 累计输入（含缓存）—— 按钱拦的那道闸
     last_tool = ""
     last_text = ""
     head = _squeeze(prompt_head, _SESS_HEAD)
     last_emit = 0.0
+
+    def _trip(why: str):
+        """记下触发原因，交给主等待循环去 kill。不在这里杀 —— 杀进程要走 _kill()。"""
+        with _STATE_LOCK:
+            if act not in _TRIP:
+                _TRIP[act] = why
 
     def _report(tools_n: int, last_tool: str, last_text: str, sess_name: str = ""):
         """报一次进度：刷新心跳，并（若有回调）把这次活动外报给上层。"""
@@ -341,6 +367,10 @@ def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float,
                         _trace(on_progress, t0, "tool",
                                name + " " + _squeeze(str(dd.get("arguments") or ""), 800))
                     elif ev.get("type") == "assistant/message":
+                        turns += 1
+                        u = (ev.get("data") or {}).get("usage")
+                        if isinstance(u, dict):     # 逐轮累加，口径与 _usage_from_session 一致
+                            in_tok += int(u.get("inputTokens") or 0) + int(u.get("cacheReadTokens") or 0)
                         full = _ev_text(ev).strip()
                         txt = _squeeze(full, 90)
                         if txt:
@@ -350,6 +380,14 @@ def _watch_session(act: str, p: subprocess.Popen, spawn_epoch: float, t0: float,
                 seen = len(evs)
                 with _STATE_LOCK:
                     _LAST_SESSION[act] = d      # 抽 usage 时直接用这个会话，不再按 mtime 猜
+                # 预算护栏：三个口径任一越界即判失控（阈值依据见 GUARD 上方注释）
+                if turns > GUARD["maxTurns"]:
+                    _trip("轮数 %d 超过上限 %d" % (turns, GUARD["maxTurns"]))
+                elif tools > GUARD["maxTools"]:
+                    _trip("工具调用 %d 次超过上限 %d" % (tools, GUARD["maxTools"]))
+                elif in_tok > GUARD["maxInputTokens"]:
+                    _trip("累计输入 %d 万 token 超过预算 %d 万"
+                          % (in_tok // 10000, GUARD["maxInputTokens"] // 10000))
                 _report(tools, last_tool, last_text, d.name[-12:])
                 last_emit = time.monotonic()
             elif time.monotonic() - last_emit > _BEAT_IDLE:
@@ -431,9 +469,16 @@ def _spawn_headless(argv: list, timeout: float, act: str = "", on_progress=None)
                 pass
 
     hard = max(timeout * 3, 1800.0)     # 总时长硬上限，防长生成/挂死卡住调度
+    killed_why = ""
     while True:
         if p.poll() is not None:
             break                       # 自然结束
+        if act:
+            with _STATE_LOCK:
+                why = _TRIP.pop(act, "")
+            if why:                     # 预算护栏触发（心跳线程发现并记下的）
+                killed_why = "预算护栏：" + why
+                _kill(); break
         if out_chunks and t_first is None:
             t_first = time.monotonic()  # 首帧输出：任务开始活动
         now = time.monotonic()
@@ -445,10 +490,13 @@ def _spawn_headless(argv: list, timeout: float, act: str = "", on_progress=None)
                 last = beat             # 会话事件心跳 = 真实的活动信号
         if last is None:
             if now - t0 > timeout:
+                killed_why = killed_why or "全程无任何活动且超时 %d 秒" % int(timeout)
                 _kill(); break          # 全程无任何活动且超时 → 判死
         elif now - last > timeout:
-            _kill(); break              # 心跳停摆超 timeout（事件不再增长）→ 真挂死
+            killed_why = killed_why or "心跳停摆超 %d 秒（事件不再增长）" % int(timeout)
+            _kill(); break              # 心跳停摆超 timeout → 真挂死
         if now - t0 > hard:
+            killed_why = killed_why or "总时长硬上限 %d 分钟" % int(hard // 60)
             _kill(); break              # 总时长硬上限 → 判阻塞
         time.sleep(0.5)
     for _stream in (p.stdout, p.stderr):
@@ -460,6 +508,9 @@ def _spawn_headless(argv: list, timeout: float, act: str = "", on_progress=None)
         with _STATE_LOCK:
             _ACTIVE_SPAWN.pop(act, None)
             _BEAT.pop(act, None)
+            _TRIP.pop(act, None)        # 清干净，别把原因漏给下一次运行
+            if killed_why:
+                _KILLED[act] = killed_why
     # 结束信号不在这里报：最终输出的轨迹块还在后面（_run_prompt_dsh 解出文本才报），
     # 先报 finished 会被那条轨迹重新建出「执行中」状态，界面上永远停在进行中。
     return b"".join(out_chunks), b"".join(err_chunks)
@@ -501,17 +552,22 @@ def _run_prompt_dsh(task_text: str, timeout: float, act: str = "", on_progress=N
     base = time.time()
     tm0 = time.monotonic()
     raw, err = _spawn_headless([task_text], timeout, act, on_progress)
+    with _STATE_LOCK:
+        killed = _KILLED.pop(act, "") if act else ""
     text = _decode_stdout(raw).strip()
     if not text:
         # 没有产出：把 stderr 里的失败原因回传，别让上层只看到一片空白
         text = _stderr_errors(_decode_stdout(err))
-    _trace(on_progress, tm0, "final", text)   # 最终输出全文进轨迹（心跳只带 120 字）
+    # 中止原因只进轨迹（事件面板 + 运行日志），**不混进 text** —— text 是回报正文，
+    # 混进去会让执行链把一次被腰斩的运行当成「有产出」判完成（错的那一类）。
+    _trace(on_progress, tm0, "final",
+           text + (chr(10) + chr(10) + "【本次运行已中止】" + killed if killed else ""))
     if on_progress:                          # 结束信号放最后：上层据此清掉「执行中」状态
         on_progress(Progress(finished=True, elapsed=int(time.monotonic() - tm0)))
     with _STATE_LOCK:
         claimed = _LAST_SESSION.pop(act, None) if act else None
     sess = Path(claimed).name[-12:] if claimed else ""
-    return text, read_session_usage(base, claimed), sess
+    return text, read_session_usage(base, claimed), sess, killed
 
 
 class DshEngine(Engine):
@@ -522,7 +578,11 @@ class DshEngine(Engine):
             "其中约九成命中缓存按低价计费。能跑需要沙箱的技能，代价是上下文天然比直连 API 大。")
 
     def capabilities(self) -> dict:
-        return {"tools": True, "streaming": True, "usage": True, "skills": True, "sandbox": True}
+        # maxSteps=False 是**诚实声明**：dsh headless 的全部选项只有 -h，没有步数开关，
+        # run() 签名上的 max_steps 无处可传。别让调用方以为限了步数 —— 预算护栏那三项
+        # （见 GUARD）才是 dsh 路径上真正的闸。
+        return {"tools": True, "streaming": True, "usage": True, "skills": True,
+                "sandbox": True, "maxSteps": False}
 
     def preflight(self):
         if not shutil.which("dsh"):
@@ -532,13 +592,17 @@ class DshEngine(Engine):
 
     def run(self, prompt: str, *, timeout: float = 600, act: str = "",
             cwd=None, on_progress=None, max_steps=None) -> RunResult:
+        # max_steps 由接口规定但**本引擎无法生效**（dsh 没有对应开关，见 capabilities）。
+        # 保留参数只为接口一致；dsh 路径的护栏是 GUARD 那三项 + timeout。
         t0 = time.monotonic()
         try:
-            text, usage, session = _run_prompt_dsh(prompt, timeout, act, on_progress)
+            text, usage, session, killed = _run_prompt_dsh(prompt, timeout, act, on_progress)
         except Exception as e:                      # 启动失败/编码异常等
             return RunResult(error="dsh 执行异常：%s" % e, elapsed=time.monotonic() - t0)
+        # killed 只标「被停过」，**不写 error** —— error 会被 runner 判成「引擎没跑起来」而回退重跑，
+        # 而中止是主动停的，重跑等于把它又拉起来（_engine_failed 里 killed 的分支就是这个意思）。
         return RunResult(text=text or "", usage=usage, session=session or "",
-                         elapsed=time.monotonic() - t0)
+                         killed=bool(killed), elapsed=time.monotonic() - t0)
 
     def kill(self, act: str) -> bool:
         return bool(_kill_spawn(act))

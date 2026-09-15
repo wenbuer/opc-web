@@ -1276,6 +1276,9 @@ linear-gradient(90deg,rgba(255,255,255,.022) 1px,transparent 1px)}
 .tok-tip .sw-in.alt{background:#7c5cf0}
 .tok-tip .sw-cache.alt{background:#ddd6fe;border-color:#c4b5fd}
 .tok-tip .sw-out.alt{background:#a855c7}
+/* 峰谷计价提示：峰时标红提醒「现在跑贵一倍」 */
+.peak-on{color:var(--red-bright)}
+.peak-off{color:var(--ok)}
 
 /* ===== 全部静止时的「最近完成」列表（替代看板） ===== */
 .board.list-mode{grid-template-columns:minmax(0,1fr)}

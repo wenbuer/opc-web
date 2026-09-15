@@ -180,6 +180,22 @@ def token_cost(fresh: int, cache: int, out: int) -> float:
             + max(0, int(out or 0)) / 1e6 * p["out"])
 
 
+# DeepSeek 峰谷计价（官方 pricing 页 2026-09 口径）：峰时 = **工作日** UTC 01:00-04:00 与
+# 06:00-10:00，即北京时间 09:00-12:00 与 14:00-18:00；周末全谷时。
+# 谷时价 = 峰时价的一半，三个档位（命中/未命中/输出）一起减半。
+# 这是本项目里唯一一个「100% 差价、零配置改动」的杠杆 —— 所以把它显示出来：
+# 长跑任务（批量重构 / 跑测试 / 长 agent 任务）挪到谷时，账单直接减半，与命中率是乘法关系。
+_PEAK_UTC = ((1, 4), (6, 10))
+
+
+def is_peak_now(now=None) -> bool:
+    """当前是否处于峰时（工作日 UTC 01-04、06-10）。"""
+    t = now or datetime.datetime.now(datetime.timezone.utc)
+    if t.weekday() >= 5:                 # 周六周日全谷时
+        return False
+    return any(a <= t.hour < b for a, b in _PEAK_UTC)
+
+
 def save_prices(kv: dict) -> dict:
     """设置页写三档单价。空值 = 删除该键（回落到默认 / 按输入价）；非法值当场报错。"""
     patch = {}
@@ -374,6 +390,7 @@ def settings_info() -> dict:
         "workspaceExists": WORKSPACE_ROOT.exists(),
         "model": model_info(),
         "prices": token_prices(),        # 三档单价当前生效值（模型接入页里填，首页成本按它算）
+        "peakNow": is_peak_now(),        # 当前是否峰时（设置页据此提示「现在跑长任务贵一倍」）
         # 原样存盘值：输入框要回显"用户填了什么"，不能把"缓存留空=按输入价"算出来的
         # 生效值填进框里 —— 那样一保存就把留空变成了写死，以后改输入价它不再跟随。
         "pricesRaw": {k: _CFG.get(k) for k in ("priceIn", "priceCache", "priceOut")},

@@ -236,7 +236,10 @@ class ApiEngine(Engine):
             "但每轮都要重发全部历史，轮数一多总输入累积很快。跑不动需要沙箱的技能。")
 
     def capabilities(self) -> dict:
-        return {"tools": True, "streaming": True, "usage": True, "skills": False, "sandbox": True}
+        # maxSteps=True：api 引擎的工具循环真认 max_steps（默认 40，见 _cfg）。
+        # dsh 声明 False —— 两边如实标，界面与调用方才不会以为「哪儿都限了步数」。
+        return {"tools": True, "streaming": True, "usage": True, "skills": False,
+                "sandbox": True, "maxSteps": True}
 
     def preflight(self):
         cfg = _cfg()
