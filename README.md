@@ -11,45 +11,48 @@
 
 ---
 
-## 预览
-
-<table>
-<tr>
-<td width="25%"><img src="images/opc-command-center-01.png" alt="作战面板"><br><sub>作战面板 · 概览 / 组织架构 / 项目时间线</sub></td>
-<td width="25%"><img src="images/opc-command-center-02.png" alt="批阅台"><br><sub>批阅台 · 决策建议与 R0 裁决</sub></td>
-<td width="25%"><img src="images/opc-command-center-03.png" alt="工作台"><br><sub>工作台 · 下达任务、四列看板与实时事件</sub></td>
-<td width="25%"><img src="images/opc-command-center-04.png" alt="运行日志全屏"><br><sub>运行日志 · 自动执行链完整轨迹</sub></td>
-</tr>
-<tr>
-<td width="25%"><img src="images/opc-command-center-05.png" alt="项目文件"><br><sub>项目文件 · 工程产出区与 HTML 预览</sub></td>
-<td width="25%"><img src="images/opc-command-center-06.png" alt="知识库"><br><sub>知识库 · 按主题分类的档案卡片</sub></td>
-<td width="25%"><img src="images/opc-command-center-07.png" alt="每日简报"><br><sub>每日简报 · 当天摘要</sub></td>
-<td width="25%"><img src="images/opc-command-center-08.png" alt="设置 Token 统计"><br><sub>设置 · Token 用量与三档单价</sub></td>
-</tr>
-</table>
-
-<p align="center">
-  <img src="images/opc-task-loop-01.png" alt="OPC 任务闭环：任务 → 角色 → 解释，转回任务" width="880">
-  <br>
-  <em>图 9：任务闭环 —— 八步一圈。人只在 ① 下达与 ⑧ 批阅出场（红）；②③⑥⑦ 是 R1 中枢（蓝）；④⑤ 是真正动手的 RX 角色（紫）。</em>
-</p>
-
----
-
 ## 简介
 
-opc-web 是一个**本地运行**的「AI 员工团队」管理控制台。你创建岗位、给岗位装技能，然后下达需求、审阅结果、作出决策；团队负责拆解、执行、汇总与归档。
+opc-web 是一个**本地运行**的「AI 员工团队」管理控制台。
 
-- **控制台（本项目）**：Python 3.9+ 实现，运行时只多一个包（`zstandard`，解 DSH 会话日志用；只用直连 API 引擎的话不装也行），仅监听本机 `127.0.0.1`
-- **执行角色**：由**可替换的执行引擎**驱动 —— 默认**直连大模型 API**，也可换成 DSH（DeepSeek Harness）headless（见[执行引擎](#执行引擎)）
+只需要创建岗位、给岗位装技能，然后下达需求、审阅结果、作出决策；团队会负责拆解、执行、汇总与归档。
+
+- **控制台（本项目）**：Python 3.9+ 实现，运行时只多一个包（`zstandard`，解 DSH 会话日志用；只用直连 API 引擎的话不装也行）
+- **执行角色**：由**可替换的执行引擎**驱动 —— 默认**直连大模型 API**，也可换成 DSH（DeepSeek Harness）headless
 
 > **R0** 下达与拍板 → **R1** 拆解与归档 → **RX** 执行与回报。状态存本地 SQLite、正文走 md，**不上云、不外传**。
 
 ---
 
-## 闭环是怎么转的
+## 预览
 
-一条任务从下达到收口，走八步一圈（见上图）：
+<table>
+<tr>
+<td width="25%"><img src="images/opc-command-center-01.png" alt="作战面板"><br><sub>作战面板 · 概览</sub></td>
+<td width="25%"><img src="images/opc-command-center-02.png" alt="批阅台"><br><sub>批阅台 · 决策建议与 R0 裁决</sub></td>
+<td width="25%"><img src="images/opc-command-center-03.png" alt="工作台"><br><sub>工作台 · 下达任务、四列看板与实时事件</sub></td>
+<td width="25%"><img src="images/opc-command-center-04.png" alt="运行日志全屏"><br><sub>运行日志 · 自动执行链完整轨迹</sub></td>
+</tr>
+<tr>
+<td width="25%"><img src="images/opc-command-center-05.png" alt="项目文件"><br><sub>项目文件 · 工程产出区</sub></td>
+<td width="25%"><img src="images/opc-command-center-06.png" alt="知识库"><br><sub>知识库 · 按主题分类的档案卡片</sub></td>
+<td width="25%"><img src="images/opc-command-center-07.png" alt="每日简报"><br><sub>每日简报 · 当天摘要</sub></td>
+<td width="25%"><img src="images/opc-command-center-08.png" alt="设置 Token 统计"><br><sub>设置 · Token 用量</sub></td>
+</tr>
+</table>
+
+---
+
+## 流程是怎么走的
+
+一条任务从下达到收口，走八步一圈
+
+<p align="center">
+  <img src="images/opc-task-loop-01.png" alt="OPC 任务闭环：任务 → 角色 → 解释，转回任务" width="880">
+  <br>
+  <em>图 9：任务闭环 —— 人只在 ① 下达与 ⑧ 批阅出场（红）；②③⑥⑦ 是 R1 中枢（蓝）；④⑤ 是真正动手的 RX 角色（紫）。</em>
+</p>
+
 
 | 段 | 谁在做 | 干什么 |
 |---|---|---|
