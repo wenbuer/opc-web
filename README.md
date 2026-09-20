@@ -12,7 +12,31 @@
 | `:app:assembleDebug` | 通过 |
 | `:app:testDebugUnitTest`（配对协议 7 例） | 7 passed / 0 failed |
 | `:app:lintDebug` | 通过（仅 LockedOrientation / MonochromeLauncherIcon 等无害告警） |
-| 真机或模拟器实跑 | **未做**（本机无设备、无 AVD）：首启流程尚未在设备上验证 |
+| 模拟器实跑 | 首屏已在 Android 15 (API 35) 模拟器上真实渲染通过，见 `docs/emulator-run-01-connect.png` |
+| 主界面纵深验证 | **未做**：本机模拟器不稳定，见下方「模拟器这块的坑」 |
+
+### 已实跑验证的部分
+
+`docs/emulator-run-01-connect.png` 是 Android 15 模拟器上的真实截图：相机取景区（四角描边 + 扫描线）、
+「当前网段 10.0.2.0/24 · 已发现服务端 1 台」、手动接入两个输入框、三项预检、红灯提示条、
+「配对并连接」主按钮与底部「服务端还没起？先进演示模式」都在位且渲染正常；相机权限申请弹窗正常弹出，
+授权后取景区出现真实画面。**安装、冷启动、首帧渲染都不崩。**
+
+### 模拟器这块的坑（不是 App 的问题）
+
+本机模拟器（emulator 37.1.11 + `system-images;android-35;google_apis;x86_64`，Host 为 i7-1360P + Hyper-V）
+在 `adb install` 时会打崩 system_server：报 `Failure calling service package: Broken pipe (32)`，
+随后 `pm`/`activity`/`window` 服务消失、画面全黑。四次尝试全部落在同一步：
+
+| # | 配置 | 结果 |
+|---|---|---|
+| 1 | 1080x2400 / 2G / 模拟相机 | 装包成功、界面渲染成功；随后一次 UI 点按把 system_server 打崩 |
+| 2 | 1080x2400 / 4G / 4 核 / 无相机 | 装包阶段直接崩 |
+| 3 | 720x1560 / 2G / 2 核 / 无相机（`hw.gpu.enabled=no` + swiftshader） | 装包阶段仍然崩 |
+| 4 | 同上 + `-wipe-data` | 二次启动再没起来（`bootanim=stopped` 但 `sys.boot_completed` 始终为空） |
+
+结论：**这台机器上的这个模拟器实例不可用于自动化验证** —— 与 App 无关（第 1 轮已证明 App 能装、能渲染）。
+下一步要么插真机 `adb install`，要么换机器/换 system image 再验。
 
 **opc-web 那边一个字节都没改** —— 它还没有移动端所需的配对与鉴权接口，
 所以本 App 走「在线优先 → 本机缓存 → 演示数据」三级回落：
