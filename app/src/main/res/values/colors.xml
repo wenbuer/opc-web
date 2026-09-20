@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 与 ui/theme/Color.kt 的 OpcDark* 对齐：启动窗口与扫码页的底色 -->
+    <color name="opc_dark_background">#FF0E1117</color>
+    <color name="opc_dark_surface">#FF161A21</color>
+    <color name="opc_gold">#FFE8B73D</color>
+    <color name="ic_launcher_background">#FF0E1117</color>
+</resources>

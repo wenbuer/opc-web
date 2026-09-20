@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      应用主题。父主题用系统 Material（暗色 + 无 ActionBar），不用 Theme.Material3.*：
+      本工程没有 com.google.android.material / androidx.appcompat 依赖（Material3 的 XML 主题来自
+      material 库，Compose 的 androidx.compose.material3 不带 XML 主题），AAPT 会报
+      "resource style/Theme.Material3.DayNight.NoActionBar not found"。真实样式由 Compose 侧
+      OpcTheme(darkTheme = true) 提供，这里只负责窗口底色与系统栏。
+    -->
+    <style name="Theme.OpcApp" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/opc_dark_background</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <!-- ZXing CaptureActivity：无 ActionBar 的全屏取景页（原件是 android:Theme.Holo.NoActionBar.Fullscreen） -->
+    <style name="Theme.OpcApp.Capture" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/opc_dark_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>
