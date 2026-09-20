@@ -12,7 +12,7 @@ import com.opc.app.data.remote.SubTaskDto
 import com.opc.app.data.remote.TaskDto
 import com.opc.app.data.remote.VerdictDto
 import com.opc.app.data.remote.toDomain
-import com.opc.app.domain.ChatItem
+import com.opc.app.domain.ActivityAction
 import com.opc.app.domain.FeedItem
 import com.opc.app.domain.FeedType
 import com.opc.app.domain.OverviewStats
@@ -21,6 +21,10 @@ import com.opc.app.domain.ProjectInfo
 import com.opc.app.domain.QrProtocol
 import com.opc.app.domain.ServerConfig
 import com.opc.app.domain.SubTask
+import com.opc.app.domain.SubTaskStatus
+import com.opc.app.domain.TaskActivity
+import com.opc.app.domain.TaskDiary
+import com.opc.app.domain.TaskStatus
 import com.opc.app.domain.TaskSummary
 import com.opc.app.domain.Verdict
 import kotlinx.coroutines.CoroutineScope
@@ -114,32 +118,17 @@ class OpcRepositoryImpl(
         return ResultData(DemoData.tasks(), offline = true)
     }
 
-    override suspend fun chat(): ResultData<List<ChatItem>> {
+    override suspend fun taskDiaries(): ResultData<List<TaskDiary>> {
         val remote = tasks()
-        val items = mutableListOf<ChatItem>()
-        items += ChatItem.DayDivider("day-today", "今天")
-        if (remote.data.isNotEmpty()) {
-            items += ChatItem.SystemLine(
-                id = "sys-0",
-                text = "现有 " + remote.data.size + " 个任务 · " + remote.data.sumOf { it.subtasks.size } + " 个子任务",
-                time = remote.data.first().createdAt,
-            )
+        if (remote.offline || remote.data.isEmpty()) {
+            return ResultData(DemoData.taskDiaries(), offline = true)
         }
-        remote.data.forEach { task ->
-            items += ChatItem.Mine("mine-" + task.taskNo, task.text, task.createdAt)
-            if (task.subtasks.isNotEmpty()) {
-                items += ChatItem.Agent(
-                    id = "agent-" + task.taskNo,
-                    who = "R1 老板助理",
-                    avatar = "R1",
-                    text = "收到。已拆成 " + task.subtasks.size + " 个子任务，按峰谷把重活排到谷时开跑。",
-                    time = task.createdAt,
-                )
-                items += ChatItem.Subtasks("subs-" + task.taskNo, task.taskNo, task.subtasks)
-            }
-        }
-        return if (items.size <= 1) ResultData(DemoData.chat(), offline = remote.offline) else ResultData(items, offline = remote.offline)
+        return ResultData(remote.data.map { it.toDiary(roleNames = roleNameMap()) }, offline = false)
     }
+
+    /** 角色码 → 中文名，用来把流水写成「产品设计师 R4 接收任务」这种人话。 */
+    private suspend fun roleNameMap(): Map<String, String> =
+        overview().data.roles.associate { it.code to it.name }
 
     override suspend fun pending(): ResultData<List<PendingItem>> {
         val cfg = store.currentConfig()
@@ -285,3 +274,48 @@ private fun FeedDto.toFeedItem(): FeedItem = FeedItem(
     chips = chips,
     read = read,
 )
+
+/** TaskSummary → 工作台流水：按时间排出「拆分 / 接收 / 完成 / 汇报」四类动作。 */
+private fun TaskSummary.toDiary(roleNames: Map<String, String>): TaskDiary {
+    val acts = mutableListOf<TaskActivity>()
+    val assigneeCount = subtasks.map { it.role }.distinct().size
+    acts += TaskActivity(
+        time = createdAt,
+        subject = "R1",
+        subjectName = roleNames["R1"] ?: "老板助理",
+        action = ActivityAction.DECOMPOSED,
+        target = subtasks.firstOrNull()?.role,
+        targetName = "拆成 " + subtasks.size + " 个子任务 · 指派 " + assigneeCount + " 个角色",
+    )
+    subtasks.forEach { sub ->
+        acts += TaskActivity(
+            time = sub.scheduledAt ?: createdAt,
+            subject = sub.role,
+            subjectName = roleNames[sub.role] ?: sub.role,
+            action = ActivityAction.ACCEPTED,
+            target = sub.no,
+            targetName = sub.title,
+        )
+        if (sub.status == SubTaskStatus.DONE) {
+            acts += TaskActivity(
+                time = sub.scheduledAt ?: createdAt,
+                subject = sub.role,
+                subjectName = roleNames[sub.role] ?: sub.role,
+                action = ActivityAction.COMPLETED,
+                target = sub.no,
+                targetName = sub.title,
+            )
+        }
+    }
+    if (status == TaskStatus.DONE) {
+        acts += TaskActivity(
+            time = createdAt,
+            subject = "R1",
+            subjectName = roleNames["R1"] ?: "老板助理",
+            action = ActivityAction.REPORTED,
+            target = taskNo,
+            targetName = "已汇总回报，等批阅",
+        )
+    }
+    return TaskDiary(taskNo, text, createdAt, status, acts)
+}

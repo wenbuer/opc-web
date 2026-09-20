@@ -5,12 +5,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -33,8 +31,6 @@ import androidx.compose.ui.unit.dp
 import com.opc.app.data.LinkState
 import com.opc.app.domain.EventKind
 import com.opc.app.domain.RoleState
-import com.opc.app.domain.SubTask
-import com.opc.app.domain.SubTaskStatus
 import com.opc.app.ui.components.EventTone
 import com.opc.app.ui.components.StatusBarSpacer
 import com.opc.app.ui.components.TierTag
@@ -48,8 +44,7 @@ import java.util.Date
 import java.util.Locale
 
 /*
- * SPEC 的组件清单里没有 Bubble / SubTaskCard / SectionHeader 的签名，页头、气泡、
- * 子任务卡、设置行这几样就收在这一份里：五个屏共用，签名我自己定，不用猜别人的参数。
+ * SPEC 的组件清单没覆盖到页头、小节标题、设置行这些，收在这一份里：五个屏共用。
  * 已经在 ui/components 落地的（CapsuleChip / TierTag / MetricCard / HeroCard / SparkBars /
  * EventRow / AvatarCircle）一律直接用，不重复造。
  */
@@ -180,65 +175,6 @@ internal fun LocalBubble(text: String, mine: Boolean) {
     }
 }
 
-/** 群聊里的子任务卡：左侧色条 + 编号/标题/角色 + 期望产出 + 状态。 */
-@Composable
-internal fun LocalSubTaskCard(sub: SubTask) {
-    val scheme = MaterialTheme.colorScheme
-    val accent = when (sub.status) {
-        SubTaskStatus.DONE -> scheme.tertiary
-        SubTaskStatus.BLOCKED -> scheme.error
-        else -> scheme.primary
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(IntrinsicSize.Min)
-            .clip(RoundedCornerShape(0.dp, 16.dp, 16.dp, 0.dp))
-            .background(scheme.surfaceContainerLow),
-    ) {
-        Box(Modifier.width(3.dp).fillMaxHeight().background(accent))
-        Column(Modifier.padding(horizontal = 13.dp, vertical = OpcSpacing.m)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(OpcSpacing.s)) {
-                Text(sub.no, style = MaterialTheme.typography.labelMedium, color = scheme.primary)
-                Text(
-                    text = sub.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = scheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                TierTag(sub.role, TierTone.RX)
-            }
-            Text(
-                text = sub.expect,
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp),
-            )
-            Row(
-                modifier = Modifier.padding(top = OpcSpacing.s),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(OpcSpacing.s),
-            ) {
-                TierTag(subTaskLabel(sub.status), subTaskTone(sub.status))
-                if (sub.scheduledAt != null) {
-                    Text(
-                        sub.scheduledAt + " 开跑",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = scheme.onSurfaceVariant,
-                    )
-                } else if (sub.rounds > 0) {
-                    Text(
-                        sub.rounds.toString() + " 轮",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = scheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-    }
-}
 
 /** 设置/连接信息里的键值行。 */
 @Composable
@@ -333,20 +269,6 @@ internal fun roleStateLabel(state: RoleState): String = when (state) {
     RoleState.BLOCKED -> "阻塞"
 }
 
-internal fun subTaskTone(status: SubTaskStatus): TierTone = when (status) {
-    SubTaskStatus.DONE -> TierTone.OK
-    SubTaskStatus.RUNNING, SubTaskStatus.DISPATCHED -> TierTone.RX
-    SubTaskStatus.BLOCKED -> TierTone.R0
-    SubTaskStatus.QUEUED -> TierTone.NEUTRAL
-}
-
-internal fun subTaskLabel(status: SubTaskStatus): String = when (status) {
-    SubTaskStatus.DISPATCHED -> "已派发"
-    SubTaskStatus.RUNNING -> "跑"
-    SubTaskStatus.QUEUED -> "谷时排队"
-    SubTaskStatus.DONE -> "已完成"
-    SubTaskStatus.BLOCKED -> "阻塞"
-}
 
 internal fun eventTone(kind: EventKind): EventTone = when (kind) {
     EventKind.DONE -> EventTone.DONE

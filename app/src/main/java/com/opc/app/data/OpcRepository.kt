@@ -1,6 +1,6 @@
 package com.opc.app.data
 
-import com.opc.app.domain.ChatItem
+import com.opc.app.domain.TaskDiary
 import com.opc.app.domain.FeedItem
 import com.opc.app.domain.OverviewStats
 import com.opc.app.domain.PendingItem
@@ -22,7 +22,7 @@ interface OpcRepository {
 
     suspend fun overview(): ResultData<OverviewStats>
     suspend fun tasks(): ResultData<List<TaskSummary>>
-    suspend fun chat(): ResultData<List<ChatItem>>
+    suspend fun taskDiaries(): ResultData<List<TaskDiary>>
     suspend fun pending(): ResultData<List<PendingItem>>
     suspend fun feed(): ResultData<List<FeedItem>>
 

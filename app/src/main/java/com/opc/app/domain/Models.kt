@@ -96,34 +96,25 @@ data class FeedItem(
 
 enum class FeedType { DAILY, OUTPUT, KNOWLEDGE, ALERT, SCHEDULE }
 
-/** 工作台聊天流的一条。 */
-sealed interface ChatItem {
-    val id: String
+/**
+ * 工作台的一条流水：任务下达 → R1 拆分 → RX 接收 → RX 完成 → R1 汇报。
+ * 只记「谁在什么时候做了什么」，不展开执行细节；细节去任务详情看。
+ */
+data class TaskDiary(
+    val taskNo: String,
+    val text: String,
+    val createdTime: String,
+    val status: TaskStatus,
+    val activities: List<TaskActivity>,
+)
 
-    data class DayDivider(override val id: String, val text: String) : ChatItem
-    data class SystemLine(override val id: String, val text: String, val time: String) : ChatItem
-    data class Mine(override val id: String, val text: String, val time: String) : ChatItem
-    data class Agent(
-        override val id: String,
-        val who: String,
-        val avatar: String,
-        val text: String,
-        val time: String,
-    ) : ChatItem
+data class TaskActivity(
+    val time: String,
+    val subject: String,
+    val subjectName: String,
+    val action: ActivityAction,
+    val target: String? = null,
+    val targetName: String? = null,
+)
 
-    data class Subtasks(
-        override val id: String,
-        val taskNo: String,
-        val items: List<SubTask>,
-    ) : ChatItem
-
-    data class Progress(
-        override val id: String,
-        val who: String,
-        val avatar: String,
-        val subNo: String,
-        val text: String,
-        val progress: Float,
-        val rounds: Int,
-    ) : ChatItem
-}
+enum class ActivityAction { ASSIGNED, DECOMPOSED, ACCEPTED, COMPLETED, REPORTED }

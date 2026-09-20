@@ -1,6 +1,6 @@
 package com.opc.app.data
 
-import com.opc.app.domain.ChatItem
+import com.opc.app.domain.ActivityAction
 import com.opc.app.domain.EventKind
 import com.opc.app.domain.FeedItem
 import com.opc.app.domain.FeedType
@@ -12,6 +12,8 @@ import com.opc.app.domain.RoleState
 import com.opc.app.domain.RoleStatus
 import com.opc.app.domain.SubTask
 import com.opc.app.domain.SubTaskStatus
+import com.opc.app.domain.TaskActivity
+import com.opc.app.domain.TaskDiary
 import com.opc.app.domain.TaskStatus
 import com.opc.app.domain.TaskSummary
 
@@ -22,6 +24,14 @@ import com.opc.app.domain.TaskSummary
 object DemoData {
 
     val project = ProjectInfo(id = "opc-app", name = "OPC-APP", roleCount = 4, runningSubtasks = 3)
+
+    /** 角色码 → 中文名，工作台流水与「@ 指派」都用它。 */
+    val roleNames: Map<String, String> = mapOf(
+        "R1" to "老板助理",
+        "R2" to "产品经理",
+        "R4" to "产品设计师",
+        "R6" to "前端工程师",
+    )
 
     fun overview(): OverviewStats = OverviewStats(
         doneToday = 3,
@@ -70,43 +80,60 @@ object DemoData {
                 ),
             ),
         ),
-        TaskSummary(
-            taskNo = "T-040",
-            text = "移动端信息架构调研",
-            status = TaskStatus.DONE,
-            createdAt = "08:30",
-            subtasks = emptyList(),
-        ),
+        TaskSummary("T-040", "移动端信息架构调研", TaskStatus.DONE, emptyList(), "08:30"),
+        TaskSummary("T-039", "首页改版定价方案评审", TaskStatus.DONE, emptyList(), "07:50"),
+        TaskSummary("T-038", "昨日成本复盘", TaskStatus.DONE, emptyList(), "07:20"),
     )
 
-    fun chat(): List<ChatItem> = listOf(
-        ChatItem.DayDivider("d1", "今天"),
-        ChatItem.SystemLine("s1", "你下达 T-041", "09:41"),
-        ChatItem.Mine(
-            id = "m1",
-            text = "R4 以产品设计师身份做一版 OPC 移动端界面，先出信息架构和关键流程图，明早给我看。",
-            time = "09:41",
+    /** 工作台只放流水：谁在什么时候拆了、接了、交了、汇报了。执行细节不在这里。 */
+    fun taskDiaries(): List<TaskDiary> = listOf(
+        TaskDiary(
+            taskNo = "T-038",
+            text = "把昨天的 token 用量和成本拉一份复盘",
+            createdTime = "07:20",
+            status = TaskStatus.DONE,
+            activities = listOf(
+                act("07:20", "R1", ActivityAction.DECOMPOSED, null, "拆成 1 个子任务 · 指派 1 个角色"),
+                act("07:22", "R2", ActivityAction.ACCEPTED, "S1", "成本复盘"),
+                act("07:48", "R2", ActivityAction.COMPLETED, "S1", "成本复盘"),
+                act("07:50", "R1", ActivityAction.REPORTED, "T-038", "已汇总回报 · 无需裁决"),
+            ),
         ),
-        ChatItem.Agent(
-            id = "a1",
-            who = "R1 老板助理",
-            avatar = "R1",
-            text = "收到。已拆成 2 个子任务，按峰谷把重活排到 18:00 后开跑。",
-            time = "09:41",
+        TaskDiary(
+            taskNo = "T-039",
+            text = "首页改版要不要加第三档订阅价，出个建议",
+            createdTime = "07:50",
+            status = TaskStatus.DONE,
+            activities = listOf(
+                act("07:50", "R1", ActivityAction.DECOMPOSED, null, "拆成 2 个子任务 · 指派 2 个角色"),
+                act("07:52", "R2", ActivityAction.ACCEPTED, "S1", "竞品档位与转化分析"),
+                act("08:20", "R2", ActivityAction.COMPLETED, "S1", "竞品档位与转化分析"),
+                act("08:22", "R4", ActivityAction.ACCEPTED, "S2", "改价影响面评估"),
+                act("09:12", "R4", ActivityAction.COMPLETED, "S2", "改价影响面评估"),
+                act("09:14", "R1", ActivityAction.REPORTED, "T-039", "1 项待你裁决"),
+            ),
         ),
-        ChatItem.Subtasks(
-            id = "st1",
+        TaskDiary(
+            taskNo = "T-040",
+            text = "调研一下同类工具在手机上都怎么做信息架构",
+            createdTime = "08:30",
+            status = TaskStatus.DONE,
+            activities = listOf(
+                act("08:30", "R1", ActivityAction.DECOMPOSED, null, "拆成 1 个子任务 · 指派 1 个角色"),
+                act("08:32", "R4", ActivityAction.ACCEPTED, "S1", "移动端信息架构调研"),
+                act("09:26", "R4", ActivityAction.COMPLETED, "S1", "移动端信息架构调研"),
+                act("09:28", "R1", ActivityAction.REPORTED, "T-040", "已归档 4.2k 字 · 无需裁决"),
+            ),
+        ),
+        TaskDiary(
             taskNo = "T-041",
-            items = tasks().first().subtasks,
-        ),
-        ChatItem.Progress(
-            id = "p1",
-            who = "产品设计师 R4",
-            avatar = "R4",
-            subNo = "T-041-S1",
-            text = "正在整理导航结构，已定 5 个一级入口，正在补「扫码连接」的分支流程…",
-            progress = 0.64f,
-            rounds = 12,
+            text = "以产品设计师身份做一版 OPC 移动端界面，先出信息架构和关键流程图，明早给我看",
+            createdTime = "09:41",
+            status = TaskStatus.RUNNING,
+            activities = listOf(
+                act("09:41", "R1", ActivityAction.DECOMPOSED, null, "拆成 2 个子任务 · 指派 1 个角色"),
+                act("09:41", "R4", ActivityAction.ACCEPTED, "S1", "信息架构与关键流程图"),
+            ),
         ),
     )
 
@@ -172,5 +199,20 @@ object DemoData {
             chips = listOf("定时"),
             read = true,
         ),
+    )
+
+    private fun act(
+        time: String,
+        subject: String,
+        action: ActivityAction,
+        target: String?,
+        targetName: String?,
+    ) = TaskActivity(
+        time = time,
+        subject = subject,
+        subjectName = roleNames[subject] ?: subject,
+        action = action,
+        target = target,
+        targetName = targetName,
     )
 }

@@ -3,6 +3,14 @@
 手机上的 OPC 指挥中心：扫码配对连本机服务端，随时随地看战报、下达任务、做裁决。
 视觉稿与设计取舍见 [`design/index.html`](design/index.html)（8 屏）；实现契约见 [`SPEC.md`](SPEC.md)。
 
+## 界面修订（第二轮反馈后）
+
+- **修掉两处空白**：根 Scaffold 的 `contentWindowInsets` 清零（顶部不再与页面自己的 `StatusBarSpacer` 叠加），
+  输入区改用 `imeBottomPadding()`（键盘占位只补「键盘高出导航栏」的那段，不再把导航栏补第二次）。
+- **工作台重做**：去掉群成员头像堆与「R1 老板助理 · 在线」状态行；整屏改成**全任务流水**，
+  按时间顺序列出每条任务的「R1 拆分 → RX 接收 → RX 完成 → R1 汇报」，执行细节不再堆在这一屏。
+- **@ 指派**：输入框右侧的「+」或直接打「@」都会拉起角色选择行，点谁就把 `@R4` 写进输入框。
+
 ## 现在是什么状态
 
 **已能构建出可安装的 debug APK**（`opc-app-v0.1.0-debug.apk`，17.8 MB，44 个 Kotlin 文件 / 约 4.9k 行）：
@@ -34,6 +42,7 @@
 | 2 | 1080x2400 / 4G / 4 核 / 无相机 | 装包阶段直接崩 |
 | 3 | 720x1560 / 2G / 2 核 / 无相机（`hw.gpu.enabled=no` + swiftshader） | 装包阶段仍然崩 |
 | 4 | 同上 + `-wipe-data` | 二次启动再没起来（`bootanim=stopped` 但 `sys.boot_completed` 始终为空） |
+| 5 | 删掉 AVD 重建（干净数据分区）+ 预置 DataStore 进演示模式 | 装包与进程起来都成功，随后 **SystemUI ANR**（`System UI isn't responding`），界面测不下去 |
 
 结论：**这台机器上的这个模拟器实例不可用于自动化验证** —— 与 App 无关（第 1 轮已证明 App 能装、能渲染）。
 下一步要么插真机 `adb install`，要么换机器/换 system image 再验。
@@ -68,7 +77,24 @@ app/src/main/java/com/opc/app/
   ui/components 复用组件（状态条、胶囊芯片、等级标签、指标卡、事件行、气泡、子任务卡）
   ui/screens/   connect / overview / workbench / review / messages / profile
   ui/nav/       底栏五页 + 未配对时强制走连接页
+  ui/preview/   IDE 里可交互的界面预览（@Preview，自带演示数据）
 ```
+
+### 在 IDE 里看界面（不用装手机）
+
+工程里有 `ui/preview/Previews.kt`，标了 `@Preview`：
+
+| IDE | 能不能看 | 怎么用 |
+|---|---|---|
+| Android Studio（任意版本） | 能 | 打开 `Previews.kt`，右侧 **Split / Design** 面板即渲染；代码行号旁有 Gutter 图标可单独预览每个屏 |
+| IntelliJ IDEA Ultimate | 能 | 同上（Compose 插件同源）；需要装了 Android 插件并指向本工程的 `local.properties`/SDK |
+| IntelliJ IDEA Community | **不能** | 社区版没有 Compose Preview 支持，只能 `跑真机/模拟器` 或看下面的截图 |
+
+两种 IDE 第一次打开都要指定 SDK：`File → Project Structure → SDK` 填本工程内的
+`opc-app/.tools/android-sdk`（JDK 选 `opc-app/.tools/jdk`），否则 Gradle Sync 会报找不到 SDK。
+
+预览能点的地方：工作台流水（含 @ 指派行）、总览的组织与事件列表。涉及联网与上报的动作（下达、裁决、
+解除配对）在预览里是空实现，必须在真机验。
 
 ## 服务端待补（下一步动 opc-web 时照这个做）
 

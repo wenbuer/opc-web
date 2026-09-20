@@ -11,8 +11,10 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -91,8 +93,14 @@ private fun MainScaffold(repository: OpcRepository, factory: ViewModelProvider.F
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        // 顶部不做 Scaffold 内缩：每个页面自己用 StatusBarSpacer 贴状态栏，
+        // 两处都缩会多出一段空白（就是之前标题下面那一块）。
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+            NavigationBar(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                windowInsets = NavigationBarDefaults.windowInsets,
+            ) {
                 OpcDestination.entries.forEach { destination ->
                     val selected = currentRoute == destination.route
                     val count = when (destination) {
