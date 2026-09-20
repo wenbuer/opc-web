@@ -68,4 +68,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(libs.zxing.embedded)
+
+    testImplementation(libs.junit)
 }

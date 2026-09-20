@@ -35,6 +35,7 @@ okhttp-logging = { group = "com.squareup.okhttp3", name = "logging-interceptor",
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 zxing-embedded = { group = "com.journeyapps", name = "zxing-android-embedded", version.ref = "zxing" }
+junit = { group = "junit", name = "junit", version = "4.13.2" }
 
 # 说明：不引 com.google.android.material —— 主题基底已改为 android:Theme.Material.NoActionBar，
 # 否则 pure-Compose 工程会为了一个主题多拖一份 Material 资源。

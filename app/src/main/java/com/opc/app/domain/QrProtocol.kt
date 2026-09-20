@@ -22,15 +22,22 @@ data class PairTicket(
 
 object PairAddress {
 
-    /** "192.168.1.20" / "192.168.1.20:8901" / "http://x:8901" 都归一成 http://host:port，默认 8901。 */
+    const val DEFAULT_PORT = 8901
+
+    /**
+     * "192.168.1.20" / "192.168.1.20:8901" / "http://x:8901/pair?c=1" 都归一成 http://host:port。
+     * 只保留 origin：路径、查询、尾斜杠一律切掉，否则 Retrofit 的 baseUrl 会把路径带进每个请求。
+     */
     fun normalize(raw: String): String? {
-        val text = raw.trim().removeSuffix("/")
-        if (text.isEmpty()) return null
-        val withScheme = if (text.startsWith("http", ignoreCase = true)) text else "http://$text"
-        val hostPort = withScheme.substringAfter("://")
+        val trimmed = raw.trim()
+        if (trimmed.isEmpty()) return null
+        val withoutScheme = trimmed.substringAfter("://", trimmed)
+        val hostPort = withoutScheme.substringBefore('/').substringBefore('?')
         if (hostPort.isEmpty() || !hostPort.contains('.')) return null
-        val port = hostPort.substringAfter(':', "")
-        return if (port.isNotEmpty()) withScheme else "$withScheme:8901"
+        val host = hostPort.substringBefore(':')
+        val port = hostPort.substringAfter(':', DEFAULT_PORT.toString())
+        if (host.isEmpty() || port.toIntOrNull() == null) return null
+        return "http://" + host + ":" + port
     }
 }
 
@@ -66,7 +73,7 @@ object QrProtocol {
 
     private fun fromQuery(q: Map<String, String>): PairTicket? {
         val host = q["h"] ?: return null
-        val port = q["p"] ?: "8901"
+        val port = q["p"] ?: PairAddress.DEFAULT_PORT.toString()
         val code = q["c"] ?: q["code"] ?: return null
         return PairTicket("http://$host:$port", code, q["v"])
     }

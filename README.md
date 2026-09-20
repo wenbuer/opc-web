@@ -5,7 +5,16 @@
 
 ## 现在是什么状态
 
-初版骨架已可构建。**opc-web 那边一个字节都没改** —— 它还没有移动端所需的配对与鉴权接口，
+**已能构建出可安装的 debug APK**（`opc-app-v0.1.0-debug.apk`，17.8 MB，44 个 Kotlin 文件 / 约 4.9k 行）：
+
+| 检查项 | 结果 |
+|---|---|
+| `:app:assembleDebug` | 通过 |
+| `:app:testDebugUnitTest`（配对协议 7 例） | 7 passed / 0 failed |
+| `:app:lintDebug` | 通过（仅 LockedOrientation / MonochromeLauncherIcon 等无害告警） |
+| 真机或模拟器实跑 | **未做**（本机无设备、无 AVD）：首启流程尚未在设备上验证 |
+
+**opc-web 那边一个字节都没改** —— 它还没有移动端所需的配对与鉴权接口，
 所以本 App 走「在线优先 → 本机缓存 → 演示数据」三级回落：
 
 | 情况 | 表现 |
