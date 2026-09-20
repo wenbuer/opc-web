@@ -357,7 +357,7 @@
             <div class="set-head">任务 Token 统计</div>
             <div class="tok-sum" id="tokSum"></div>
             <div class="tok-chart" id="tokChart"><div class="placeholder">加载中…</div></div>
-            <div class="set-note"><b>口径</b> 每个子任务执行时把用量写进 <code>T-xxx-Sn.meta.json</code>（tokensIn = 输入 + 缓存读取，tokensOut = 输出），并记下执行它的引擎与会话标识，统计对不上时能回溯。<br><b>临时会话</b>（⑦ R1 助理）的用量记在《批阅台/临时会话.jsonl》，不进任何子任务、不并入任务合计，在图上单列一组柱。</div>
+            <div class="set-note"><b>口径</b> 每个子任务执行时把用量写进 <code>T-xxx-Sn.meta.json</code>（tokensIn = 输入 + 缓存读取，tokensOut = 输出），并记下执行它的引擎与会话标识，统计对不上时能回溯。<br><b>临时会话</b>（设置 → ⑦ 运行开关 里那个悬浮窗）的用量记在《批阅台/临时会话.jsonl》，不进任何子任务、不并入任务合计，在图上单列一组柱。</div>
           </div>
         <div class="snav-pane" data-pane="assistant">
           <div class="set-head">运行开关</div>
@@ -473,7 +473,7 @@
     <div class="r1-head">
       <span class="r1-ava" id="r1Ava"></span>
       <div class="r1-who"><b>R1 助理</b><em>临时会话 · 不进任务流程</em></div>
-      <button id="r1Close" class="r1-x" title="收起面板（悬浮球保留；要关掉悬浮窗去「设置 → ⑦ R1 助理」）">×</button>
+      <button id="r1Close" class="r1-x" title="收起面板（悬浮球保留；要关掉悬浮窗去「设置 → ⑦ 运行开关」）">×</button>
     </div>
     <div id="r1Msgs" class="r1-msgs"></div>
     <div class="r1-input">

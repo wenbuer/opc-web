@@ -4,22 +4,50 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opc-web"
-version = "1.16.0"
-description = "OPC 控制台（opc-web）——所有 OPC 指令的指挥入口：知识库看板 / R0 批阅台 / SQLite 任务台账 / R1 多角色协同调度（纯标准库实现）"
+dynamic = ["version"]          # 单一来源：src/opc_web/__init__.py 的 __version__
+description = "Local-first console for an AI employee team: assign a task, watch it run, review the report, keep the record — stdlib + zstandard only"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
+authors = [{ name = "wenbuer" }]
+keywords = [
+  "opc", "ai-agents", "multi-agent", "llm", "agents", "one-person-company",
+  "local-first", "console", "knowledge-base", "deepseek", "dsh",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Web Environment",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: Microsoft :: Windows",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Office/Business",
+  "Topic :: Software Development :: Code Generators",
+]
 # 运行时依赖只有一个：dsh 会话日志是 zstd 压缩的（读用量与进度心跳要解开它）。
-# 其余全部标准库 —— 不装 zstandard 时，dsh 引擎仍能跑，只是拿不到用量与心跳追踪。
+# 其余全部标准库 —— 不装 zstandard 时 dsh 引擎仍能跑，只是拿不到用量与心跳追踪。
 dependencies = ["zstandard>=0.21"]
-authors = [{ name = "R1 枢纽", role = "opc-web 维护" }]
-keywords = ["opc", "agents", "console", "knowledge-base"]
+
+[project.urls]
+Homepage = "https://github.com/wenbuer/opc-web"
+Repository = "https://github.com/wenbuer/opc-web"
+Issues = "https://github.com/wenbuer/opc-web/issues"
+Changelog = "https://github.com/wenbuer/opc-web/blob/main/CHANGELOG.md"
 
 [project.scripts]
 opc-web = "opc_web.__main__:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
+
+[tool.setuptools.dynamic]
+version = { attr = "opc_web.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

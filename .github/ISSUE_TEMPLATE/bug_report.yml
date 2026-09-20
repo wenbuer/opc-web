@@ -1,0 +1,48 @@
+name: Bug 报告
+description: 报一个能复现的问题
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先看一眼能不能一句话说清：**做了什么 → 期望什么 → 实际什么**。
+        跑的是哪个引擎（api / dsh）、哪个平台，这两项最影响定位。
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+      description: 实际发生了什么，报错原文贴全（含堆栈）
+    validations:
+      required: true
+  - type: textarea
+    id: expect
+    attributes:
+      label: 期望
+      description: 你原本以为会发生什么
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 下达任务「…」
+        2. 看板/批阅台里点「…」
+        3. 出现 …
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: 环境
+      description: 操作系统 + Python 版本 + 引擎（api / dsh）+ 模型提供方
+      placeholder: Windows 11 · Python 3.12 · 引擎 dsh · deepseek
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 自查
+      options:
+        - label: 已经跑过 python scripts/run_tests.py，用例是绿的
+        - label: 已经翻过 README 的配置表与「运行开关」设置页

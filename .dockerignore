@@ -1,0 +1,16 @@
+.git
+.github
+.gitignore
+.gitattributes
+.env
+opc-config.json
+build/
+dist/
+logs/
+images/
+__pycache__/
+*.py[cod]
+.testroot-*
+_*.png
+_*.html
+*.log

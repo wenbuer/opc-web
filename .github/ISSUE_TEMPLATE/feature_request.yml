@@ -1,0 +1,31 @@
+name: 功能建议
+description: 提一个新功能或改进
+labels: [enhancement]
+body:
+  - type: textarea
+    id: pain
+    attributes:
+      label: 你卡在哪
+      description: 先说清现在的痛点，再说想要的方案 —— 方案可以没有，痛点必须有
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: 想到的做法（可留空）
+    validations:
+      required: false
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 大概属于哪块
+      options:
+        - 任务与派发
+        - 执行引擎
+        - 回报、批阅与知识库
+        - 成本与调度
+        - 界面与交互
+        - 安装、部署与文档
+        - 不确定
+    validations:
+      required: true

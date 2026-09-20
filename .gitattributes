@@ -6,5 +6,8 @@
 *.html text eol=lf
 *.yml text eol=lf
 *.json text eol=lf
-*.bat text eol=crlf
+*.bat text=crlf
+# shell 脚本必须 LF：Windows 检出时被换成 CRLF 的话，Linux/macOS 上 sh run.sh 会 bad interpreter
+*.sh text eol=lf
+Dockerfile text eol=lf
 *.db binary

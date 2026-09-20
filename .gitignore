@@ -22,24 +22,28 @@ scratch_*.py
 # 调度日志（运行数据）
 运营-调度日志.md
 
-# ===== 打包产物与脚本（本机保留，不入库）=====
+# ===== 打包产物（本机保留，不入库）=====
+# 注：打包用的 scripts/build.ps1 与 scripts/opc-web.spec 随仓库走（要能复现构建）
 build/
 dist/
 _seed/
 _已打包/              # 旧的发布暂存目录（如有）
-opc-web.spec
-build.ps1
 
-# ===== 测试与诊断脚本（本机保留，不入库）=====
-tests/
+# ===== 本地诊断与运行输出（本机保留，不入库）=====
+scripts/.diag-regen.py
 .diag-regen.py
 server.out.log
 server.err.log
+
+# 用例落下的临时目录（见 tests/_tmpdir.py）
+.testroot-*/
 
 # 本地探针与运行日志（截图/临时页/服务输出），不进仓库
 _*.png
 _*.html
 
-# 运行日志与本地脚本目录，不进仓库
+# 运行日志，不进仓库
 logs/
-scripts/
+
+# 本地诊断用的 git worktree（git add -A 会把目录当子模块指针提交，别重犯）
+_ci_probe/

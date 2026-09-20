@@ -1,0 +1,39 @@
+name: tests
+
+on:
+  push:
+    branches: [main]        # 只在主干 push 上跑，避免临时分支刷出多余运行记录
+  pull_request:
+
+# 同一分支连续推送时，取消上一次未跑完的运行
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+# 只读权限就够（CI 只跑用例，不写仓库）
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    # 用例名与断言里全是中文：Windows runner 的控制台默认不是 UTF-8，
+    # 不强制 UTF-8 模式会在打印时抛 UnicodeEncodeError（看着像用例失败）
+    env:
+      PYTHONUTF8: "1"
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.9", "3.13"]
+    steps:
+      # v5 / v6 起跑在 Node 24 上：v4 / v5 会被强制迁移并每次刷一条弃用告警
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: 装依赖（zstandard 只有读 dsh 会话日志的用例需要）
+        run: python -m pip install --upgrade pip zstandard
+      - name: 跑用例
+        run: python scripts/run_tests.py

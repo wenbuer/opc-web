@@ -135,7 +135,9 @@ AGENTS_DIR = (ROOT / "agents") if active_project() else AGENTS_SEED
 SKILLS_REL = "skills"
 LOG_FILE = ROOT / SCHED_LOG_REL
 
-HOST = "127.0.0.1"
+# 监听地址：默认只监听本机（数据不上云的前提）。容器里必须显式覆盖成 0.0.0.0
+# 才能从容器外访问（见 Dockerfile）；OPC_HOST 是**唯一**的对内网开口子，默认不变。
+HOST = os.environ.get("OPC_HOST") or "127.0.0.1"
 PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
 
 # 执行引擎：谁在执行角色任务（engines/ 包）。缺省 api（直连大模型 API，不依赖 dsh）；
@@ -336,7 +338,7 @@ def save_cfg(kv: dict) -> dict:
 
 def reload() -> dict:
     """重新读取配置并刷新模块常量（保存后立即生效）。"""
-    global _CFG, ROOT, KB_ROOT, BATCH_ROOT, WORKSPACE_ROOT, PROJECT_ROOT, AGENTS_DIR, LOG_FILE, PORT, ENGINE
+    global _CFG, ROOT, KB_ROOT, BATCH_ROOT, WORKSPACE_ROOT, PROJECT_ROOT, AGENTS_DIR, LOG_FILE, HOST, PORT, ENGINE
     _CFG = _load_cfg()
     ROOT = _resolve_root()
     KB_ROOT = ROOT / "知识库"
@@ -345,6 +347,7 @@ def reload() -> dict:
     PROJECT_ROOT = ROOT / "项目"
     AGENTS_DIR = (ROOT / "agents") if active_project() else AGENTS_SEED
     LOG_FILE = ROOT / SCHED_LOG_REL
+    HOST = os.environ.get("OPC_HOST") or "127.0.0.1"
     PORT = int(os.environ.get("OPC_PORT") or _CFG.get("port") or 8901)
     # 引擎也随配置热生效：设置页切换后下一次派发就用新引擎，无需重启控制台。
     ENGINE = str(os.environ.get("OPC_ENGINE") or _CFG.get("engine") or DEFAULT_ENGINE)

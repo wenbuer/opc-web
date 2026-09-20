@@ -10,4 +10,4 @@
 启动：python run.py 或 python -m opc_web（端口取自 opc-config.json，默认 8901）
 目录约定：单根目录（配置 root / env OPC_KB_ROOT 覆盖）→ 自动生成 批阅台/、工作区/（按角色名称）、知识库/。
 """
-__version__ = "1.15.0"
+__version__ = "1.17.0"
