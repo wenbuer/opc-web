@@ -1,5 +1,15 @@
 #!/bin/sh
 
+# 本工程自带 JDK 17（.tools/jdk）。JAVA_HOME 指向 8 或未设置时改用它：
+# IDE 默认拿自带 Java 8 跑 Gradle，会在解析 AGP 时报 "This build uses a Java 8 JVM"。
+APP_HOME=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+OPC_BUNDLED_JDK="$APP_HOME/.tools/jdk"
+if [ -x "$OPC_BUNDLED_JDK/bin/java" ]; then
+    case "$JAVA_HOME" in
+        ""|*1.8*|*1.9*|*jdk8*|*jre8*) JAVA_HOME="$OPC_BUNDLED_JDK"; export JAVA_HOME ;;
+    esac
+fi
+
 #
 # Copyright © 2015-2021 the original authors.
 #

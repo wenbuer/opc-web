@@ -67,6 +67,27 @@ pwsh -File scripts/build-debug.ps1         # 产出 app/build/outputs/apk/debug/
 
 装到手机：`adb install -r app\build\outputs\apk\debug\app-debug.apk`（adb 在 `.tools/android-sdk/platform-tools/`）。
 
+### IDE 第一次打开报 "This build uses a Java 8 JVM"
+
+IDEA / Android Studio 会拿它自带的 Java 8 去启动 Gradle，于是解析 AGP 时就炸：
+
+```
+Could not resolve com.android.tools.build:gradle:8.6.1
+> Dependency requires at least JVM runtime version 11. This build uses a Java 8 JVM.
+```
+
+工程已经在两个 wrapper 脚本（`gradlew` / `gradlew.bat`）里放了垫片：**JAVA_HOME 指向 8 或没设时，
+自动切换到工程自带的 `.tools/jdk`**。垫片必须在 JVM 启动前生效，所以只能写在 wrapper 里 ——
+`gradle.properties` 的 `org.gradle.java.home` 那时候已经太晚。
+
+还是报错的话按顺序查两处：
+
+1. 同步一下让 IDEA 重新拉起 wrapper（`File → Sync Project with Gradle Files`）；IDEA 缓存的
+   Gradle 进程要用 `./gradlew --stop` 停掉再同步。
+2. 显式指定 IDE 侧的 JDK：`Settings → Build, Execution, Deployment → Build Tools → Gradle` →
+   **Gradle JDK** 选 17，或指向 `opc-app/.tools/jdk`；`Project Structure → SDK` 的 SDK 位置填
+   `opc-app/.tools/android-sdk`（`local.properties` 里已经写过一份，IDE 通常会自动读到）。
+
 ## 工程结构
 
 ```

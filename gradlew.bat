@@ -35,6 +35,20 @@ set APP_HOME=%DIRNAME%
 @rem Resolve any "." and ".." in APP_HOME to make it shorter.
 for %%i in ("%APP_HOME%") do set APP_HOME=%%~fi
 
+@rem ---------------------------------------------------------------------------
+@rem 本工程自带 JDK 17（.tools\jdk，见 scripts/setup-android-sdk.ps1）。
+@rem JAVA_HOME 指向 8（或未设置）时改用它：IDE 默认拿自带 Java 8 跑 Gradle，
+@rem 会在解析 AGP 时报 This build uses a Java 8 JVM。
+@rem JAVA_HOME 必须在启动 JVM 之前定，所以在 wrapper 里设 —— gradle.properties 太晚。
+@rem ---------------------------------------------------------------------------
+set "OPC_BUNDLED_JDK=%APP_HOME%.tools\jdk"
+if not defined JAVA_HOME (
+  if exist "%OPC_BUNDLED_JDK%\bin\java.exe" set "JAVA_HOME=%OPC_BUNDLED_JDK%"
+)
+echo %JAVA_HOME% | findstr /i "1.8 1.9 jdk8 jre8" >NUL 2>&1
+if not errorlevel 1 (
+  if exist "%OPC_BUNDLED_JDK%\bin\java.exe" set "JAVA_HOME=%OPC_BUNDLED_JDK%"
+)
 @rem Add default JVM options here. You can also use JAVA_OPTS and GRADLE_OPTS to pass JVM options to this script.
 set DEFAULT_JVM_OPTS=-Dfile.encoding=UTF-8 "-Xmx64m" "-Xms64m"
 
