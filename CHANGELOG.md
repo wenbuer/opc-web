@@ -3,11 +3,40 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)；版本号以
 `src/opc_web/__init__.py` 的 `__version__` 为唯一来源（`pyproject.toml` 从它读取）。
 
-> 本仓库的历史在 **v1.17.0 之前做过一次 squash**：旧 tag `v1.16.0` 指向 squash
-> 之前的历史线。v1.17.0 是当前历史线上的第一个版本，下面按能力归并记录了它包含
-> 的提交；更早的逐条记录已不可达。
+> 本仓库的历史在 v1.17.0 之前做过一次 squash：旧 tag `v1.16.0` 指向 squash
+> 之前的历史线，更早的逐条记录已不可达。
 
-## [1.17.0] - 2026-09-20
+## [1.18.0] - 2026-09-20
+
+工程与文档：补齐可复现的测试与持续集成，修复 Python 3.9 兼容性，说明文档正式化。
+
+### 测试与持续集成
+
+- `tests/`（18 个用例文件）与 `scripts/`（`run_tests.py` 与打包脚本）入库；
+  `python scripts/run_tests.py` 逐个运行全部用例，单个文件也可单独运行。
+- 新增 `.github/workflows/test.yml`：Windows + Linux × Python 3.9 / 3.13 四组矩阵，
+  主干 push 与 PR 触发，同一分支的新运行会取消上一次未跑完的运行；
+  失败时输出 `::error` 注解与 job summary，无需登录即可在 commit 的 checks 中定位失败用例。
+- 用例不再依赖本机环境：临时目录统一走 `tests/_tmpdir.py`（不依赖 `tempfile.mkdtemp`），
+  路径越界断言按平台区分，峰时断言按本机时区计算。
+
+### 修复
+
+- Python 3.9 兼容性：`engines/base.py` 的 `Progress.trace` 与 `RunResult.usage` 使用
+  `dict | None`（3.10 起才支持的语法），在 3.9 上导入该模块即失败；改用 `Optional[dict]`，
+  与 `pyproject.toml` 的 `requires-python = ">=3.9"` 声明一致。
+- `scripts/build.ps1` 去掉写死的 node 路径，改读环境变量 `NODE_EXE`。
+
+### 文档与仓库
+
+- `README.md` 重写：简介与预览前置，措辞正式化，删除与其它项目的比较；工作流程一节改用任务闭环图。
+- 新增英文说明 `README.en.md`，结构对齐中文版。
+- 新增 `.env.example`、`Dockerfile`、`.dockerignore`、`run.sh`，以及 issue / PR 模板。
+- 版本号收敛到 `__version__` 单一来源；`LICENSE` 版权方署名为 wenbuer。
+- `.gitattributes` 为 shell 脚本与 `Dockerfile` 固定 LF 行尾。
+- 只保留项目本身所需的文件：移除与项目无关的赞赏码图片。
+
+## [1.17.0] - 2026-09-18
 
 首个发布于当前历史线的版本：一个本地运行的「AI 员工团队」控制台 ——
 下达任务、执行、批阅产出、归档沉淀，全流程留在本机。
@@ -54,16 +83,3 @@
 
 - 作战面板（组织架构 / 角色工作区 / 项目时间线）、工作台（四列看板 + 实时事件流）、
   批阅台、项目文件、知识库、每日简报、设置，深浅双主题。
-
-### 仓库与工程
-
-- 用例与打包脚本入库：`tests/`（18 个用例文件）、`scripts/`（`run_tests.py` 与打包脚本）。
-- 新增 GitHub Actions：Windows + Linux × Python 3.9 / 3.13 四组矩阵，push 与 PR 均触发；
-  失败时输出 `::error` 注解与 job summary，无需登录即可在 checks 里看到失败用例。
-- 修复 Python 3.9 兼容性：`engines/base.py` 中的 `dict | None` 注解是 3.10 语法，
-  在 3.9 上会导致导入失败；改用 `Optional[dict]`，与 `requires-python` 声明一致。
-- 用例不再依赖本机环境：临时目录统一走 `tests/_tmpdir.py`（不依赖 `tempfile.mkdtemp`），
-  路径越界断言按平台区分，峰时断言按本机时区计算。
-- 版本号收敛到 `__version__` 单一来源；补充 `CHANGELOG.md`、`.env.example`、`Dockerfile`、
-  `run.sh` 与英文说明 `README.en.md`。
-- 仓库只保留项目本身所需文件：移除与项目无关的赞赏码图片。

@@ -44,12 +44,6 @@ Requirements and boundaries:
 </tr>
 </table>
 
-<p align="center">
-  <img src="images/opc-task-loop-01.png" alt="Task loop: task → roles → interpretation, back to task" width="880">
-  <br>
-  <em>Task loop: the human appears at ① assignment and ⑧ review (red); ②③⑥⑦ are R1's work (blue); ④⑤ are executed by the RX roles (purple).</em>
-</p>
-
 ## Contents
 
 - [Overview](#overview)
@@ -60,20 +54,17 @@ Requirements and boundaries:
 - [Interface](#interface)
 - [Execution engines](#execution-engines)
 - [Configuration and data](#configuration-and-data)
-- [Repository layout](#repository-layout)
 - [Development and tests](#development-and-tests)
 - [Contributing](#contributing)
 - [License](#license)
 
 ## How it works
 
-A task goes through eight steps and returns to the start:
-
-```text
-(1) assign (R0) → (2) decompose (R1) → (3) queue & dispatch (R1) → (4) execute (RX)
-                                                                        ↓
-(8) review & archive (R0/R1) ← (7) present (R1) ← (6) archive (R1) ← (5) report (RX)
-```
+<p align="center">
+  <img src="images/opc-task-loop-01.png" alt="Task loop: task → roles → interpretation, back to task" width="880">
+  <br>
+  <em>Task loop: the human appears at ① assignment and ⑧ review (red); ②③⑥⑦ are R1's work (blue); ④⑤ are executed by the RX roles (purple).</em>
+</p>
 
 | Stage | Owner | What happens |
 |---|---|---|
@@ -87,37 +78,38 @@ When a round finishes, deliverables land in both the ledger and the knowledge ba
 
 ### Tasks and dispatch
 
-- **Automatic decomposition**: one line becomes 1–3 subtasks, each naming a role and the expected deliverable. A named role can also be dispatched directly, skipping decomposition.
-- **Queue priority**: every pending subtask carries a one-character chip (high / normal / low). Both task selection and in-task ordering follow it.
-- **Peak / off-peak scheduling**: peak hours are weekdays 09:00–12:00 and 14:00–18:00 (unit prices double). Tasks decomposed into two or more subtasks wait for an off-peak window; single-subtask jobs are unaffected. "Run now" on a task row bypasses peak deferral and moves it to the front.
-- **Scheduled tasks**: daily / weekly / every N minutes. Stored at `批阅台/定时任务.json` inside the project data directory, so they travel with the project.
+- **Automatic decomposition**: one line becomes 1–3 independently deliverable subtasks, each naming a role and the expected deliverable; a named role can also be dispatched directly.
+- **Queue priority**: pending subtasks can be marked high / normal / low; task selection and in-task ordering follow it.
+- **Peak / off-peak scheduling**: peak hours are weekdays 09:00–12:00 and 14:00–18:00 (unit prices double); tasks of two or more subtasks wait for an off-peak window. "Run now" bypasses deferral and moves the task to the front.
+- **Scheduled tasks**: daily / weekly / every N minutes.
 
 ### Execution engines and guardrails
 
-- **Swappable engines**: direct LLM API by default, or DSH (DeepSeek Harness) headless. Both share one progress and usage accounting model, and the primary engine falls back to the secondary one when it fails. See [Execution engines](#execution-engines).
-- **Skills**: R0 / R1 / RX positions, created and numbered from the UI. Skills live in a shared library; registering one on a role card mounts it. Skills are independent of the engine.
-- **Visibility while running**: role cards show the current task; the workbench has a four-column board (pending / dispatched / done / blocked) and a live event stream showing the step in progress and the tools called.
-- **Execution guardrails**: a single run is capped at 300 rounds, 320 tool calls, and 30M cumulative input tokens. Exceeding any cap stops the run, which is then filed as **blocked** with a trace — the deliverable file may already hold partial content, but the run is never recorded as done.
-- **No silent failures**: exceptions in archiving, metadata and wrap-up paths are surfaced in the event stream instead of being swallowed.
+- **Swappable engines**: direct LLM API by default, or DSH (DeepSeek Harness) headless, with fallback to the secondary engine when the primary fails.
+- **Skills**: skills live in a shared library and are mounted by registering them on a role card; they are independent of the engine.
+- **Visibility while running**: role cards show the current task; the workbench has a four-column board (pending / dispatched / done / blocked) and a live event stream.
+- **Execution guardrails**: a single run is capped at 300 rounds, 320 tool calls and 30M cumulative input tokens; exceeding a cap stops the run, which is filed as blocked.
+- **No silent failures**: exceptions in archiving, metadata and wrap-up paths are recorded in the event stream.
 
 ### Reports, review and knowledge
 
-- **Reports on disk**: output is written to `工作区/<role>/T-xxx-Sn-report.md` plus a matching `.meta.json` (engine, session, usage). On completion the body moves to `已归档/` and the report enters the ledger. File location expresses state: in the workspace means pending, moved to `已归档/` means handled.
-- **Review drives execution**: approving immediately creates an "execute the R0 decision" task; rejecting redoes the work with your annotation, closing the loop assign → execute → review → archive. The review desk scrolls in three independent sections: work items / decisions / archived.
-- **Decisions kept separate**: every task appears under work items; only items that genuinely need a call (direction, external spend, exceptional authorisation, final acceptance) get an extra "decision N" entry under the same number. Process matters such as archiving rules are handled by the console and never occupy a decision slot.
-- **Knowledge base**: at wrap-up R1 decides whether anything is worth keeping; entries are filed by topic and merged into existing documents. Each carries OKF front-matter (type / created / updated / source task).
-- **Daily brief**: tasks of the day are summarised automatically. The text is structurally validated before writing: model wrappers (preambles, code fences, trailing notes) are stripped, and if validation fails the brief is not written — the console falls back to a code-level merge.
+- **Reports on disk**: output is written to `工作区/<role>/T-xxx-Sn-report.md` plus a matching `.meta.json`; on completion the body moves to `已归档/` and the report enters the ledger.
+- **Review drives execution**: approving creates an "execute the R0 decision" task, rejecting redoes the work with your annotation; the review desk has three sections: work items / decisions / archived.
+- **Decisions kept separate**: every task appears under work items; only items that need a call get an extra "decision N" entry.
+- **Knowledge base**: R1 decides whether anything is worth keeping; entries are filed by topic and merged into existing documents, each with OKF front-matter.
+- **Daily brief**: tasks of the day are summarised automatically, with a structural check before writing.
 
 ### Cost and scheduling
 
-- **Three-tier pricing**: fresh input, cache hit and output are metered and priced separately. The ledger's `tokensIn` is the sum of fresh input and cache reads, and cache hits are billed far below input price, so cost is computed by subtracting cache reads first. The home view rescales units and shows both totals and today's figures.
-- **Run switches**: the R1 assistant dock and peak deferral of long tasks are collected under Settings → run switches and persisted in the project config.
+- **Three-tier pricing**: fresh input, cache hit and output are metered separately; the home view shows totals and today's figures.
+- **Run switches**: the R1 assistant dock and peak deferral of long tasks are collected under Settings → run switches.
 
 ### Running and deployment
 
-- **Local-first**: SQLite and Markdown, bound to localhost, fully traceable.
-- **Minimal dependencies**: everything but `zstandard` is the standard library. Entry point `run.py`; on Windows `启动控制台.bat`, on macOS / Linux `run.sh`.
-- **Themes**: light and dark, switchable and remembered.
+- **Local-first**: SQLite and Markdown, bound to localhost.
+- **Minimal dependencies**: everything but `zstandard` is the standard library.
+- **Entry points**: `run.py`; `启动控制台.bat` on Windows, `run.sh` on macOS / Linux.
+- **Themes**: light and dark.
 
 ## Quick start
 
@@ -224,26 +216,6 @@ Precedence: **environment variables > `opc-config.json` > defaults** (the config
 | Run logs | `批阅台/运行日志/T-xxx-Sn.log` (full trace) |
 | Knowledge entries | `知识库/<category>/<title>.md` with OKF front-matter (`type` / `created` / `updated` / `task`) |
 | Run data | 批阅台 / 工作区 / 知识库 are created idempotently at startup and are not committed |
-
-## Repository layout
-
-```text
-run.py              Entry point
-src/opc_web/        Console source: config / server / scheduler / chain / store /
-                    agent / roles / review / engines (api and dsh) / skills
-templates/          Pages
-static/             Styles and scripts
-agents-seed/        Role card seeds for new projects
-skills/             Project-local skills (ship with the code, not in the global skill dir)
-tests/              Test files (18, each runnable on its own)
-scripts/            run_tests.py (run the whole suite)
-                    build.ps1 + opc-web.spec (PyInstaller packaging)
-.github/            CI (Windows + Linux × Python 3.9/3.13) and issue / PR templates
-images/             README images
-CHANGELOG.md        Release notes
-Dockerfile          Container build (with .dockerignore)
-run.sh              macOS / Linux entry point
-```
 
 ## Development and tests
 
