@@ -105,6 +105,7 @@ val OpcDarkColors = darkColorScheme(
  *
  * 默认跟随系统：亮色下是银白科技，暗色下回到原战情室配色。
  * 真机在系统设置里切深浅即可，不用改代码。
+ * 这个签名保留给预览与单屏渲染用；App 实际走下面的 mode 重载。
  */
 @Composable
 fun OpcTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
@@ -114,6 +115,17 @@ fun OpcTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable ()
         shapes = OpcShapes,
         content = content,
     )
+}
+
+/**
+ * 签名: OpcTheme(mode: ThemeMode, content)
+ *
+ * 用户选的模式优先于系统：DARK 恒暗、LIGHT 恒亮、SYSTEM 才看系统设置。
+ * 模式在 MainActivity 里从 DataStore 读出来，改一次全树重组。
+ */
+@Composable
+fun OpcTheme(mode: ThemeMode, content: @Composable () -> Unit) {
+    OpcTheme(darkTheme = resolveDark(mode, isSystemInDarkTheme()), content = content)
 }
 
 /** 间距刻度，避免页面里散落魔法数字。 */

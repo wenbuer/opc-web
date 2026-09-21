@@ -1,6 +1,7 @@
 package com.opc.app.ui.screens.workbench
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,31 +10,38 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -198,64 +206,161 @@ private fun statusTone(status: TaskStatus) = when (status) {
     TaskStatus.QUEUED -> TierTone.NEUTRAL
 }
 
+/**
+ * 输入区。高度构成（行高 = 组件本身，不含字重导致的行盒溢出）：
+ *   上分隔线 1dp
+ *   + 上内边距 6dp
+ *   + 药丸 54dp（8dp padding 上下 + 38dp 单行输入框；长文本每添一行 +14dp，最多 4 行）
+ *   + 状态行 6dp(top) + 14dp(lineHeight) = 20dp
+ *   + 下内边距 6dp
+ *   = 1 + 6 + 54 + 20 + 6 = 约 81dp（输入长到 4 行时 +42dp）。
+ * 原来那版：快捷芯片 32 + 间距 8 + 56dp 起步的 OutlinedTextField + 状态行 21 + 内外边距 32
+ * ≈ 150dp。上面不再挂快捷芯片行，药丸底下也不再挂角色行 —— 两行都搬进了「+」的底部弹层。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun Composer(state: WorkbenchUiState, viewModel: WorkbenchViewModel) {
+    var sheetOpen by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState()
+
     Column(
         Modifier
             .fillMaxWidth()
             // 键盘弹起时把输入区顶上去；只补「键盘高出导航栏」的那一段，避免和底栏重复占位
-            .imeBottomPadding()
-            .padding(horizontal = OpcSpacing.m, vertical = OpcSpacing.s),
+            .imeBottomPadding(),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
-            QuickIntents.forEach { (label, prefix) ->
-                CapsuleChip(text = label, onClick = { viewModel.applyQuickIntent(prefix) })
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        Column(Modifier.padding(horizontal = OpcSpacing.m, vertical = 6.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(OpcSpacing.s)) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(26.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainer)
+                        .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                ) {
+                    BasicTextField(
+                        value = state.draft,
+                        onValueChange = viewModel::onDraftChange,
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        // 单行不撑高：这是把整块输入区压回设计图高度的关键，M3 输入框的 56dp 起步底高不要了
+                        minLines = 1,
+                        maxLines = 4,
+                        decorationBox = { inner ->
+                            Box(
+                                modifier = Modifier.heightIn(min = 38.dp).fillMaxWidth(),
+                                contentAlignment = Alignment.CenterStart,
+                            ) {
+                                if (state.draft.isEmpty()) {
+                                    Text(
+                                        "下达任务，@ 指派角色…",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                    )
+                                }
+                                inner()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+
+                // 「+」＝原来的 @ 行列：三个快捷意图 + 角色列表，都收进弹层
+                IconButton(
+                    onClick = { sheetOpen = true },
+                    modifier = Modifier.size(36.dp).clip(CircleShape),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "快捷意图与指派角色", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
+                IconButton(
+                    onClick = viewModel::send,
+                    enabled = state.draft.isNotBlank() && !state.sending,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary),
+                ) {
+                    Icon(
+                        Icons.Default.Send,
+                        contentDescription = "发送",
+                        tint = if (state.draft.isNotBlank() && !state.sending) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
             }
-        }
-        if (state.mentionOpen) {
-            Spacer(Modifier.height(OpcSpacing.s))
-            MentionRow(roles = state.roles, onPick = viewModel::pickMention)
-        }
-        Spacer(Modifier.height(OpcSpacing.s))
-        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(OpcSpacing.s)) {
-            OutlinedTextField(
-                value = state.draft,
-                onValueChange = viewModel::onDraftChange,
-                placeholder = { Text("下达任务，@ 指派角色…") },
-                maxLines = 4,
-                trailingIcon = {
-                    IconButton(onClick = viewModel::openMention) {
-                        Icon(Icons.Default.Add, contentDescription = "指派角色", tint = MaterialTheme.colorScheme.primary)
-                    }
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .onFocusChanged { focus -> if (focus.isFocused) viewModel.dismissMention() },
-            )
-            IconButton(
-                onClick = viewModel::send,
-                enabled = state.draft.isNotBlank() && !state.sending,
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
-            ) {
-                Icon(Icons.Default.Send, contentDescription = "发送", tint = MaterialTheme.colorScheme.onPrimary)
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Box(Modifier.size(7.dp).clip(CircleShape).background(OpcGreen))
-            Text("自动执行链运行中", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.weight(1f))
+
+            // 只留峰时/错误这半句：链路是否在跑已经在总览与「我的」里说过了
             Text(
                 state.error ?: "峰时 · 长任务排谷时",
                 style = MaterialTheme.typography.labelSmall,
                 color = if (state.error == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 6.dp, start = 2.dp),
             )
+        }
+    }
+
+    if (sheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { sheetOpen = false },
+            sheetState = sheetState,
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ) {
+            IntentSheet(
+                roles = state.roles,
+                onIntent = { prefix ->
+                    viewModel.appendQuickIntent(prefix)
+                    sheetOpen = false
+                },
+                onPickRole = { code ->
+                    viewModel.pickMention(code)
+                    sheetOpen = false
+                },
+            )
+        }
+    }
+}
+
+/** 弹层内容：上组是三个快捷意图（只写前缀，发不发仍由人过一眼），下组是「@」能点到的角色。 */
+@Composable
+internal fun IntentSheet(
+    roles: List<Pair<String, String>>,
+    onIntent: (String) -> Unit,
+    onPickRole: (String) -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = OpcScreenPadding)
+            .padding(bottom = OpcSpacing.xl),
+        verticalArrangement = Arrangement.spacedBy(OpcSpacing.m),
+    ) {
+        Text("快捷意图", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            QuickIntents.forEach { (label, prefix) ->
+                CapsuleChip(text = label, onClick = { onIntent(prefix) })
+            }
+        }
+        Text("指派给", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+        if (roles.isEmpty()) {
+            Text("角色列表未加载", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                roles.forEach { (code, name) ->
+                    CapsuleChip(text = code + " " + name, onClick = { onPickRole(code) })
+                }
+            }
         }
     }
 }

@@ -84,6 +84,18 @@ class WorkbenchViewModel(private val repository: OpcRepository) : ViewModel() {
         _state.value = _state.value.copy(draft = prefix, mentionOpen = false)
     }
 
+    /**
+     * 弹层里点快捷意图：把前缀拼在已有草稿后面，不覆盖。
+     * 覆盖会把用户已经打的半句话吃掉；只写前缀、不发送，是为了让人还能接着补完整。
+     */
+    fun appendQuickIntent(prefix: String) {
+        val draft = _state.value.draft
+        _state.value = _state.value.copy(
+            draft = if (draft.isBlank()) prefix else draft.trimEnd() + " " + prefix,
+            mentionOpen = false,
+        )
+    }
+
     fun send() {
         val text = _state.value.draft.trim()
         if (text.isEmpty()) return

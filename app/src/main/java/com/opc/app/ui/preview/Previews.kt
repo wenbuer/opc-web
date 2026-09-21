@@ -95,6 +95,26 @@ private fun WorkbenchPreview() {
     }
 }
 
+/** 工作台 · 暗色：验证深色模式下流水与输入区的对比度。 */
+@Preview(name = "工作台 · 暗色", showBackground = true, heightDp = 900)
+@Composable
+private fun WorkbenchDarkPreview() {
+    OpcTheme(darkTheme = true) {
+        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+            Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                LocalWorkbenchBar()
+                OfflineBar(linkState = Demo.workbench.linkState, lastSync = Demo.workbench.lastSync)
+                PreviewScroll {
+                    Demo.workbench.diaries.take(3).forEach { diary ->
+                        DiarRow(diary)
+                        Spacer(Modifier.padding(top = OpcSpacing.m))
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** 工作台 · 输入区展开 @ 指派行。 */
 @Preview(name = "工作台 · @ 指派角色", showBackground = true, heightDp = 260)
 @Composable

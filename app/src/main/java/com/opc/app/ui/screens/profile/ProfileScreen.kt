@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,17 +34,22 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.opc.app.OpcApplication
 import com.opc.app.data.LinkState
+import com.opc.app.data.SettingsStore
 import com.opc.app.tunnel.TunnelController
 import com.opc.app.tunnel.TunnelState
 import com.opc.app.ui.components.AvatarCircle
+import com.opc.app.ui.components.CapsuleChip
 import com.opc.app.ui.components.TierTag
 import com.opc.app.ui.components.TierTone
 import com.opc.app.ui.screens.LocalCard
@@ -57,6 +63,9 @@ import com.opc.app.ui.theme.OpcGreen
 import com.opc.app.ui.theme.OpcRed
 import com.opc.app.ui.theme.OpcScreenPadding
 import com.opc.app.ui.theme.OpcSpacing
+import com.opc.app.ui.theme.ThemeMode
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 
 @Composable
 fun ProfileScreen(factory: ViewModelProvider.Factory) {
@@ -75,15 +84,33 @@ fun ProfileScreen(factory: ViewModelProvider.Factory) {
     ProfileContent(state = state, viewModel = viewModel, onReconnectTunnel = onReconnectTunnel)
 }
 
+/** 主题是设备偏好，不属于任何一次配对，所以直接读写 SettingsStore，不进 ProfileViewModel。 */
+@Composable
+private fun settingsStoreOrNull(): SettingsStore? {
+    val context = LocalContext.current
+    // 预览里 Application 不是 OpcApplication，取不到容器就当作只读，别让预览崩
+    return (context.applicationContext as? OpcApplication)?.container?.settingsStore
+}
+
 /** 纯展示层：预览与截图直接喂一个 ProfileUiState 即可（动作仍走 ViewModel）。 */
 @Composable
 internal fun ProfileContent(
     state: ProfileUiState,
     viewModel: ProfileViewModel,
     onReconnectTunnel: () -> Unit = { viewModel.reconnectTunnel() },
+    onThemeMode: ((ThemeMode) -> Unit)? = null,
 ) {
     val config = state.config
     val tunnelProfile = state.tunnelProfile
+
+    val store = settingsStoreOrNull()
+    val scope = rememberCoroutineScope()
+    val themeMode by (store?.themeMode ?: flowOf(ThemeMode.SYSTEM))
+        .collectAsState(initial = ThemeMode.SYSTEM)
+    val onPickTheme: (ThemeMode) -> Unit = { mode ->
+        onThemeMode?.invoke(mode)
+        if (store != null) scope.launch { store.saveThemeMode(mode) }
+    }
 
     Column(Modifier.fillMaxSize()) {
         LocalTopBar(
@@ -122,6 +149,22 @@ internal fun ProfileContent(
                 ) {
                     OutlinedButton(onClick = viewModel::refresh, modifier = Modifier.weight(1f)) { Text("刷新连接") }
                     OutlinedButton(onClick = viewModel::requestUnpair, modifier = Modifier.weight(1f)) { Text("重扫码") }
+                }
+            }
+
+            LocalSectionHeader(title = "外观", meta = themeMode.label)
+            LocalCard(padding = PaddingValues(horizontal = OpcScreenPadding, vertical = 12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    ThemeMode.entries.forEach { mode ->
+                        CapsuleChip(
+                            text = mode.label,
+                            selected = mode == themeMode,
+                            onClick = { onPickTheme(mode) },
+                        )
+                    }
                 }
             }
 

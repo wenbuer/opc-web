@@ -13,6 +13,7 @@ import com.opc.app.domain.ProjectInfo
 import com.opc.app.domain.ServerConfig
 import com.opc.app.domain.TunnelProfile
 import com.opc.app.tunnel.WireGuardConfig
+import com.opc.app.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -46,6 +47,13 @@ class SettingsStore(private val context: Context) {
 
     /** 演示模式：没服务端也能进主界面看全部页面（顶栏会挂「演示数据」标记）。 */
     val demoMode: Flow<Boolean> = context.opcDataStore.data.map { it[KEY_DEMO_MODE] ?: false }
+
+    /** 主题模式：设备级偏好，与配对无关，clearPairing 不碰它。 */
+    val themeMode: Flow<ThemeMode> = context.opcDataStore.data.map { ThemeMode.fromKey(it[KEY_THEME_MODE]) }
+
+    suspend fun saveThemeMode(mode: ThemeMode) {
+        context.opcDataStore.edit { prefs -> prefs[KEY_THEME_MODE] = mode.key }
+    }
 
     /**
      * 隧道档案（含手机侧私钥）。私钥只在手机生成、只落应用私有目录，任何时候都不上传；
@@ -143,7 +151,10 @@ class SettingsStore(private val context: Context) {
     suspend fun readCache(key: String): String? =
         context.opcDataStore.data.first()[stringPreferencesKey(CACHE_PREFIX + key)]
 
-    /** 解除配对：配对、项目、缓存、演示开关全清，避免下次进来看到旧数据。 */
+    /**
+     * 解除配对：配对、项目、缓存、演示开关全清，避免下次进来看到旧数据。
+     * 刻意不清 KEY_THEME_MODE —— 深浅是这台设备的外观偏好，跟配对的是哪台服务端没关系。
+     */
     suspend fun clearPairing() {
         context.opcDataStore.edit { prefs ->
             prefs.asMap().keys
@@ -189,6 +200,7 @@ class SettingsStore(private val context: Context) {
         private val KEY_PROJECT_ROLES = intPreferencesKey("project_roles")
         private val KEY_PROJECT_RUNNING = intPreferencesKey("project_running")
         private val KEY_DEMO_MODE = booleanPreferencesKey("demo_mode")
+        private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
         private val KEY_DEVICE_CONFIRMED = booleanPreferencesKey("device_confirmed")
         private val KEY_WG_PRIVATE = stringPreferencesKey("wg_private_key")
         private val KEY_WG_PUBLIC = stringPreferencesKey("wg_public_key")
