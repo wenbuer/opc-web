@@ -12,16 +12,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import com.opc.app.data.DemoData
+import com.opc.app.data.LinkState
+import com.opc.app.domain.ProjectInfo
+import com.opc.app.domain.ServerConfig
 import com.opc.app.ui.screens.LocalCard
 import com.opc.app.ui.screens.LocalEmptyState
 import com.opc.app.ui.screens.LocalSectionHeader
 import com.opc.app.ui.screens.LocalTopBar
 import com.opc.app.ui.screens.OfflineBar
+import com.opc.app.ui.screens.messages.MessagesContent
+import com.opc.app.ui.screens.messages.MessagesUiState
 import com.opc.app.ui.screens.overview.OverviewUiState
+import com.opc.app.ui.screens.profile.ProfileContent
+import com.opc.app.ui.screens.profile.ProfileUiState
+import com.opc.app.ui.screens.profile.ProfileViewModel
 import com.opc.app.ui.screens.workbench.DiarRow
 import com.opc.app.ui.screens.workbench.LocalWorkbenchBar
 import com.opc.app.ui.screens.workbench.MentionRow
@@ -53,7 +61,8 @@ private object Demo {
 
 @Composable
 private fun Phone(content: @Composable () -> Unit) {
-    OpcTheme(darkTheme = true) {
+    // 浅色 = 银白科技（默认方案）；想看暗色把 darkTheme 改成 true
+    OpcTheme(darkTheme = false) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) { content() }
     }
 }
@@ -123,5 +132,37 @@ private fun OverviewPreview() {
                 }
             }
         }
+    }
+}
+
+/** 消息：分类芯片 + 按日分组卡片流。 */
+@Preview(name = "消息", showBackground = true, heightDp = 900)
+@Composable
+private fun MessagesPreview() {
+    val state = MessagesUiState(
+        loading = false,
+        offline = false,
+        linkState = LinkState.ONLINE,
+        feed = DemoData.feed(),
+    )
+    Phone {
+        MessagesContent(state = state, onFilter = {}, onToggle = {})
+    }
+}
+
+/** 我的：连接信息 + 通知开关 + 运行开关 + 解除配对。 */
+@Preview(name = "我的", showBackground = true, heightDp = 1000)
+@Composable
+private fun ProfilePreview() {
+    val repository = remember { PreviewRepository() }
+    val viewModel = remember(repository) { ProfileViewModel(repository) }
+    val state = ProfileUiState(
+        loading = false,
+        linkState = LinkState.ONLINE,
+        config = ServerConfig("192.168.1.20:8901", "preview", "DEV-7F3A-91C2", "Pixel 9 · 主人手机", "1.18.0", 0L),
+        project = ProjectInfo("opc-app", "OPC-APP", 4, 3),
+    )
+    Phone {
+        ProfileContent(state = state, viewModel = viewModel)
     }
 }

@@ -14,6 +14,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -40,6 +41,8 @@ import com.opc.app.OpcApplication
 import com.opc.app.data.LinkState
 import com.opc.app.data.OpcRepository
 import com.opc.app.ui.OpcViewModelFactory
+import com.opc.app.ui.theme.silverBackgroundBrush
+import com.opc.app.ui.theme.techGrid
 import com.opc.app.ui.screens.connect.ConnectScreen
 import com.opc.app.ui.screens.messages.MessagesScreen
 import com.opc.app.ui.screens.overview.OverviewScreen
@@ -154,16 +157,26 @@ private fun MainScaffold(repository: OpcRepository, factory: ViewModelProvider.F
             }
         },
     ) { innerPadding ->
+        // 银白科技底：竖向渐变（金属受光面）+ 细网格。只在这里画一次，
+        // 各页只管内容；页面自己再刷一层纯色底会把网格盖掉。
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(silverBackgroundBrush())
+                .techGrid()
+                .padding(innerPadding),
+        ) {
         NavHost(
             navController = navController,
             startDestination = OpcDestination.OVERVIEW.route,
-            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            modifier = Modifier.fillMaxSize(),
         ) {
             composable(OpcDestination.OVERVIEW.route) { OverviewScreen(factory) }
             composable(OpcDestination.WORKBENCH.route) { WorkbenchScreen(factory) }
             composable(OpcDestination.REVIEW.route) { ReviewScreen(factory) }
             composable(OpcDestination.MESSAGES.route) { MessagesScreen(factory) }
             composable(OpcDestination.PROFILE.route) { ProfileScreen(factory) }
+        }
         }
     }
 }

@@ -64,7 +64,7 @@ fun OverviewScreen(factory: ViewModelProvider.Factory) {
     val state by viewModel.state.collectAsState()
     val stats = state.stats
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize()) {
         LocalTopBar(title = "作战面板") {
             IconButton(onClick = viewModel::refresh) {
                 Icon(Icons.Default.Refresh, contentDescription = "刷新", tint = MaterialTheme.colorScheme.onSurface)

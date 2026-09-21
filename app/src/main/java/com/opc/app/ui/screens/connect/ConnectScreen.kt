@@ -81,6 +81,8 @@ import com.opc.app.ui.screens.LocalCard
 import com.opc.app.ui.screens.LocalKeyValueRow
 import com.opc.app.ui.screens.LocalSectionHeader
 import com.opc.app.ui.theme.OpcGold
+import com.opc.app.ui.theme.silverBackgroundBrush
+import com.opc.app.ui.theme.techGrid
 import com.opc.app.ui.theme.OpcGreen
 import com.opc.app.ui.theme.OpcRed
 import com.opc.app.ui.theme.OpcScreenPadding
@@ -111,7 +113,8 @@ fun ConnectScreen(
         if (state.paired != null) onPaired()
     }
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    // 连接页在 Scaffold 之外（未配对时没有底栏），底纹自己补一份，和主界面同底
+    Box(Modifier.fillMaxSize().background(silverBackgroundBrush()).techGrid()) {
         if (state.paired != null) {
             PairSuccessPanel(state = state, onEnter = onEnter)
         } else {

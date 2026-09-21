@@ -53,9 +53,16 @@ import com.opc.app.ui.theme.OpcSpacing
 fun ProfileScreen(factory: ViewModelProvider.Factory) {
     val viewModel: ProfileViewModel = viewModel(factory = factory)
     val state by viewModel.state.collectAsState()
+    val content = @Composable { ProfileContent(state = state, viewModel = viewModel) }
+    content()
+}
+
+/** 纯展示层：预览与截图直接喂一个 ProfileUiState 即可（动作仍走 ViewModel）。 */
+@Composable
+internal fun ProfileContent(state: ProfileUiState, viewModel: ProfileViewModel) {
     val config = state.config
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize()) {
         LocalTopBar(
             title = "我的",
             subtitle = config?.deviceName,

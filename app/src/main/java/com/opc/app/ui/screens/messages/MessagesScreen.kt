@@ -51,8 +51,21 @@ import java.util.Calendar
 fun MessagesScreen(factory: ViewModelProvider.Factory) {
     val viewModel: MessagesViewModel = viewModel(factory = factory)
     val state by viewModel.state.collectAsState()
+    MessagesContent(
+        state = state,
+        onFilter = viewModel::selectFilter,
+        onToggle = viewModel::toggleExpanded,
+    )
+}
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+/** 纯展示层：预览与截图直接喂一个 MessagesUiState 即可。 */
+@Composable
+internal fun MessagesContent(
+    state: MessagesUiState,
+    onFilter: (FeedFilter) -> Unit,
+    onToggle: (String) -> Unit,
+) {
+    Column(Modifier.fillMaxSize()) {
         LocalTopBar(title = "消息") {
             GhostChip(text = "未读 " + state.feed.count { !it.read })
         }
@@ -72,7 +85,7 @@ fun MessagesScreen(factory: ViewModelProvider.Factory) {
                     CapsuleChip(
                         text = filter.label,
                         selected = state.filter == filter,
-                        onClick = { viewModel.selectFilter(filter) },
+                        onClick = { onFilter(filter) },
                     )
                 }
             }
@@ -92,7 +105,7 @@ fun MessagesScreen(factory: ViewModelProvider.Factory) {
                         FeedCard(
                             item = item,
                             expanded = state.expandedId == item.id,
-                            onClick = { viewModel.toggleExpanded(item.id) },
+                            onClick = { onToggle(item.id) },
                         )
                         Spacer(Modifier.height(10.dp))
                     }

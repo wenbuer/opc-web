@@ -12,7 +12,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            OpcTheme(darkTheme = true) {
+            // 跟随系统：亮色是银白科技，暗色回原战情室配色
+            OpcTheme {
                 OpcApp()
             }
         }

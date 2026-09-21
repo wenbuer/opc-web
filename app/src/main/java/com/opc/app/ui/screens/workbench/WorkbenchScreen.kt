@@ -68,7 +68,7 @@ fun WorkbenchScreen(factory: ViewModelProvider.Factory) {
         if (state.diaries.isNotEmpty()) listState.animateScrollToItem(state.diaries.lastIndex)
     }
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize()) {
         StatusBarSpacer()
         LocalWorkbenchBar()
         OfflineBar(linkState = state.linkState, lastSync = state.lastSync)
@@ -203,7 +203,6 @@ internal fun Composer(state: WorkbenchUiState, viewModel: WorkbenchViewModel) {
     Column(
         Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background)
             // 键盘弹起时把输入区顶上去；只补「键盘高出导航栏」的那一段，避免和底栏重复占位
             .imeBottomPadding()
             .padding(horizontal = OpcSpacing.m, vertical = OpcSpacing.s),

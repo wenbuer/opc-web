@@ -72,7 +72,7 @@ fun ReviewScreen(factory: ViewModelProvider.Factory) {
     var dialog by remember { mutableStateOf<OpinionDialog?>(null) }
     val focus = state.pending.firstOrNull()
 
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(Modifier.fillMaxSize()) {
         LocalTopBar(title = "批阅台") {
             GhostChip(text = "按等待排序", showChevron = true)
         }
