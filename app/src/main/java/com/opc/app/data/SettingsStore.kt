@@ -68,6 +68,15 @@ class SettingsStore(private val context: Context) {
 
     suspend fun currentTunnelProfile(): TunnelProfile? = tunnelProfile.first()
 
+    /** 设备确认状态：false 表示服务端还没放行写接口，界面上要留一个重试入口。 */
+    val deviceConfirmed: Flow<Boolean> = context.opcDataStore.data.map { it[KEY_DEVICE_CONFIRMED] ?: true }
+
+    suspend fun currentDeviceConfirmed(): Boolean = deviceConfirmed.first()
+
+    suspend fun saveDeviceConfirmed(confirmed: Boolean) {
+        context.opcDataStore.edit { prefs -> prefs[KEY_DEVICE_CONFIRMED] = confirmed }
+    }
+
     suspend fun saveTunnelProfile(profile: TunnelProfile) {
         context.opcDataStore.edit { prefs ->
             prefs[KEY_WG_PRIVATE] = profile.privateKey
@@ -150,6 +159,7 @@ class SettingsStore(private val context: Context) {
             prefs.remove(KEY_PROJECT_ROLES)
             prefs.remove(KEY_PROJECT_RUNNING)
             prefs.remove(KEY_DEMO_MODE)
+            prefs.remove(KEY_DEVICE_CONFIRMED)
             // 解配对同时销毁隧道身份：私钥留着等于把上一台服务端的通道留在手机里
             prefs.remove(KEY_WG_PRIVATE)
             prefs.remove(KEY_WG_PUBLIC)
@@ -179,6 +189,7 @@ class SettingsStore(private val context: Context) {
         private val KEY_PROJECT_ROLES = intPreferencesKey("project_roles")
         private val KEY_PROJECT_RUNNING = intPreferencesKey("project_running")
         private val KEY_DEMO_MODE = booleanPreferencesKey("demo_mode")
+        private val KEY_DEVICE_CONFIRMED = booleanPreferencesKey("device_confirmed")
         private val KEY_WG_PRIVATE = stringPreferencesKey("wg_private_key")
         private val KEY_WG_PUBLIC = stringPreferencesKey("wg_public_key")
         private val KEY_WG_PEER = stringPreferencesKey("wg_peer_public_key")

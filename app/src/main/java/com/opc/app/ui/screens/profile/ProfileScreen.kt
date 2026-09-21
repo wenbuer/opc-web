@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -178,6 +179,30 @@ internal fun ProfileContent(
                         LocalKeyValueRow("DNS", tunnelProfile.dns)
                     }
                     LocalKeyValueRow("MTU", tunnelProfile.mtu.toString())
+                    // confirm 没走通时写接口会被服务端 403；给一个就地重试的入口，别逼用户重新扫码
+                    if (state.deviceConfirmed == false) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(OpcSpacing.s),
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = OpcRed,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                "设备还没确认：下达与裁决会被服务端拒绝",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = OpcRed,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = viewModel::retryConfirm, enabled = !state.busy) {
+                                Text("重试确认")
+                            }
+                        }
+                    }
                     state.tunnel.lastError?.let { message ->
                         Text(
                             text = message,

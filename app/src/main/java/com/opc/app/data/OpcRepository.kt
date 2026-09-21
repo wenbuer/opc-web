@@ -20,6 +20,8 @@ data class PairResult(
     val config: ServerConfig,
     val tunnel: TunnelProfile? = null,
     val warning: String? = null,
+    /** 设备确认结果：null=没隧道不用确认，false=确认没走通（写接口会被 403）。 */
+    val deviceConfirmed: Boolean? = null,
 )
 
 /**
@@ -31,6 +33,9 @@ interface OpcRepository {
     val config: Flow<ServerConfig?>
     val project: Flow<ProjectInfo?>
     val linkState: Flow<LinkState>
+
+    /** 设备确认状态（契约 §3）：false 时写接口会被服务端拒，界面要给重试入口。 */
+    val deviceConfirmed: Flow<Boolean>
 
     suspend fun overview(): ResultData<OverviewStats>
     suspend fun tasks(): ResultData<List<TaskSummary>>
@@ -56,6 +61,12 @@ interface OpcRepository {
         deviceName: String,
         wire: WireConfig? = null,
     ): Result<PairResult>
+
+    /**
+     * 重试设备确认（契约 §3）。服务端在配对时就把 peer 加上了，但写接口要 confirm 之后才放行；
+     * confirm 失败时配对仍然算成功，用户需要有一个地方能重试 —— 否则只能重新扫码。
+     */
+    suspend fun confirmDevice(): Result<Unit>
 
     suspend fun unpair()
 }

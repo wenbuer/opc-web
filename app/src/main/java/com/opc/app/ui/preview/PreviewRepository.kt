@@ -34,6 +34,7 @@ internal class PreviewRepository : OpcRepository {
     override val config: Flow<ServerConfig?> = flowOf(demoConfig)
     override val project: Flow<ProjectInfo?> = flowOf(ProjectInfo("opc-app", "OPC-APP", 4, 3))
     override val linkState: Flow<LinkState> = flowOf(LinkState.ONLINE)
+    override val deviceConfirmed: Flow<Boolean> = flowOf(true)
 
     override suspend fun overview(): ResultData<OverviewStats> =
         ResultData(com.opc.app.data.DemoData.overview())
@@ -63,6 +64,8 @@ internal class PreviewRepository : OpcRepository {
         deviceName: String,
         wire: WireConfig?,
     ): Result<PairResult> = Result.success(PairResult(demoConfig))
+
+    override suspend fun confirmDevice(): Result<Unit> = Result.success(Unit)
 
     override suspend fun unpair() = Unit
 }

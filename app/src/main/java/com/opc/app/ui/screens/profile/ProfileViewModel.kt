@@ -39,6 +39,8 @@ data class ProfileUiState(
     val confirmUnpair: Boolean = false,
     val tunnel: TunnelUiState = TunnelUiState(),
     val tunnelProfile: TunnelProfile? = null,
+    /** 设备确认状态：null=没试过，false=还没确认上（写接口会被服务端挡），true=已确认。 */
+    val deviceConfirmed: Boolean? = null,
 )
 
 class ProfileViewModel(private val repository: OpcRepository) : ViewModel() {
@@ -49,6 +51,11 @@ class ProfileViewModel(private val repository: OpcRepository) : ViewModel() {
     init {
         viewModelScope.launch {
             repository.linkState.collect { link -> _state.value = _state.value.copy(linkState = link) }
+        }
+        viewModelScope.launch {
+            repository.deviceConfirmed.collect { confirmed ->
+                _state.value = _state.value.copy(deviceConfirmed = confirmed)
+            }
         }
         viewModelScope.launch {
             repository.config.collect { config ->
@@ -103,6 +110,22 @@ class ProfileViewModel(private val repository: OpcRepository) : ViewModel() {
 
     fun dismissUnpair() {
         _state.value = _state.value.copy(confirmUnpair = false)
+    }
+
+    /**
+     * 重试设备确认。服务端配对时已加 peer（能握手、能 ping），但写接口要确认后才放行；
+     * 确认没走通时用户在这里点一下即可，不必重新扫码。
+     */
+    fun retryConfirm() {
+        _state.value = _state.value.copy(busy = true, error = null)
+        viewModelScope.launch {
+            val result = repository.confirmDevice()
+            _state.value = _state.value.copy(
+                busy = false,
+                deviceConfirmed = result.isSuccess,
+                error = result.exceptionOrNull()?.message?.let { "设备确认仍失败：" + it },
+            )
+        }
     }
 
     /** 解除配对后 config 变 null，根 Composable 会自动退回连接页。 */

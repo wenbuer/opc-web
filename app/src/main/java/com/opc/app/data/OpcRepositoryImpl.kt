@@ -68,6 +68,7 @@ class OpcRepositoryImpl(
 
     override val config: Flow<ServerConfig?> = store.config
     override val project: Flow<ProjectInfo?> = store.project
+    override val deviceConfirmed: Flow<Boolean> = store.deviceConfirmed
 
     init {
         // 鉴权头随配对信息走：换服务端/解配对后立刻生效
@@ -263,11 +264,17 @@ class OpcRepositoryImpl(
                 fallbackServerHost = hostOf(cfg.baseUrl),
             )
             if (profile != null) store.saveTunnelProfile(profile)
-            PairResult(cfg, profile, if (profile == null) null else confirmDevice(cfg))
+            if (profile == null) {
+                PairResult(cfg, null, null)
+            } else {
+                val warning = confirmDevice(cfg)
+                store.saveDeviceConfirmed(warning == null)
+                PairResult(cfg, profile, warning, deviceConfirmed = warning == null)
+            }
         }
     }.recoverCatching { error -> throw pairError(error) }
 
-    /** 契约 §3：不 confirm 服务端只放行握手与 ping，写接口会被 403。失败不推翻配对成功。 */
+    /** 配对流程内部用的版本：返回给用户看的告警文案（null = 没问题）。 */
     private suspend fun confirmDevice(cfg: ServerConfig): String? = runCatching {
         withContext(Dispatchers.IO) {
             api(cfg).confirmDevice(ConfirmDto(cfg.deviceCode)) ?: error("服务端未响应")
@@ -275,6 +282,16 @@ class OpcRepositoryImpl(
     }.exceptionOrNull()?.let { error ->
         "设备确认没走完（" + PairFailure.hint((error as? HttpException)?.code()) + "），写操作可能被拒"
     }
+
+    /** 「我的」页的重试入口：配置还在就再确认一次，结果写回本机，界面据此收起重试入口。 */
+    override suspend fun confirmDevice(): Result<Unit> = runCatching {
+        val cfg = store.currentConfig() ?: error("还没配对")
+        withContext(Dispatchers.IO) {
+            api(cfg).confirmDevice(ConfirmDto(cfg.deviceCode)) ?: error("服务端未响应")
+        }
+        store.saveDeviceConfirmed(true)
+        Unit
+    }.onFailure { store.saveDeviceConfirmed(false) }
 
     private fun hostOf(baseUrl: String): String =
         baseUrl.substringAfter("://").substringBefore('/').substringBefore(':')
