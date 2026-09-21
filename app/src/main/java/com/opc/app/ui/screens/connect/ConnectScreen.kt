@@ -1,6 +1,7 @@
 package com.opc.app.ui.screens.connect
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -80,6 +82,9 @@ import com.opc.app.ui.components.TierTone
 import com.opc.app.ui.screens.LocalCard
 import com.opc.app.ui.screens.LocalKeyValueRow
 import com.opc.app.ui.screens.LocalSectionHeader
+import com.opc.app.tunnel.TunnelController
+import com.opc.app.tunnel.TunnelState
+import com.opc.app.tunnel.TunnelUiState
 import com.opc.app.ui.theme.OpcGold
 import com.opc.app.ui.theme.silverBackgroundBrush
 import com.opc.app.ui.theme.techGrid
@@ -113,10 +118,31 @@ fun ConnectScreen(
         if (state.paired != null) onPaired()
     }
 
+    // VPN 授权只能在 Activity 里要：配对成功拿到隧道档案后弹一次，被拒绝可重试
+    val latestProfile by rememberUpdatedState(state.tunnelProfile)
+    val vpnLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val profile = latestProfile
+        if (result.resultCode == Activity.RESULT_OK && profile != null) {
+            TunnelController.start(profile)
+        } else {
+            TunnelController.onPermissionDenied()
+        }
+    }
+    val requestTunnel: () -> Unit = {
+        val profile = state.tunnelProfile
+        if (profile != null) {
+            val intent = TunnelController.prepareIntent()
+            if (intent == null) TunnelController.start(profile) else vpnLauncher.launch(intent)
+        }
+    }
+    LaunchedEffect(state.tunnelProfile) {
+        if (state.tunnelProfile != null) requestTunnel()
+    }
+
     // 连接页在 Scaffold 之外（未配对时没有底栏），底纹自己补一份，和主界面同底
     Box(Modifier.fillMaxSize().background(silverBackgroundBrush()).techGrid()) {
         if (state.paired != null) {
-            PairSuccessPanel(state = state, onEnter = onEnter)
+            PairSuccessPanel(state = state, onEnter = onEnter, onRetryTunnel = requestTunnel)
         } else {
             Column(Modifier.fillMaxSize()) {
                 StatusBarSpacer()
@@ -428,7 +454,7 @@ private fun BottomActions(pairing: Boolean, onPair: () -> Unit, onDemo: () -> Un
 /* ---------------- 配对成功 ---------------- */
 
 @Composable
-private fun PairSuccessPanel(state: ConnectUiState, onEnter: () -> Unit) {
+private fun PairSuccessPanel(state: ConnectUiState, onEnter: () -> Unit, onRetryTunnel: () -> Unit) {
     val config = state.paired ?: return
     Column(Modifier.fillMaxSize()) {
         StatusBarSpacer()
@@ -499,6 +525,8 @@ private fun PairSuccessPanel(state: ConnectUiState, onEnter: () -> Unit) {
                 }
             }
 
+            TunnelPanel(state = state, onRetry = onRetryTunnel)
+
             Spacer(Modifier.height(OpcSpacing.m))
             LocalCard(background = MaterialTheme.colorScheme.surfaceContainerHigh) {
                 Text(
@@ -519,6 +547,80 @@ private fun PairSuccessPanel(state: ConnectUiState, onEnter: () -> Unit) {
             Button(onClick = onEnter, modifier = Modifier.fillMaxWidth().height(44.dp)) {
                 Text("进入作战面板")
             }
+        }
+    }
+}
+
+/* ---------------- 内嵌隧道 ---------------- */
+
+/** 配对回执里的隧道一块：状态、地址、endpoint、模式，失败可原地重试授权。 */
+@Composable
+private fun TunnelPanel(state: ConnectUiState, onRetry: () -> Unit) {
+    val profile = state.tunnelProfile
+    LocalSectionHeader(title = "内嵌隧道", meta = if (profile == null) "未启用" else "WireGuard")
+    LocalCard {
+        if (profile == null) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(OpcSpacing.s),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    Icons.Default.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    "这次配对没有隧道参数（老二维码或服务端未下发），App 直连服务端地址。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            TunnelStatusRow(state = state.tunnel, onRetry = onRetry)
+            LocalKeyValueRow("服务端隧道地址", profile.serverAddress)
+            LocalKeyValueRow("endpoint", profile.endpoint)
+            LocalKeyValueRow("模式", profile.mode.label)
+        }
+        state.tunnelWarning?.let { warning ->
+            Text(
+                text = warning,
+                style = MaterialTheme.typography.labelSmall,
+                color = OpcRed,
+                modifier = Modifier.padding(top = OpcSpacing.s),
+            )
+        }
+    }
+}
+
+/** 状态行：图标 + 中文状态 + 失败原因；未连上时给一个原地重试。 */
+@Composable
+private fun TunnelStatusRow(state: TunnelUiState, onRetry: () -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val (icon, tint) = when (state.state) {
+        TunnelState.UP -> Icons.Default.Check to OpcGreen
+        TunnelState.CONNECTING -> Icons.Default.Refresh to OpcGold
+        TunnelState.ERROR -> Icons.Default.Warning to OpcRed
+        TunnelState.DOWN, TunnelState.IDLE -> Icons.Default.Info to scheme.onSurfaceVariant
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(OpcSpacing.s),
+    ) {
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                "隧道 " + state.label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = scheme.onSurface,
+            )
+            state.lastError?.let { message ->
+                Text(message, style = MaterialTheme.typography.labelSmall, color = OpcRed)
+            }
+        }
+        if (state.state == TunnelState.ERROR || state.state == TunnelState.DOWN || state.state == TunnelState.IDLE) {
+            TextButton(onClick = onRetry) { Text("重试", style = MaterialTheme.typography.labelMedium) }
         }
     }
 }

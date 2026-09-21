@@ -11,6 +11,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.opc.app.domain.ProjectInfo
 import com.opc.app.domain.ServerConfig
+import com.opc.app.domain.TunnelProfile
+import com.opc.app.tunnel.WireGuardConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -44,6 +46,41 @@ class SettingsStore(private val context: Context) {
 
     /** 演示模式：没服务端也能进主界面看全部页面（顶栏会挂「演示数据」标记）。 */
     val demoMode: Flow<Boolean> = context.opcDataStore.data.map { it[KEY_DEMO_MODE] ?: false }
+
+    /**
+     * 隧道档案（含手机侧私钥）。私钥只在手机生成、只落应用私有目录，任何时候都不上传；
+     * 没配过隧道（老二维码 / 演示模式）时为 null。
+     */
+    val tunnelProfile: Flow<TunnelProfile?> = context.opcDataStore.data.map { prefs ->
+        val privateKey = prefs[KEY_WG_PRIVATE] ?: return@map null
+        TunnelProfile(
+            privateKey = privateKey,
+            publicKey = prefs[KEY_WG_PUBLIC].orEmpty(),
+            peerPublicKey = prefs[KEY_WG_PEER].orEmpty(),
+            endpoint = prefs[KEY_WG_ENDPOINT].orEmpty(),
+            address = prefs[KEY_WG_ADDRESS].orEmpty(),
+            allowedIps = prefs[KEY_WG_ALLOWED].orEmpty(),
+            mtu = prefs[KEY_WG_MTU] ?: WireGuardConfig.DEFAULT_MTU,
+            dns = prefs[KEY_WG_DNS],
+            keepalive = prefs[KEY_WG_KEEPALIVE],
+        )
+    }
+
+    suspend fun currentTunnelProfile(): TunnelProfile? = tunnelProfile.first()
+
+    suspend fun saveTunnelProfile(profile: TunnelProfile) {
+        context.opcDataStore.edit { prefs ->
+            prefs[KEY_WG_PRIVATE] = profile.privateKey
+            prefs[KEY_WG_PUBLIC] = profile.publicKey
+            prefs[KEY_WG_PEER] = profile.peerPublicKey
+            prefs[KEY_WG_ENDPOINT] = profile.endpoint
+            prefs[KEY_WG_ADDRESS] = profile.address
+            prefs[KEY_WG_ALLOWED] = profile.allowedIps
+            prefs[KEY_WG_MTU] = profile.mtu
+            profile.dns?.let { prefs[KEY_WG_DNS] = it } ?: prefs.remove(KEY_WG_DNS)
+            profile.keepalive?.let { prefs[KEY_WG_KEEPALIVE] = it } ?: prefs.remove(KEY_WG_KEEPALIVE)
+        }
+    }
 
     suspend fun currentConfig(): ServerConfig? = config.first()
 
@@ -113,6 +150,16 @@ class SettingsStore(private val context: Context) {
             prefs.remove(KEY_PROJECT_ROLES)
             prefs.remove(KEY_PROJECT_RUNNING)
             prefs.remove(KEY_DEMO_MODE)
+            // 解配对同时销毁隧道身份：私钥留着等于把上一台服务端的通道留在手机里
+            prefs.remove(KEY_WG_PRIVATE)
+            prefs.remove(KEY_WG_PUBLIC)
+            prefs.remove(KEY_WG_PEER)
+            prefs.remove(KEY_WG_ENDPOINT)
+            prefs.remove(KEY_WG_ADDRESS)
+            prefs.remove(KEY_WG_ALLOWED)
+            prefs.remove(KEY_WG_MTU)
+            prefs.remove(KEY_WG_DNS)
+            prefs.remove(KEY_WG_KEEPALIVE)
         }
     }
 
@@ -132,5 +179,14 @@ class SettingsStore(private val context: Context) {
         private val KEY_PROJECT_ROLES = intPreferencesKey("project_roles")
         private val KEY_PROJECT_RUNNING = intPreferencesKey("project_running")
         private val KEY_DEMO_MODE = booleanPreferencesKey("demo_mode")
+        private val KEY_WG_PRIVATE = stringPreferencesKey("wg_private_key")
+        private val KEY_WG_PUBLIC = stringPreferencesKey("wg_public_key")
+        private val KEY_WG_PEER = stringPreferencesKey("wg_peer_public_key")
+        private val KEY_WG_ENDPOINT = stringPreferencesKey("wg_endpoint")
+        private val KEY_WG_ADDRESS = stringPreferencesKey("wg_address")
+        private val KEY_WG_ALLOWED = stringPreferencesKey("wg_allowed_ips")
+        private val KEY_WG_MTU = intPreferencesKey("wg_mtu")
+        private val KEY_WG_DNS = stringPreferencesKey("wg_dns")
+        private val KEY_WG_KEEPALIVE = intPreferencesKey("wg_keepalive")
     }
 }

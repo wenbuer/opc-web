@@ -1,5 +1,6 @@
 package com.opc.app.data
 
+import com.opc.app.data.remote.ConfirmDto
 import com.opc.app.data.remote.NetworkFactory
 import com.opc.app.data.remote.OpcApi
 import com.opc.app.data.remote.OverviewDto
@@ -26,7 +27,11 @@ import com.opc.app.domain.TaskActivity
 import com.opc.app.domain.TaskDiary
 import com.opc.app.domain.TaskStatus
 import com.opc.app.domain.TaskSummary
+import com.opc.app.domain.TunnelOffer
 import com.opc.app.domain.Verdict
+import com.opc.app.domain.WireConfig
+import com.opc.app.tunnel.TunnelKeys
+import com.opc.app.tunnel.WireGuardConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,9 +44,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
+import retrofit2.HttpException
+import java.io.IOException
 
 /**
  * 在线优先、离线回落。三级顺序：服务端 → 本机缓存 → 演示数据。
@@ -60,6 +68,11 @@ class OpcRepositoryImpl(
 
     override val config: Flow<ServerConfig?> = store.config
     override val project: Flow<ProjectInfo?> = store.project
+
+    init {
+        // 鉴权头随配对信息走：换服务端/解配对后立刻生效
+        scope.launch { store.config.collect { NetworkFactory.token = it?.token } }
+    }
 
     override val linkState: Flow<LinkState> =
         combine(store.config, store.demoMode, pollTick()) { cfg, demo, reachable ->
@@ -210,11 +223,24 @@ class OpcRepositoryImpl(
         }
     }
 
-    override suspend fun pair(baseUrl: String, code: String, deviceName: String): Result<ServerConfig> = runCatching {
+    override suspend fun pair(
+        baseUrl: String,
+        code: String,
+        deviceName: String,
+        wire: WireConfig?,
+    ): Result<PairResult> = runCatching {
         withContext(Dispatchers.IO) {
             val deviceCode = QrProtocol.newDeviceCode()
+            // 密钥对只在手机生成：私钥不出设备，出去换隧道参数的只有公钥
+            val (privateKey, publicKey) = TunnelKeys.generate()
             val resp = apiFor(baseUrl).pair(
-                PairRequestDto(code = code, deviceName = deviceName, deviceCode = deviceCode, platform = "android"),
+                PairRequestDto(
+                    code = code,
+                    deviceName = deviceName,
+                    deviceCode = deviceCode,
+                    platform = "android",
+                    publicKey = publicKey,
+                ),
             ) ?: error("配对码无效或已过期")
             val cfg = ServerConfig(
                 baseUrl = baseUrl.trimEnd('/'),
@@ -225,11 +251,39 @@ class OpcRepositoryImpl(
                 pairedAt = System.currentTimeMillis(),
             )
             store.savePairing(cfg)
+            NetworkFactory.token = cfg.token
             resp.projects.firstOrNull()?.let {
                 store.saveProject(ProjectInfo(it.id, it.name, it.roleCount, it.runningSubtasks))
             }
-            cfg
+            val profile = WireGuardConfig.buildTunnelProfile(
+                wire = wire,
+                offer = resp.tunnel?.toDomain(),
+                privateKey = privateKey,
+                publicKey = publicKey,
+                fallbackServerHost = hostOf(cfg.baseUrl),
+            )
+            if (profile != null) store.saveTunnelProfile(profile)
+            PairResult(cfg, profile, if (profile == null) null else confirmDevice(cfg))
         }
+    }.recoverCatching { error -> throw pairError(error) }
+
+    /** 契约 §3：不 confirm 服务端只放行握手与 ping，写接口会被 403。失败不推翻配对成功。 */
+    private suspend fun confirmDevice(cfg: ServerConfig): String? = runCatching {
+        withContext(Dispatchers.IO) {
+            api(cfg).confirmDevice(ConfirmDto(cfg.deviceCode)) ?: error("服务端未响应")
+        }
+    }.exceptionOrNull()?.let { error ->
+        "设备确认没走完（" + PairFailure.hint((error as? HttpException)?.code()) + "），写操作可能被拒"
+    }
+
+    private fun hostOf(baseUrl: String): String =
+        baseUrl.substringAfter("://").substringBefore('/').substringBefore(':')
+
+    /** 失败语义按契约 §5 分：HTTP 码优先，网络不通归「服务端不可达」，其余保留原文案。 */
+    private fun pairError(error: Throwable): Throwable = when (error) {
+        is HttpException -> IllegalStateException(PairFailure.hint(error.code()), error)
+        is IOException -> IllegalStateException(PairFailure.hint(null), error)
+        else -> error
     }
 
     override suspend fun unpair() {
@@ -258,6 +312,16 @@ class OpcRepositoryImpl(
         const val KEY_FEED = "feed"
     }
 }
+
+private fun com.opc.app.data.remote.TunnelDto.toDomain(): TunnelOffer = TunnelOffer(
+    ip = ip.takeIf { it.isNotBlank() },
+    cidr = cidr,
+    serverPublicKey = serverPublicKey.takeIf { it.isNotBlank() },
+    endpoint = endpoint.takeIf { it.isNotBlank() },
+    allowedIps = allowedIps.takeIf { it.isNotBlank() },
+    dns = dns?.takeIf { it.isNotBlank() },
+    mtu = mtu.takeIf { it > 0 },
+)
 
 private fun FeedDto.toFeedItem(): FeedItem = FeedItem(
     id = id,

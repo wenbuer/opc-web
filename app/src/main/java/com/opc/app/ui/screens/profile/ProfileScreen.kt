@@ -1,5 +1,8 @@
 package com.opc.app.ui.screens.profile
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.AlertDialog
@@ -31,10 +35,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.opc.app.data.LinkState
+import com.opc.app.tunnel.TunnelController
+import com.opc.app.tunnel.TunnelState
 import com.opc.app.ui.components.AvatarCircle
 import com.opc.app.ui.components.TierTag
 import com.opc.app.ui.components.TierTone
@@ -44,6 +51,7 @@ import com.opc.app.ui.screens.LocalSectionHeader
 import com.opc.app.ui.screens.LocalSwitchRow
 import com.opc.app.ui.screens.LocalTopBar
 import com.opc.app.ui.screens.OfflineBar
+import com.opc.app.ui.theme.OpcGold
 import com.opc.app.ui.theme.OpcGreen
 import com.opc.app.ui.theme.OpcRed
 import com.opc.app.ui.theme.OpcScreenPadding
@@ -53,14 +61,28 @@ import com.opc.app.ui.theme.OpcSpacing
 fun ProfileScreen(factory: ViewModelProvider.Factory) {
     val viewModel: ProfileViewModel = viewModel(factory = factory)
     val state by viewModel.state.collectAsState()
-    val content = @Composable { ProfileContent(state = state, viewModel = viewModel) }
-    content()
+
+    // 重连要先过系统 VPN 授权；只有真机上才有 Activity 结果回调（预览里不走这条）
+    val tunnelLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) viewModel.reconnectTunnel() else viewModel.tunnelPermissionDenied()
+    }
+    val onReconnectTunnel: () -> Unit = {
+        val intent = TunnelController.prepareIntent()
+        if (intent == null) viewModel.reconnectTunnel() else tunnelLauncher.launch(intent)
+    }
+
+    ProfileContent(state = state, viewModel = viewModel, onReconnectTunnel = onReconnectTunnel)
 }
 
 /** 纯展示层：预览与截图直接喂一个 ProfileUiState 即可（动作仍走 ViewModel）。 */
 @Composable
-internal fun ProfileContent(state: ProfileUiState, viewModel: ProfileViewModel) {
+internal fun ProfileContent(
+    state: ProfileUiState,
+    viewModel: ProfileViewModel,
+    onReconnectTunnel: () -> Unit = { viewModel.reconnectTunnel() },
+) {
     val config = state.config
+    val tunnelProfile = state.tunnelProfile
 
     Column(Modifier.fillMaxSize()) {
         LocalTopBar(
@@ -121,6 +143,61 @@ internal fun ProfileContent(state: ProfileUiState, viewModel: ProfileViewModel) 
                         LinkState.UNPAIRED -> "未配对"
                     },
                 )
+            }
+
+            LocalSectionHeader(title = "隧道", meta = tunnelProfile?.mode?.label ?: "未启用")
+            LocalCard(padding = PaddingValues(horizontal = OpcScreenPadding, vertical = 4.dp)) {
+                if (tunnelProfile == null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(OpcSpacing.s),
+                    ) {
+                        Icon(
+                            Icons.Default.Info,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            "未配置隧道：这次配对没带隧道参数，App 直连服务端地址。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    LocalKeyValueRow(
+                        key = "状态",
+                        value = state.tunnel.label,
+                        valueColor = tunnelTone(state.tunnel.state),
+                    )
+                    LocalKeyValueRow("服务端隧道地址", tunnelProfile.serverAddress)
+                    LocalKeyValueRow("endpoint", tunnelProfile.endpoint)
+                    LocalKeyValueRow("模式", tunnelProfile.mode.label)
+                    if (tunnelProfile.dns != null) {
+                        LocalKeyValueRow("DNS", tunnelProfile.dns)
+                    }
+                    LocalKeyValueRow("MTU", tunnelProfile.mtu.toString())
+                    state.tunnel.lastError?.let { message ->
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = OpcRed,
+                            modifier = Modifier.padding(vertical = 6.dp),
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.padding(top = 14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(OpcSpacing.s),
+                    ) {
+                        OutlinedButton(onClick = onReconnectTunnel, modifier = Modifier.weight(1f)) { Text("重连") }
+                        OutlinedButton(
+                            onClick = viewModel::disconnectTunnel,
+                            enabled = state.tunnel.connected,
+                            modifier = Modifier.weight(1f),
+                        ) { Text("断开") }
+                    }
+                }
             }
 
             LocalSectionHeader(title = "通知", meta = "本机")
@@ -201,4 +278,13 @@ internal fun ProfileContent(state: ProfileUiState, viewModel: ProfileViewModel) 
             },
         )
     }
+}
+
+/** 隧道状态色：连上绿、连接中金、失败红、其余跟随主题。 */
+@Composable
+private fun tunnelTone(state: TunnelState): Color = when (state) {
+    TunnelState.UP -> OpcGreen
+    TunnelState.CONNECTING -> OpcGold
+    TunnelState.ERROR -> OpcRed
+    TunnelState.DOWN, TunnelState.IDLE -> MaterialTheme.colorScheme.onSurfaceVariant
 }

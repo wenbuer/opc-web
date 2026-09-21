@@ -21,12 +21,26 @@ object NetworkFactory {
         encodeDefaults = true
     }
 
+    /** 鉴权头来源：仓库在配对信息变化时同步进来，避免每个请求都去读 DataStore。 */
+    @Volatile
+    var token: String? = null
+
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .connectTimeout(4, TimeUnit.SECONDS)
             .readTimeout(8, TimeUnit.SECONDS)
             .writeTimeout(8, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .addInterceptor { chain ->
+                val request = chain.request()
+                val current = token
+                val authed = if (current.isNullOrBlank()) {
+                    request
+                } else {
+                    request.newBuilder().header("X-OPC-Token", current).build()
+                }
+                chain.proceed(authed)
+            }
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = HttpLoggingInterceptor.Level.BASIC
             })

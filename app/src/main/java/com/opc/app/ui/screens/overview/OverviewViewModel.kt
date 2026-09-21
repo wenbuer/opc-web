@@ -6,6 +6,8 @@ import com.opc.app.data.LinkState
 import com.opc.app.data.OpcRepository
 import com.opc.app.domain.OverviewStats
 import com.opc.app.domain.ProjectInfo
+import com.opc.app.tunnel.TunnelController
+import com.opc.app.tunnel.TunnelUiState
 import com.opc.app.ui.screens.nowHm
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -21,6 +23,7 @@ data class OverviewUiState(
     val host: String? = null,
     val stats: OverviewStats? = null,
     val error: String? = null,
+    val tunnel: TunnelUiState = TunnelUiState(),
 )
 
 class OverviewViewModel(private val repository: OpcRepository) : ViewModel() {
@@ -40,7 +43,15 @@ class OverviewViewModel(private val repository: OpcRepository) : ViewModel() {
                 _state.value = _state.value.copy(host = config?.baseUrl?.substringAfter("://"))
             }
         }
+        viewModelScope.launch {
+            TunnelController.state.collect { tunnel -> _state.value = _state.value.copy(tunnel = tunnel) }
+        }
         refresh()
+    }
+
+    /** 顶栏隧道芯片点一下就走这条路：重连（没配隧道时只更新错误提示）。 */
+    fun reconnectTunnel() {
+        TunnelController.reconnect()
     }
 
     /** 顶栏刷新按钮与首次加载走同一条路，不另做下拉刷新。 */

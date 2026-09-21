@@ -18,6 +18,10 @@ interface OpcApi {
     @POST("/api/pair")
     suspend fun pair(@Body body: PairRequestDto): PairResponseDto?
 
+    /** 配对后确认设备：服务端确认前只放行握手与 /api/ping，写接口要等这一步。 */
+    @POST("/api/mobile/device/confirm")
+    suspend fun confirmDevice(@Body body: ConfirmDto): AckDto?
+
     @GET("/api/projects")
     suspend fun projects(): List<ProjectDto>?
 
@@ -52,6 +56,8 @@ data class PairRequestDto(
     @SerialName("deviceName") val deviceName: String,
     @SerialName("deviceCode") val deviceCode: String,
     val platform: String,
+    /** 手机侧 WireGuard 公钥；私钥永不上传。 */
+    @SerialName("publicKey") val publicKey: String = "",
 )
 
 @Serializable
@@ -61,7 +67,23 @@ data class PairResponseDto(
     @SerialName("serverVersion") val serverVersion: String = "",
     @SerialName("defaultProject") val defaultProject: String? = null,
     val projects: List<ProjectDto> = emptyList(),
+    /** 服务端分配的隧道参数；没有隧道时缺省。 */
+    val tunnel: TunnelDto? = null,
 )
+
+@Serializable
+data class TunnelDto(
+    val ip: String = "",
+    val cidr: Int = 32,
+    @SerialName("serverPublicKey") val serverPublicKey: String = "",
+    val endpoint: String = "",
+    @SerialName("allowedIps") val allowedIps: String = "",
+    val dns: String? = null,
+    val mtu: Int = 0,
+)
+
+@Serializable
+data class ConfirmDto(@SerialName("deviceCode") val deviceCode: String)
 
 @Serializable
 data class ProjectDto(

@@ -6,6 +6,9 @@ import com.opc.app.data.LinkState
 import com.opc.app.data.OpcRepository
 import com.opc.app.domain.ProjectInfo
 import com.opc.app.domain.ServerConfig
+import com.opc.app.domain.TunnelProfile
+import com.opc.app.tunnel.TunnelController
+import com.opc.app.tunnel.TunnelUiState
 import com.opc.app.ui.screens.nowHm
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +37,8 @@ data class ProfileUiState(
     val busy: Boolean = false,
     val error: String? = null,
     val confirmUnpair: Boolean = false,
+    val tunnel: TunnelUiState = TunnelUiState(),
+    val tunnelProfile: TunnelProfile? = null,
 )
 
 class ProfileViewModel(private val repository: OpcRepository) : ViewModel() {
@@ -52,6 +57,12 @@ class ProfileViewModel(private val repository: OpcRepository) : ViewModel() {
         }
         viewModelScope.launch {
             repository.project.collect { project -> _state.value = _state.value.copy(project = project) }
+        }
+        viewModelScope.launch {
+            TunnelController.state.collect { tunnel -> _state.value = _state.value.copy(tunnel = tunnel) }
+        }
+        viewModelScope.launch {
+            TunnelController.profile.collect { profile -> _state.value = _state.value.copy(tunnelProfile = profile) }
         }
         refresh()
     }
@@ -98,9 +109,23 @@ class ProfileViewModel(private val repository: OpcRepository) : ViewModel() {
     fun confirmUnpair() {
         _state.value = _state.value.copy(confirmUnpair = false, busy = true)
         viewModelScope.launch {
+            // 先拆隧道再清配对：反过来的话隧道会握着一条已经没有身份的路由
+            TunnelController.stop()
             repository.unpair()
             _state.value = _state.value.copy(busy = false)
         }
+    }
+
+    fun disconnectTunnel() {
+        TunnelController.stop()
+    }
+
+    fun reconnectTunnel() {
+        TunnelController.reconnect()
+    }
+
+    fun tunnelPermissionDenied() {
+        TunnelController.onPermissionDenied()
     }
 
     fun dismissError() {

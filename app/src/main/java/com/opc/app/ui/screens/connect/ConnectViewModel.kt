@@ -4,11 +4,17 @@ import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.opc.app.data.OpcRepository
+import com.opc.app.data.PairFailure
 import com.opc.app.data.SettingsStore
 import com.opc.app.domain.PairAddress
 import com.opc.app.domain.ProjectInfo
 import com.opc.app.domain.QrProtocol
 import com.opc.app.domain.ServerConfig
+import com.opc.app.domain.TunnelProfile
+import com.opc.app.domain.WireConfig
+import com.opc.app.tunnel.TunnelController
+import com.opc.app.tunnel.TunnelState
+import com.opc.app.tunnel.TunnelUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +40,13 @@ data class ConnectUiState(
     val paired: ServerConfig? = null,
     val project: ProjectInfo? = null,
     val scanEnabled: Boolean = true,
+    /** 二维码里的隧道骨架（老二维码为 null）。 */
+    val wire: WireConfig? = null,
+    /** 配对成功后落盘的隧道档案；null = 这次配对不进隧道。 */
+    val tunnelProfile: TunnelProfile? = null,
+    /** 非致命告警（例如设备 confirm 没走通）。 */
+    val tunnelWarning: String? = null,
+    val tunnel: TunnelUiState = TunnelUiState(),
 )
 
 private fun defaultDeviceName(): String =
@@ -57,6 +70,9 @@ class ConnectViewModel(
         // 配对成功后服务端会回一个默认项目，这里跟着 flow 走，页面不做二次请求。
         viewModelScope.launch {
             repository.project.collect { project -> _state.value = _state.value.copy(project = project) }
+        }
+        viewModelScope.launch {
+            TunnelController.state.collect { tunnel -> _state.value = _state.value.copy(tunnel = tunnel) }
         }
     }
 
@@ -94,6 +110,8 @@ class ConnectViewModel(
             sameLan = sameSubnet(ticket.baseUrl, current.localIpv4),
             scanEnabled = false,
             error = null,
+            wire = ticket.wire,
+            tunnelWarning = null,
         )
         precheck()
     }
@@ -125,11 +143,13 @@ class ConnectViewModel(
                     )
                 }
                 .onFailure { error ->
+                    // 目标是服务端隧道地址、隧道又没起来 → 是隧道的问题，不是服务端不在线
+                    val tunnelDown = isTunnelTarget(base) && _state.value.tunnel.state != TunnelState.UP
                     _state.value = _state.value.copy(
                         checking = false,
                         serverOnline = PrecheckState.FAIL,
                         latencyMs = null,
-                        error = error.message ?: "服务端没响应",
+                        error = if (tunnelDown) PairFailure.TUNNEL_DOWN else error.message ?: "服务端没响应",
                     )
                 }
         }
@@ -148,15 +168,17 @@ class ConnectViewModel(
         }
         _state.value = current.copy(pairing = true, error = null, whitelist = PrecheckState.UNKNOWN)
         viewModelScope.launch {
-            repository.pair(base, current.code, current.deviceName)
-                .onSuccess { config ->
+            repository.pair(base, current.code, current.deviceName, current.wire)
+                .onSuccess { result ->
                     _state.value = _state.value.copy(
                         pairing = false,
-                        paired = config,
+                        paired = result.config,
                         whitelist = PrecheckState.PASS,
                         serverOnline = PrecheckState.PASS,
-                        serverVersion = config.serverVersion,
-                        address = config.baseUrl,
+                        serverVersion = result.config.serverVersion,
+                        address = result.config.baseUrl,
+                        tunnelProfile = result.tunnel,
+                        tunnelWarning = result.warning,
                     )
                 }
                 .onFailure { error ->
@@ -180,6 +202,15 @@ class ConnectViewModel(
 
     fun dismissError() {
         _state.value = _state.value.copy(error = null)
+    }
+
+    /** 地址指向服务端隧道地址（档案里被隧道的那条路由，或二维码骨架里的 AllowedIPs）。 */
+    private fun isTunnelTarget(baseUrl: String): Boolean {
+        val host = baseUrl.substringAfter("://").substringBefore('/').substringBefore(':')
+        val current = _state.value
+        val serverAddress = TunnelController.profile.value?.serverAddress
+            ?: current.wire?.allowedIps?.substringBefore(',')?.trim()?.substringBefore('/')
+        return !serverAddress.isNullOrBlank() && serverAddress == host
     }
 
     private fun sameSubnet(address: String, localIpv4: String?): PrecheckState {

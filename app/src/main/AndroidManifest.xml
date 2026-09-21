@@ -6,6 +6,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- 内嵌隧道：VpnService 必须前台，否则进程随时可能被系统回收 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- 只用于隧道的前台常驻通知；没授权也不影响隧道本身 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
@@ -35,6 +41,29 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+            内嵌 WireGuard 隧道。隧道由官方 GoBackend 建立，OpcTunnelService 继承它的
+            VpnService 以便拿到 VpnService.Builder 并挂前台通知；一个 App 只能声明一个 VPN
+            服务，否则 VpnService.prepare() 无法确定把授权发给谁，所以下面把库自带的那个撤掉。
+        -->
+        <service
+            android:name=".tunnel.OpcTunnelService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:permission="android.permission.BIND_VPN_SERVICE"
+            tools:targetApi="31">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="vpnTunnel" />
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
+
+        <service
+            android:name="com.wireguard.android.backend.GoBackend$VpnService"
+            tools:node="remove" />
 
         <!-- ZXing 扫码页：竖屏，无 ActionBar 主题（库自带声明为 fullSensor + zxing_CaptureTheme，需覆盖） -->
         <activity

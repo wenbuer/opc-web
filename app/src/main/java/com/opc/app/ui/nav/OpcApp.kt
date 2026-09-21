@@ -41,6 +41,7 @@ import com.opc.app.OpcApplication
 import com.opc.app.data.LinkState
 import com.opc.app.data.OpcRepository
 import com.opc.app.ui.OpcViewModelFactory
+import com.opc.app.tunnel.TunnelController
 import com.opc.app.ui.theme.silverBackgroundBrush
 import com.opc.app.ui.theme.techGrid
 import com.opc.app.ui.screens.connect.ConnectScreen
@@ -85,6 +86,9 @@ private fun MainScaffold(repository: OpcRepository, factory: ViewModelProvider.F
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: OpcDestination.OVERVIEW.route
     val linkState by repository.linkState.collectAsState(initial = LinkState.CONNECTING)
+
+    // 冷启动只在「系统已授权」时静默恢复隧道；没授权留给页面上的重连按钮，不擅自弹窗
+    LaunchedEffect(Unit) { TunnelController.startIfAuthorized() }
 
     // 底栏徽标：批阅台 = 待裁决数，工作台 = 未读消息数。只拉一次，切页不重复请求。
     var reviewBadge by remember { mutableStateOf(0) }

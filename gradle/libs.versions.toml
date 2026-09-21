@@ -13,6 +13,7 @@ serialization = "1.7.3"
 datastore = "1.1.1"
 zxing = "4.3.0"
 coroutines = "1.9.0"
+wireguard = "1.0.20260102"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -36,6 +37,8 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 zxing-embedded = { group = "com.journeyapps", name = "zxing-android-embedded", version.ref = "zxing" }
 junit = { group = "junit", name = "junit", version = "4.13.2" }
+# 官方隧道库（GoBackend + Config + Curve25519），内含 arm64-v8a 的 libwg-go.so
+wireguard-tunnel = { group = "com.wireguard.android", name = "tunnel", version.ref = "wireguard" }
 
 # 说明：不引 com.google.android.material —— 主题基底已改为 android:Theme.Material.NoActionBar，
 # 否则 pure-Compose 工程会为了一个主题多拖一份 Material 资源。

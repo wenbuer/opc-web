@@ -36,12 +36,14 @@
 
 ## 现在是什么状态
 
-**已能构建出可安装的 debug APK**（`opc-app-v0.1.0-debug.apk`，17.8 MB，44 个 Kotlin 文件 / 约 4.9k 行）：
+**已能构建出可安装的 debug APK**（`app/build/outputs/apk/debug/app-debug.apk`，14.6 MB，
+54 个主源文件 / 6.1k 行 + 4 个测试文件 / 405 行）：
 
 | 检查项 | 结果 |
 |---|---|
 | `:app:assembleDebug` | 通过 |
-| `:app:testDebugUnitTest`（配对协议 7 例） | 7 passed / 0 failed |
+| `:app:testDebugUnitTest`（34 例：二维码 wg 解析 6 + 配对协议 12 + 隧道 13 + 失败语义 3） | 34 passed / 0 failed |
+| 内嵌 WireGuard 隧道 | **代码与构建已就位，真机握手未验**（见下方「内嵌隧道」） |
 | `:app:lintDebug` | 通过（仅 LockedOrientation / MonochromeLauncherIcon 等无害告警） |
 | 模拟器实跑 | 首屏已在 Android 15 (API 35) 模拟器上真实渲染通过，见 `docs/emulator-run-01-connect.png` |
 | 主界面纵深验证 | **未做**：本机模拟器不稳定，见下方「模拟器这块的坑」 |
@@ -121,8 +123,28 @@ app/src/main/java/com/opc/app/
   ui/components 复用组件（状态条、胶囊芯片、等级标签、指标卡、事件行、气泡、子任务卡）
   ui/screens/   connect / overview / workbench / review / messages / profile
   ui/nav/       底栏五页 + 未配对时强制走连接页
+  tunnel/       内嵌 WireGuard 隧道（前台 VpnService + 门面 + 状态机 + 配置拼装 + 手机侧密钥）
   ui/preview/   IDE 里可交互的界面预览（@Preview，自带演示数据）
 ```
+
+## 内嵌隧道（不用装任何 VPN App）
+
+手机通过 App 内置的 WireGuard 隧道访问服务端，**opc-web 继续只听 127.0.0.1** ——
+安全边界放在网络层。协议契约见 `docs/pairing-protocol.md`，隧道设计见 `docs/wireguard-tunnel.md`。
+
+- **私钥只在手机生成**（`tunnel/TunnelKeys.kt`，纯 Java Curve25519），配对请求里只带公钥；
+  二维码里的 `wg` 配置即使没有 `PrivateKey` 行（服务端本来就不知道）也照常解析。
+- **只隧道一个服务**：AllowedIPs 收窄成服务端隧道地址的一条 `/32`（如 `10.9.0.1/32`），
+  `0.0.0.0/0` 与整段一律被替换掉，不会把手机全部流量绕道 PC。
+- **两种模式 App 不区分**：直连（endpoint = PC 公网）与中继（endpoint = VPS）都由二维码/响应里的
+  `endpoint` 决定，App 只看配置。
+- **老二维码（无 `wg`）照样能配对**，只是不进隧道、直连局域网地址。
+- 状态可见：总览页顶部「隧道」芯片（点一下重连）、配对成功卡里的隧道块、「我的」页的隧道区块
+  （状态 / 服务端隧道地址 / endpoint / 模式 / 断开重连）。
+- 演示模式下没有任何配对信息，**不会弹 VPN 授权**；冷启动只在系统已授权时静默恢复隧道。
+
+**没验到的部分**：APK 只打 `arm64-v8a`（`ndk.abiFilters`），x86_64 模拟器装不上
+（`INSTALL_FAILED_NO_MATCHING_ABIS`），所以隧道握手、断电重连只能在 arm64 真机上跑。
 
 ### 在 IDE 里看界面（不用装手机）
 
@@ -144,8 +166,11 @@ app/src/main/java/com/opc/app/
 
 - `OPC_HOST` 允许局域网之外，必须同时补 **设备令牌鉴权**（当前 `127.0.0.1` 是唯一防线）。
 - `GET /api/ping` → `{"version":"1.18.0"}`（App 的三项预检与在线探活用）。
-- `POST /api/pair`：body `{code, deviceName, deviceCode, platform}` → `{token, deviceCode, serverVersion, projects[]}`；
-  配对码一次性、5 分钟有效，成功后本机设备码写入白名单。
+- `POST /api/pair`：body `{code, deviceName, deviceCode, platform, publicKey}`
+  → `{token, deviceCode, serverVersion, tunnel:{ip,cidr,serverPublicKey,endpoint,allowedIps,dns,mtu}, projects[]}`；
+  配对码一次性、5 分钟有效，成功后本机设备码写入白名单。`publicKey` 是手机侧 WireGuard 公钥，
+  服务端分配隧道 IP、把自己的公钥与 endpoint 回给手机（私钥双方都不外传）。
+- `POST /api/mobile/device/confirm`：body `{deviceCode}`，配对后确认设备；确认前只放行握手与 `/api/ping`。
 - 设置页新增「移动端接入」：展示配对二维码 + 已配对设备列表 + 吊销。
 - 鉴权头 `X-OPC-Token`；`opc-config.json` 增 `mobile_devices[]`（设备码/名称/签发时间/吊销位）。
 
@@ -155,4 +180,4 @@ app/src/main/java/com/opc/app/
 
 - 项目文件 / 知识库独立页（设计上收进「消息」卡片）
 - 模型接入、Skill 导入、定时任务、Token 明细等重配置（仍在电脑端做）
-- 前台服务与推送：目前是进页面轮询，接下来再做常驻通知
+- 推送：目前是进页面轮询；常驻通知只有隧道那一条（隧道的前台服务），业务推送还没做

@@ -1,6 +1,7 @@
 package com.opc.app.ui.screens.overview
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.opc.app.domain.RoleStatus
+import com.opc.app.tunnel.TunnelState
 import com.opc.app.ui.components.AvatarCircle
 import com.opc.app.ui.components.CapsuleChip
 import com.opc.app.ui.components.EventRow
@@ -105,12 +107,22 @@ fun OverviewScreen(factory: ViewModelProvider.Factory) {
                 .padding(horizontal = OpcScreenPadding),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = OpcSpacing.m),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(bottom = OpcSpacing.m),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(OpcSpacing.s),
             ) {
                 CapsuleChip(text = state.project?.name ?: "未选项目", selected = true)
                 GhostChip(text = "已连接 " + (state.host ?: "服务端"), leadingDot = true)
+                // 隧道芯片：点一下重连；失败态用红底把它从「服务端不在线」里区分出来
+                CapsuleChip(
+                    text = "隧道 " + state.tunnel.label,
+                    selected = state.tunnel.state == TunnelState.UP,
+                    hot = state.tunnel.state == TunnelState.ERROR,
+                    onClick = viewModel::reconnectTunnel,
+                )
             }
 
             HeroCard(

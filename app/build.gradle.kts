@@ -17,6 +17,11 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        // WireGuard 库自带四份 libwg-go.so（每份约 3MB），只留 arm64
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
@@ -54,7 +59,6 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.material.icons.extended)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     implementation(libs.androidx.navigation.compose)
@@ -68,6 +72,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(libs.zxing.embedded)
+
+    // 内嵌 WireGuard 隧道：官方库的 GoBackend + Config（基础图标集之外的唯一新原生依赖）
+    implementation(libs.wireguard.tunnel)
 
     testImplementation(libs.junit)
 }

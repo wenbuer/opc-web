@@ -2,6 +2,7 @@ package com.opc.app.ui.preview
 
 import com.opc.app.data.LinkState
 import com.opc.app.data.OpcRepository
+import com.opc.app.data.PairResult
 import com.opc.app.data.ResultData
 import com.opc.app.domain.FeedItem
 import com.opc.app.domain.OverviewStats
@@ -11,6 +12,7 @@ import com.opc.app.domain.ServerConfig
 import com.opc.app.domain.TaskDiary
 import com.opc.app.domain.TaskSummary
 import com.opc.app.domain.Verdict
+import com.opc.app.domain.WireConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
@@ -55,8 +57,12 @@ internal class PreviewRepository : OpcRepository {
     override suspend fun pauseChain(paused: Boolean): Result<Unit> = Result.success(Unit)
     override suspend fun switchProject(id: String): Result<Unit> = Result.success(Unit)
     override suspend fun ping(baseUrl: String): Result<String> = Result.success("1.18.0")
-    override suspend fun pair(baseUrl: String, code: String, deviceName: String): Result<ServerConfig> =
-        Result.success(demoConfig)
+    override suspend fun pair(
+        baseUrl: String,
+        code: String,
+        deviceName: String,
+        wire: WireConfig?,
+    ): Result<PairResult> = Result.success(PairResult(demoConfig))
 
     override suspend fun unpair() = Unit
 }

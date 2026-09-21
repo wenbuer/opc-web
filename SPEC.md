@@ -5,6 +5,9 @@
 ## 0. 硬约束
 
 - 包名 `com.opc.app`，Kotlin + Jetpack Compose + Material 3，minSdk 26 / compileSdk 35 / targetSdk 35。
+- 内嵌 WireGuard 隧道用官方库 `com.wireguard.android:tunnel`（GoBackend + Config）；APK 只打
+  `arm64-v8a`（`abiFilters`），四份 `libwg-go.so` 只留一份。协议见 `docs/pairing-protocol.md`，
+  隧道设计见 `docs/wireguard-tunnel.md`。
 - **不改 opc-web**（另一个仓库）。服务端接口未就绪时走离线演示数据。
 - 界面**禁用 emoji，禁用扩展图标库**：只用 `androidx.compose.material.icons.Icons.Default/Filled/Outlined` 里的 **基础图标集**（material-icons-core，已被 material3 传递依赖）：
   `Menu, Search, Settings, Home, Person, Check, Close, Add, ArrowBack, ArrowForward, Refresh, Send, Notifications, MoreVert, Edit, Delete, Info, Warning, Lock, Star, Favorite, Email, Phone, Place, DateRange, AccountCircle, CheckCircle, List, Share, ThumbUp, Build, ExitToApp, KeyboardArrowDown, KeyboardArrowRight, KeyboardArrowUp, PlayArrow, Clear, Done, Call`
@@ -20,7 +23,15 @@ app/src/main/java/com/opc/app/
   MainActivity.kt             setContent { OpcApp() } + enableEdgeToEdge
   domain/
     Models.kt                 领域模型（见 §3）
+    TunnelModels.kt           隧道档案 / 服务端隧道参数 / 直连-中继模式
     QrProtocol.kt             opc://pair?... 解析 + 二维码位图生成
+    WireConf.kt               wg= base64url + wg-quick INI 解析（纯 JVM）
+  tunnel/
+    OpcTunnelService.kt       前台 VpnService（继承库的 GoBackend.VpnService）
+    TunnelController.kt       门面：StateFlow<TunnelState> / start / stop / reconnect
+    TunnelState.kt            状态机（纯函数，可单测）
+    WireGuardConfig.kt        TunnelProfile ⇄ wg-quick 文本 + AllowedIPs 收窄策略（纯函数）
+    TunnelKeys.kt             手机侧 Curve25519 密钥对生成（私钥不出设备）
   data/
     SettingsStore.kt          DataStore：ServerConfig / ProjectInfo 持久化
     remote/OpcApi.kt          Retrofit 接口 + DTO（见 §4）
@@ -171,10 +182,12 @@ interface OpcRepository {
     suspend fun pauseChain(paused: Boolean): Result<Unit>
     suspend fun switchProject(id: String): Result<Unit>
     suspend fun unpair(): Unit
-    /** 配对：扫码/手填 → 校验 → 落盘 */
-    suspend fun pair(baseUrl: String, code: String, deviceName: String): Result<ServerConfig>
+    /** 配对：扫码/手填 → 校验 → 落盘；wire 是二维码里的隧道骨架（可为 null） */
+    suspend fun pair(baseUrl: String, code: String, deviceName: String, wire: WireConfig? = null): Result<PairResult>
     suspend fun ping(baseUrl: String): Result<String>   // 返回服务端版本
 }
+/** config 落盘；tunnel 为 null 表示这次配对不进隧道；warning 是非致命告警 */
+data class PairResult(val config: ServerConfig, val tunnel: TunnelProfile? = null, val warning: String? = null)
 data class ResultData<T>(val data: T, val offline: Boolean, val error: String? = null)
 ```
 `OpcRepository` 由 `AppContainer` 提供单例：`container.repository`、`container.settingsStore`。
@@ -195,7 +208,10 @@ data class ResultData<T>(val data: T, val offline: Boolean, val error: String? =
 ## 6. 联网契约（照设计稿「服务端要补的」写，服务端未实现——失败即回落演示数据）
 
 - `GET /api/ping` → `{"version":"1.18.0"}`
-- `POST /api/pair` body `{"code","deviceName","deviceCode","platform"}` → `{"token","deviceCode","serverVersion","projects":[{"id","name"}]}`
+- `POST /api/pair` body `{"code","deviceName","deviceCode","platform","publicKey"}`
+  → `{"token","deviceCode","serverVersion","tunnel":{"ip","cidr","serverPublicKey","endpoint","allowedIps","dns","mtu"},"projects":[{"id","name"}]}`
+  （`publicKey` 是手机侧 WireGuard 公钥，私钥永不上传；`tunnel` 用于补全手机侧 conf）
+- `POST /api/mobile/device/confirm` body `{"deviceCode"}`：配对后确认设备，确认前只放行握手与 `/api/ping`
 - `GET /api/projects` → `[{"id","name"}]`
 - `GET /api/overview` → OverviewStats 同构 JSON
 - `POST /api/dispatch` body `{"text"}`
